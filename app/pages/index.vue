@@ -1,18 +1,25 @@
 <script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
+import type { Task } from '~/types/task'
 
 const { isLoggedIn, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
+const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
 
 const currentView = ref<'month' | 'week'>('month')
 const currentDate = ref(new Date())
 const showModal = ref(false)
+const showTaskModal = ref(false)
+const showPreferences = ref(false)
+const showSidebar = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
+const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
 
-// Initialize Google auth on mount
-onMounted(() => {
+// Initialize Google auth and tasks on mount
+onMounted(async () => {
   initClient()
+  await initTasks()
 })
 
 // Fetch events when logged in or date changes
@@ -95,6 +102,32 @@ async function onDeleteEvent(eventId: string) {
     await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
   }
 }
+
+// Task handlers
+function onOpenTask() {
+  selectedTask.value = null
+  selectedDate.value = undefined
+  showTaskModal.value = true
+}
+
+function onEditTask(task: Task) {
+  selectedTask.value = task
+  showTaskModal.value = true
+}
+
+async function onSaveTask(data: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) {
+  if (selectedTask.value?.id) {
+    await updateTask(selectedTask.value.id, data)
+  } else {
+    await createTask(data)
+  }
+  showTaskModal.value = false
+}
+
+async function onDeleteTask(taskId: string) {
+  await removeTask(taskId)
+  showTaskModal.value = false
+}
 </script>
 
 <template>
@@ -102,7 +135,13 @@ async function onDeleteEvent(eventId: string) {
     <NavBar
       :current-view="currentView"
       @update:current-view="currentView = $event"
+      @open-settings="showPreferences = true"
+      @open-task="onOpenTask"
+      @toggle-sidebar="showSidebar = !showSidebar"
     />
+
+    <!-- Deadline Warnings -->
+    <DeadlineWarning />
 
     <!-- Error messages -->
     <div v-if="authError || calError" class="max-w-7xl mx-auto px-4 mt-4">
@@ -188,6 +227,30 @@ async function onDeleteEvent(eventId: string) {
       @close="showModal = false"
       @save="onSaveEvent"
       @delete="onDeleteEvent"
+    />
+
+    <!-- Task Modal -->
+    <TaskModal
+      :show="showTaskModal"
+      :task="selectedTask"
+      :default-date="selectedDate"
+      @close="showTaskModal = false"
+      @save="onSaveTask"
+      @delete="onDeleteTask"
+    />
+
+    <!-- Preferences Modal -->
+    <PreferencesModal
+      :show="showPreferences"
+      @close="showPreferences = false"
+    />
+
+    <!-- AI Sidebar -->
+    <AISidebar
+      :show="showSidebar"
+      :events="events"
+      @close="showSidebar = false"
+      @edit-task="(task) => { selectedTask = task; showTaskModal = true }"
     />
   </div>
 </template>

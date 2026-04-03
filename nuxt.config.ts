@@ -32,7 +32,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       googleClientId: process.env.NUXT_PUBLIC_GOOGLE_CLIENT_ID,
-      googleCalendarId: process.env.NUXT_PUBLIC_GOOGLE_CALENDAR_ID || 'primary'
+      googleCalendarId: process.env.NUXT_PUBLIC_GOOGLE_CALENDAR_ID || 'primary',
+      aiEnabled: process.env.NUXT_PUBLIC_AI_ENABLED || 'true'
     }
   },
   modules: ['@nuxtjs/tailwindcss']

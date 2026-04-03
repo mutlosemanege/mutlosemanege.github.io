@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Prompt.md",
+                "file": "NETLIFY_SETUP.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Prompt"
+              "title": "NETLIFY_SETUP"
             }
           }
         ]
@@ -78,8 +78,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "right": {
     "id": "3a3f8bd0edf2f57c",
@@ -186,42 +185,42 @@
   },
   "active": "6ec8de67ec521b68",
   "lastOpenFiles": [
+    "dist/_redirects",
+    "dist/_headers",
+    "dist/_nuxt/builds/meta/f1aa9f9d-7b7b-48f3-ad38-630a34ad9b63.json",
+    "server/api/ai/generate-project.post.ts.tmp.7112.1775228146915",
+    "server/api/ai/prioritize.post.ts.tmp.7112.1775228143564",
+    "nuxt.config.ts.tmp.7112.1775228139204",
+    "dist/_nuxt/builds/meta/34de470b-64da-4b42-a219-70227c176c3f.json",
+    "server/api/ai/generate-project.post.ts.tmp.7112.1775227982691",
+    "server/api/ai/prioritize.post.ts.tmp.7112.1775227978544",
+    "nuxt.config.ts.tmp.7112.1775227973545",
+    "dist/_nuxt/builds/meta/c9e989e3-96a5-448a-96d8-ed957b1f1d3c.json",
+    "node_modules/@babel/runtime/README.md",
+    "node_modules/@anthropic-ai/sdk/README.md",
+    "node_modules/@anthropic-ai/sdk/CHANGELOG.md",
+    "node_modules/@anthropic-ai/sdk/src/_vendor/partial-json-parser/README.md",
+    "node_modules/@anthropic-ai/sdk/src/internal/README.md",
+    "node_modules/@anthropic-ai/sdk/src/core/README.md",
+    "node_modules/json-schema-to-ts/README.md",
+    "node_modules/ts-algebra/README.md",
+    "node_modules/idb-keyval/README.md",
+    "node_modules/uuid/README.md",
+    "node_modules/uuid/LICENSE.md",
+    "Prompt.md",
     "node_modules/@oxc-minify/binding-win32-x64-msvc/README.md",
     "node_modules/replace-in-file/README.md",
     "node_modules/csso/node_modules/css-tree/README.md",
     "node_modules/tailwind-config-viewer/node_modules/commander/Readme.md",
-    "node_modules/strip-ansi/index.js",
     "node_modules/portfinder/README.md",
-    "node_modules/tailwindcss/prettier.config.js",
     "node_modules/cross-spawn/README.md",
     "node_modules/csstype/README.md",
     "node_modules/@csstools/selector-specificity/CHANGELOG.md",
-    "node_modules/readdir-glob/node_modules/minimatch/minimatch.js",
     "node_modules/resolve-path/node_modules/http-errors/README.md",
-    "node_modules/untun/bin/untun.mjs",
-    "node_modules/untun/bin",
-    "node_modules/unenv/lib/mock.d.cts",
-    "node_modules/unenv/lib/mock.cjs",
-    "node_modules/unenv/lib",
-    "node_modules/unctx/node_modules/estree-walker/types/walker.d.ts",
-    "node_modules/unctx/node_modules/estree-walker/types/sync.d.ts",
     "node_modules/media-typer/README.md",
     "node_modules/media-typer/HISTORY.md",
     "node_modules/dotenv/skills/dotenvx/SKILL.md",
     "node_modules/dotenv/skills/dotenv/SKILL.md",
-    "node_modules/buffer-from/readme.md",
-    "node_modules/tar/LICENSE.md",
-    "node_modules/replace-in-file/node_modules/balanced-match/README.md",
-    "node_modules/shebang-command/readme.md",
-    "node_modules/caniuse-lite/README.md",
-    "node_modules/@nuxt/devtools/README.md",
-    "node_modules/css-tree/README.md",
-    "node_modules/tar/README.md",
-    "node_modules/autoprefixer/README.md",
-    "node_modules/archiver-utils/node_modules/glob/README.md",
-    "node_modules/dom-serializer/node_modules/entities/readme.md",
-    "node_modules/replace-in-file/node_modules/yargs/README.md",
-    "node_modules/tailwindcss/node_modules/postcss-selector-parser/README.md",
     "node_modules/@nuxt/devtools/dist/client/nuxt.svg",
     "node_modules/vite-plugin-inspect/dist/client/favicon.svg"
   ]

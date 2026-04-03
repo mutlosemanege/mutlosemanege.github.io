@@ -3,7 +3,8 @@
     "allow": [
       "Bash(ls:*)",
       "Bash(npm install:*)",
-      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")"
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(npx nuxi:*)"
     ]
   }
 }

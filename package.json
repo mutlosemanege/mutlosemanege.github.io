@@ -10,7 +10,10 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "idb-keyval": "^6.2.2",
     "nuxt": "^4.4.2",
+    "uuid": "^13.0.0",
     "vue": "^3.5.31",
     "vue-router": "^5.0.4"
   },
