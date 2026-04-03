@@ -185,6 +185,8 @@
   },
   "active": "6ec8de67ec521b68",
   "lastOpenFiles": [
+    "netlify.toml",
+    "netlify.toml.tmp.7112.1775228296409",
     "dist/_redirects",
     "dist/_headers",
     "dist/_nuxt/builds/meta/f1aa9f9d-7b7b-48f3-ad38-630a34ad9b63.json",
@@ -194,8 +196,6 @@
     "dist/_nuxt/builds/meta/34de470b-64da-4b42-a219-70227c176c3f.json",
     "server/api/ai/generate-project.post.ts.tmp.7112.1775227982691",
     "server/api/ai/prioritize.post.ts.tmp.7112.1775227978544",
-    "nuxt.config.ts.tmp.7112.1775227973545",
-    "dist/_nuxt/builds/meta/c9e989e3-96a5-448a-96d8-ed957b1f1d3c.json",
     "node_modules/@babel/runtime/README.md",
     "node_modules/@anthropic-ai/sdk/README.md",
     "node_modules/@anthropic-ai/sdk/CHANGELOG.md",
