@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "GOOGLE_SETUP.md",
+                "file": "Prompt.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "GOOGLE_SETUP"
+              "title": "Prompt"
             }
           }
         ]
@@ -95,7 +95,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "GOOGLE_SETUP.md",
+                "file": "Prompt.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -105,7 +105,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Rückverweise auf GOOGLE_SETUP"
+              "title": "Rückverweise auf Prompt"
             }
           },
           {
@@ -114,12 +114,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "GOOGLE_SETUP.md",
+                "file": "Prompt.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Ausgehende Links von GOOGLE_SETUP öffnen"
+              "title": "Ausgehende Links von Prompt öffnen"
             }
           },
           {
@@ -157,13 +157,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "GOOGLE_SETUP.md",
+                "file": "Prompt.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Gliederung von GOOGLE_SETUP"
+              "title": "Gliederung von Prompt"
             }
           }
         ]
@@ -186,7 +186,43 @@
   },
   "active": "6ec8de67ec521b68",
   "lastOpenFiles": [
-    "GOOGLE_SETUP.md.tmp.7112.1775215989517",
-    "Prompt.md"
+    "node_modules/@oxc-minify/binding-win32-x64-msvc/README.md",
+    "node_modules/replace-in-file/README.md",
+    "node_modules/csso/node_modules/css-tree/README.md",
+    "node_modules/tailwind-config-viewer/node_modules/commander/Readme.md",
+    "node_modules/strip-ansi/index.js",
+    "node_modules/portfinder/README.md",
+    "node_modules/tailwindcss/prettier.config.js",
+    "node_modules/cross-spawn/README.md",
+    "node_modules/csstype/README.md",
+    "node_modules/@csstools/selector-specificity/CHANGELOG.md",
+    "node_modules/readdir-glob/node_modules/minimatch/minimatch.js",
+    "node_modules/resolve-path/node_modules/http-errors/README.md",
+    "node_modules/untun/bin/untun.mjs",
+    "node_modules/untun/bin",
+    "node_modules/unenv/lib/mock.d.cts",
+    "node_modules/unenv/lib/mock.cjs",
+    "node_modules/unenv/lib",
+    "node_modules/unctx/node_modules/estree-walker/types/walker.d.ts",
+    "node_modules/unctx/node_modules/estree-walker/types/sync.d.ts",
+    "node_modules/media-typer/README.md",
+    "node_modules/media-typer/HISTORY.md",
+    "node_modules/dotenv/skills/dotenvx/SKILL.md",
+    "node_modules/dotenv/skills/dotenv/SKILL.md",
+    "node_modules/buffer-from/readme.md",
+    "node_modules/tar/LICENSE.md",
+    "node_modules/replace-in-file/node_modules/balanced-match/README.md",
+    "node_modules/shebang-command/readme.md",
+    "node_modules/caniuse-lite/README.md",
+    "node_modules/@nuxt/devtools/README.md",
+    "node_modules/css-tree/README.md",
+    "node_modules/tar/README.md",
+    "node_modules/autoprefixer/README.md",
+    "node_modules/archiver-utils/node_modules/glob/README.md",
+    "node_modules/dom-serializer/node_modules/entities/readme.md",
+    "node_modules/replace-in-file/node_modules/yargs/README.md",
+    "node_modules/tailwindcss/node_modules/postcss-selector-parser/README.md",
+    "node_modules/@nuxt/devtools/dist/client/nuxt.svg",
+    "node_modules/vite-plugin-inspect/dist/client/favicon.svg"
   ]
 }
