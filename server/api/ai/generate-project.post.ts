@@ -31,68 +31,76 @@ export default defineEventHandler(async (event) => {
   }
   userMessage += '\nErstelle 3-12 sinnvolle Tasks mit realistischen Zeitschaetzungen und Abhaengigkeiten.'
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6-20250514',
-    max_tokens: 2048,
-    system: `Du bist ein Projektplanungs-Assistent. Erstelle strukturierte Projektplaene mit Tasks, Zeitschaetzungen und Abhaengigkeiten. Verwende tempIds wie "t1", "t2" etc. Antworte NUR ueber das projekt_erstellen-Tool. Heute ist ${new Date().toISOString().slice(0, 10)}.`,
-    tools: [
-      {
-        name: 'projekt_erstellen',
-        description: 'Erstellt eine Projektstruktur mit Tasks und Abhaengigkeiten',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            projectName: { type: 'string', description: 'Kurzer Projektname' },
-            tasks: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  tempId: { type: 'string', description: 'Temporaere ID (t1, t2, ...)' },
-                  title: { type: 'string' },
-                  description: { type: 'string', description: 'Kurze Beschreibung' },
-                  estimatedMinutes: { type: 'number' },
-                  dependsOn: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'tempIds der Abhaengigkeiten',
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-5-20250514',
+      max_tokens: 2048,
+      system: `Du bist ein Projektplanungs-Assistent. Erstelle strukturierte Projektplaene mit Tasks, Zeitschaetzungen und Abhaengigkeiten. Verwende tempIds wie "t1", "t2" etc. Antworte NUR ueber das projekt_erstellen-Tool. Heute ist ${new Date().toISOString().slice(0, 10)}.`,
+      tools: [
+        {
+          name: 'projekt_erstellen',
+          description: 'Erstellt eine Projektstruktur mit Tasks und Abhaengigkeiten',
+          input_schema: {
+            type: 'object' as const,
+            properties: {
+              projectName: { type: 'string', description: 'Kurzer Projektname' },
+              tasks: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    tempId: { type: 'string', description: 'Temporaere ID (t1, t2, ...)' },
+                    title: { type: 'string' },
+                    description: { type: 'string', description: 'Kurze Beschreibung' },
+                    estimatedMinutes: { type: 'number' },
+                    dependsOn: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'tempIds der Abhaengigkeiten',
+                    },
+                    isDeepWork: { type: 'boolean', description: 'Braucht Fokuszeit?' },
+                    suggestedPriority: {
+                      type: 'string',
+                      enum: ['critical', 'high', 'medium', 'low'],
+                    },
                   },
-                  isDeepWork: { type: 'boolean', description: 'Braucht Fokuszeit?' },
-                  suggestedPriority: {
-                    type: 'string',
-                    enum: ['critical', 'high', 'medium', 'low'],
-                  },
+                  required: ['tempId', 'title', 'description', 'estimatedMinutes', 'dependsOn', 'isDeepWork', 'suggestedPriority'],
                 },
-                required: ['tempId', 'title', 'description', 'estimatedMinutes', 'dependsOn', 'isDeepWork', 'suggestedPriority'],
               },
             },
+            required: ['projectName', 'tasks'],
           },
-          required: ['projectName', 'tasks'],
         },
+      ],
+      tool_choice: { type: 'tool', name: 'projekt_erstellen' },
+      messages: [
+        {
+          role: 'user',
+          content: userMessage,
+        },
+      ],
+    })
+
+    const toolBlock = response.content.find(block => block.type === 'tool_use')
+    if (!toolBlock || toolBlock.type !== 'tool_use') {
+      throw createError({ statusCode: 500, message: 'Unerwartete AI-Antwort: Kein Tool-Use-Block' })
+    }
+
+    const result = toolBlock.input as { projectName: string; tasks: GeneratedTask[] }
+
+    return {
+      projectName: result.projectName,
+      tasks: result.tasks,
+      usage: {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
       },
-    ],
-    tool_choice: { type: 'tool', name: 'projekt_erstellen' },
-    messages: [
-      {
-        role: 'user',
-        content: userMessage,
-      },
-    ],
-  })
-
-  const toolBlock = response.content.find(block => block.type === 'tool_use')
-  if (!toolBlock || toolBlock.type !== 'tool_use') {
-    throw createError({ statusCode: 500, message: 'Unerwartete AI-Antwort' })
-  }
-
-  const result = toolBlock.input as { projectName: string; tasks: GeneratedTask[] }
-
-  return {
-    projectName: result.projectName,
-    tasks: result.tasks,
-    usage: {
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-    },
+    }
+  } catch (e: any) {
+    // Anthropic API Fehler weiterleiten
+    if (e.status) {
+      throw createError({ statusCode: e.status, message: `Anthropic API: ${e.message}` })
+    }
+    throw e
   }
 })
