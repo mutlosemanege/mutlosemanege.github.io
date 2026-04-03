@@ -49,16 +49,60 @@ Diese Anleitung beschreibt Schritt fuer Schritt, wie du die App von GitHub Pages
 
 ---
 
-## 4. Anthropic API-Key erstellen
+## 4. Anthropic API-Key erstellen und einrichten
 
-1. Oeffne [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys).
-2. Erstelle ein Konto bei Anthropic, falls du noch keines hast.
+### 4.1 Konto erstellen
+
+1. Oeffne [https://console.anthropic.com](https://console.anthropic.com).
+2. Klicke auf **Sign Up** und erstelle ein Konto (E-Mail oder Google/GitHub Login).
+3. Bestatige deine E-Mail-Adresse, falls noetig.
+
+### 4.2 Guthaben aufladen (Pflicht)
+
+Die API funktioniert **nur mit aufgeladenem Guthaben** -- auch wenn du bereits ein Konto hast.
+
+1. Navigiere zu [**Settings** > **Plans & Billing**](https://console.anthropic.com/settings/billing).
+2. Stelle sicher, dass du dich im richtigen **Workspace** befindest (oben links in der Navigation). 
+   - Falls du mehrere Workspaces hast: Der API-Key muss im **selben Workspace** erstellt werden, in dem das Guthaben liegt.
+3. Klicke auf **Add Credits** oder **Buy Credits**.
+4. Lade mindestens **$5** auf (das reicht fuer mehrere Monate bei normaler Nutzung).
+5. Warte bis die Zahlung bestaetigt ist und das Guthaben unter **Credit Balance** angezeigt wird.
+
+> **Wichtig:** Es reicht NICHT, nur Credits zu haben. Pruefe, dass der Status unter Plans & Billing **aktiv** ist und kein Hinweis wie "credit balance too low" erscheint. Falls doch: Lade nochmals $5 auf -- manchmal werden alte Credits einem anderen Workspace zugeordnet.
+
+### 4.3 API-Key erstellen
+
+1. Navigiere zu [**Settings** > **API Keys**](https://console.anthropic.com/settings/keys).
+2. **Pruefe den Workspace**: Oben links muss derselbe Workspace stehen, in dem du gerade Guthaben aufgeladen hast.
 3. Klicke auf **Create Key**.
 4. Vergib einen Namen, z. B. `kalender-ai-netlify`.
-5. Kopiere den Key (beginnt mit `sk-ant-api03-...`).
-6. Trage ihn als `ANTHROPIC_API_KEY` in den Netlify-Umgebungsvariablen ein (Schritt 3).
+5. Kopiere den Key sofort -- er wird nur einmal angezeigt.
+   - Der Key beginnt mit `sk-ant-api03-...`
+6. Trage ihn als `ANTHROPIC_API_KEY` in den Netlify-Umgebungsvariablen ein (siehe Schritt 3).
 
-> **Kosten:** Anthropic bietet kein kostenloses Kontingent. Du zahlst nur fuer tatsaechliche API-Nutzung. Mit den Token-sparenden Massnahmen der App (lokale Algorithmen, Haiku-Modell) liegen die Kosten bei normalem Gebrauch bei ca. $1-3/Monat. Du kannst ein Ausgabenlimit in der Anthropic Console setzen.
+### 4.4 API-Key testen
+
+Teste den Key direkt im Terminal, um sicherzustellen, dass er funktioniert:
+
+```bash
+curl https://api.anthropic.com/v1/messages \
+  -H "x-api-key: DEIN-API-KEY-HIER" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":50,"messages":[{"role":"user","content":"Sage Hallo"}]}'
+```
+
+- **Erfolg:** Du bekommst eine JSON-Antwort mit `"type": "message"`
+- **Fehler "credit balance too low":** Guthaben ist im falschen Workspace -- erstelle den Key im Workspace mit Guthaben
+- **Fehler "invalid api key":** Key ist falsch kopiert oder gehoert zu einem anderen Account
+
+### 4.5 Ausgabenlimit setzen (empfohlen)
+
+1. Navigiere zu [**Settings** > **Limits**](https://console.anthropic.com/settings/limits).
+2. Setze ein monatliches **Usage Limit**, z. B. $5/Monat.
+3. So verhinderst du unerwartete Kosten.
+
+> **Geschaetzte Kosten:** Mit den Token-sparenden Massnahmen der App (lokale Algorithmen, Haiku-Modell fuer einfache Aufgaben) liegen die Kosten bei normalem Gebrauch bei ca. **$1-3/Monat**.
 
 ---
 
@@ -199,3 +243,5 @@ Pruefe, ob alle Schritte erledigt sind:
 ### AI-Features funktionieren lokal, aber nicht auf Netlify
 - Stelle sicher, dass `ANTHROPIC_API_KEY` in den Netlify-Umgebungsvariablen gesetzt ist (nicht nur lokal in `.env`)
 - Nach dem Aendern von Umgebungsvariablen muss ein neuer Deploy getriggert werden: **Deploys** > **Trigger deploy** > **Deploy site**
+
+Kalender App Entwicklung: Backend Fixes und Frontend Redesign

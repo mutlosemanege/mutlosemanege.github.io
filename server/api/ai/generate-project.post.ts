@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
       system: `Du bist ein Projektplanungs-Assistent. Erstelle strukturierte Projektplaene mit Tasks, Zeitschaetzungen und Abhaengigkeiten. Verwende tempIds wie "t1", "t2" etc. Antworte NUR ueber das projekt_erstellen-Tool. Heute ist ${new Date().toISOString().slice(0, 10)}.`,
       tools: [
