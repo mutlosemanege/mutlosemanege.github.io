@@ -102,9 +102,19 @@ interface PlanVariantPreview {
   highlight: string
 }
 
+interface ActivityEntry {
+  id: string
+  title: string
+  detail: string
+  createdAt: string
+  undoLabel?: string
+  undo?: () => Promise<void>
+}
+
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
 const schedulingAlternatives = ref<Record<string, SlotAlternative[]>>({})
 const planVariants = ref<PlanVariantPreview[]>([])
+const activityEntries = ref<ActivityEntry[]>([])
 const applyingVariantStyle = ref<PlanningStyle | null>(null)
 const applyingAlternativeTaskId = ref<string | null>(null)
 const rescheduleTask = ref<Task | null>(null)
@@ -233,6 +243,10 @@ async function handlePrioritize() {
       parts.push(`${skippedManual} manuell geschuetzt`)
     }
     priorityFeedback.value = parts.join(', ') + '.'
+    addActivityEntry({
+      title: 'KI-Priorisierung',
+      detail: parts.join(', '),
+    })
   }
 
   decisionTransparency.value = buildPriorityDecisionTransparency({
@@ -267,6 +281,10 @@ async function handleAutoSchedule() {
   if (scheduledCount === 0) {
     const topReasons = planningDiagnostics.value.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
     planningFeedback.value = `Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.${topReasons ? ` Hauptgruende: ${topReasons}` : ''}`
+    addActivityEntry({
+      title: 'Auto-Planen',
+      detail: 'Keine Aufgabe konnte automatisch eingeplant werden.',
+    })
     return
   }
 
@@ -277,10 +295,18 @@ async function handleAutoSchedule() {
       .join(', ')
 
     planningFeedback.value = `${scheduledCount} Aufgaben eingeplant, ${unscheduledCount} noch offen. ${remainingTitles ? `Noch offen: ${remainingTitles}` : ''}`
+    addActivityEntry({
+      title: 'Auto-Planen',
+      detail: `${scheduledCount} eingeplant, ${unscheduledCount} offen geblieben.`,
+    })
     return
   }
 
   planningFeedback.value = `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`
+  addActivityEntry({
+    title: 'Auto-Planen',
+    detail: `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`,
+  })
 }
 
 async function markDone(task: Task) {
@@ -305,6 +331,10 @@ async function markDone(task: Task) {
   })
 
   await refreshCalendarEvents()
+  addActivityEntry({
+    title: 'Aufgabe erledigt',
+    detail: `"${task.title}" wurde als erledigt markiert.`,
+  })
 }
 
 function openRescheduleDialog(task: Task) {
@@ -373,9 +403,17 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
     const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
     planningFeedback.value = `"${task.title}" wurde neu eingeplant (${modeLabel}). ${shiftLabel}`
     decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, true, previousStart, newStart)
+    addActivityEntry({
+      title: 'Neu eingeplant',
+      detail: `"${task.title}" wurde mit "${modeLabel}" neu eingeplant.`,
+    })
   } else {
     planningFeedback.value = `"${task.title}" konnte im Modus "${rescheduleModeOptions.find(option => option.value === mode)?.label || mode}" noch nicht automatisch neu eingeplant werden.`
     decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, false, previousStart)
+    addActivityEntry({
+      title: 'Neuplanung fehlgeschlagen',
+      detail: `"${task.title}" konnte mit "${modeLabel}" noch nicht neu eingeplant werden.`,
+    })
   }
 }
 
@@ -386,6 +424,38 @@ async function changePriority(task: Task, priority: Task['priority']) {
     prioritySource: 'manual',
     priorityReason: 'Manuell angepasst',
   })
+}
+
+function addActivityEntry(entry: Omit<ActivityEntry, 'id' | 'createdAt'>) {
+  activityEntries.value = [
+    {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+      ...entry,
+    },
+    ...activityEntries.value,
+  ].slice(0, 8)
+}
+
+function formatActivityTime(value: string) {
+  return new Date(value).toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+async function undoActivity(entryId: string) {
+  const entry = activityEntries.value.find(item => item.id === entryId)
+  if (!entry?.undo) return
+
+  try {
+    await entry.undo()
+    activityEntries.value = activityEntries.value.filter(item => item.id !== entryId)
+    planningFeedback.value = `"${entry.title}" wurde rückgängig gemacht.`
+  } catch (error) {
+    console.error(`Fehler beim Rückgängig machen von "${entry.title}":`, error)
+    planningFeedback.value = `"${entry.title}" konnte nicht rückgängig gemacht werden.`
+  }
 }
 
 async function evaluatePlanVariants(
@@ -493,15 +563,27 @@ async function applyPlanVariant(style: PlanningStyle) {
 
     if (scheduledCount === 0) {
       planningFeedback.value = `${variant?.label || style} konnte aktuell keine weiteren Aufgaben einplanen.`
+      addActivityEntry({
+        title: 'Planvariante getestet',
+        detail: `${variant?.label || style} konnte keine weiteren Aufgaben einplanen.`,
+      })
       return
     }
 
     if (remainingTasks.length > 0) {
       planningFeedback.value = `${variant?.label || style} hat ${scheduledCount} weitere Aufgaben eingeplant, ${remainingTasks.length} bleiben noch offen.`
+      addActivityEntry({
+        title: 'Planvariante angewendet',
+        detail: `${variant?.label || style}: ${scheduledCount} weitere Aufgaben eingeplant, ${remainingTasks.length} offen.`,
+      })
       return
     }
 
     planningFeedback.value = `${variant?.label || style} konnte alle restlichen Aufgaben einplanen.`
+    addActivityEntry({
+      title: 'Planvariante angewendet',
+      detail: `${variant?.label || style} konnte alle restlichen Aufgaben einplanen.`,
+    })
   } finally {
     applyingVariantStyle.value = null
   }
@@ -594,6 +676,11 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
 
   applyingAlternativeTaskId.value = taskId
   planningFeedback.value = null
+  const previousTaskState = {
+    ...task,
+    dependencies: [...task.dependencies],
+    scheduleBlocks: task.scheduleBlocks ? [...task.scheduleBlocks] : undefined,
+  }
 
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -625,6 +712,20 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
     const remainingTasks = getUnscheduledTasks()
     await refreshSchedulingInsights(new Map(), remainingTasks, updatedEvents)
     planningFeedback.value = `"${task.title}" wurde auf ${alternative.label} eingeplant.`
+    addActivityEntry({
+      title: 'Alternativ-Slot übernommen',
+      detail: `"${task.title}" wurde auf ${alternative.label} gelegt.`,
+      undoLabel: 'Rückgängig',
+      undo: async () => {
+        await deleteEvent(createdEvent.id!)
+        await updateTask(task.id, {
+          ...previousTaskState,
+          scheduleBlocks: previousTaskState.scheduleBlocks,
+        })
+        const restoredEvents = await refreshCalendarEvents()
+        await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), restoredEvents)
+      },
+    })
   } catch (error) {
     console.error(`Fehler beim Anwenden eines Alternativ-Slots fuer "${task.title}":`, error)
     planningFeedback.value = `"${task.title}" konnte nicht auf den vorgeschlagenen Slot eingeplant werden.`
@@ -1308,6 +1409,10 @@ async function removeProject(groupId: string) {
     }
 
     planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
+    addActivityEntry({
+      title: 'Projekt gelöscht',
+      detail: `"${projectGroup.name}" wurde endgültig gelöscht.`,
+    })
   } catch (error) {
     console.error(`Fehler beim Loeschen des Projekts "${projectGroup.name}":`, error)
     planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht geloescht werden.`
@@ -1321,6 +1426,14 @@ async function archiveProjectGroup(groupId: string) {
   try {
     await archiveProject(groupId)
     planningFeedback.value = `Projekt "${projectGroup.name}" wurde archiviert.`
+    addActivityEntry({
+      title: 'Projekt archiviert',
+      detail: `"${projectGroup.name}" wurde ins Archiv verschoben.`,
+      undoLabel: 'Wiederherstellen',
+      undo: async () => {
+        await restoreProject(groupId)
+      },
+    })
   } catch (error) {
     console.error(`Fehler beim Archivieren des Projekts "${projectGroup.name}":`, error)
     planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht archiviert werden.`
@@ -1334,6 +1447,14 @@ async function restoreArchivedProject(groupId: string) {
   try {
     await restoreProject(groupId)
     planningFeedback.value = `Projekt "${projectGroup.name}" wurde wieder aktiviert.`
+    addActivityEntry({
+      title: 'Projekt wiederhergestellt',
+      detail: `"${projectGroup.name}" ist wieder aktiv.`,
+      undoLabel: 'Erneut archivieren',
+      undo: async () => {
+        await archiveProject(groupId)
+      },
+    })
   } catch (error) {
     console.error(`Fehler beim Wiederherstellen des Projekts "${projectGroup.name}":`, error)
     planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht wiederhergestellt werden.`
@@ -1582,6 +1703,47 @@ async function restoreArchivedProject(groupId: string) {
                   @click="applyPlanVariant(variant.style)"
                 >
                   {{ applyingVariantStyle === variant.style ? 'Prueft...' : 'Anwenden' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="activityEntries.length > 0" class="px-4 pb-2">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-700">Letzte Änderungen</h3>
+              <p class="mt-1 text-xs text-slate-500">So siehst du, was automatisch oder direkt verändert wurde.</p>
+            </div>
+            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-600">
+              {{ activityEntries.length }} Einträge
+            </span>
+          </div>
+
+          <div class="mt-3 space-y-2">
+            <div
+              v-for="entry in activityEntries.slice(0, 5)"
+              :key="entry.id"
+              class="rounded-lg border border-slate-200 bg-white px-3 py-2"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-medium text-slate-900">{{ entry.title }}</span>
+                    <span class="text-[11px] text-slate-400">{{ formatActivityTime(entry.createdAt) }}</span>
+                  </div>
+                  <p class="mt-1 text-xs text-slate-600">{{ entry.detail }}</p>
+                </div>
+
+                <button
+                  v-if="entry.undo"
+                  type="button"
+                  class="rounded-md px-2 py-1 text-[11px] text-primary-700 transition hover:bg-primary-50"
+                  @click="undoActivity(entry.id)"
+                >
+                  {{ entry.undoLabel || 'Rückgängig' }}
                 </button>
               </div>
             </div>

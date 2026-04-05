@@ -116,8 +116,8 @@ Rahmen:
 - [ ] Vor einer groesseren Umplanung eine Vorschau `was sich aendert` anzeigen
 
 ### 15. Vertrauen, Verlauf und Nachvollziehbarkeit
-- [ ] Eine kleine Historie fuer `was wurde automatisch geplant, verschoben, priorisiert`
-- [ ] Undo fuer sensible Aktionen wie Neuplanung oder Projektloeschung
+- [x] Eine kleine Historie fuer `was wurde automatisch geplant, verschoben, priorisiert`
+- [x] Undo fuer sensible Aktionen wie Neuplanung oder Projektloeschung
 - [ ] Staerkere Dublettenpruefung ueber Chat, Routinen, Import und Kalender hinweg
 - [ ] Klarere technische Fehlermeldungen und Sync-Status fuer Kalenderaktionen
 
