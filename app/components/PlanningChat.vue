@@ -1266,8 +1266,6 @@ function intentLabel(intent: PlanningIntent) {
                       <template v-if="previewTaskSlot">
                         Wird als Aufgabe angelegt und direkt für {{ formatPreview(previewTask.scheduledStart) }} terminiert
                       </template>
-                      <template v-else>
-                        Wird nur als Aufgabe angelegt, weil gerade kein passender Slot frei ist
                       </template>
                     </p>
                     <p class="mt-2 text-xs text-text-muted">
