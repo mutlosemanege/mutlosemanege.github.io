@@ -26,6 +26,12 @@ const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 const form = reactive({
   workStartHour: 9,
   workEndHour: 17,
+  sleepStartHour: 23,
+  sleepEndHour: 7,
+  syncSleepSchedule: false,
+  commuteToWorkMinutes: 30,
+  commuteFromWorkMinutes: 30,
+  syncCommuteSchedule: false,
   lunchStartHour: 12,
   lunchEndHour: 13,
   minDeepWorkBlockMinutes: 90,
@@ -51,6 +57,12 @@ watch(() => props.show, (val) => {
   const p = preferences.value
   form.workStartHour = p.workStartHour
   form.workEndHour = p.workEndHour
+  form.sleepStartHour = p.sleepStartHour
+  form.sleepEndHour = p.sleepEndHour
+  form.syncSleepSchedule = p.syncSleepSchedule
+  form.commuteToWorkMinutes = p.commuteToWorkMinutes
+  form.commuteFromWorkMinutes = p.commuteFromWorkMinutes
+  form.syncCommuteSchedule = p.syncCommuteSchedule
   form.lunchStartHour = p.lunchStartHour
   form.lunchEndHour = p.lunchEndHour
   form.minDeepWorkBlockMinutes = p.minDeepWorkBlockMinutes
@@ -128,11 +140,6 @@ function updateRoutineDay(id: string, value: number) {
 }
 
 async function applyRoutineTemplates() {
-  if (form.routineTemplates.length === 0) {
-    routineFeedback.value = 'Lege zuerst mindestens eine Routine an.'
-    return
-  }
-
   isApplyingRoutines.value = true
   routineFeedback.value = null
 
@@ -149,21 +156,76 @@ async function applyRoutineTemplates() {
         start.setHours(routine.startHour, 0, 0, 0)
         const end = new Date(date)
         end.setHours(routine.endHour, 0, 0, 0)
-
-        if (hasMatchingExistingEvent(routine, start, end)) {
-          skippedEvents++
-          continue
+        if (routine.endHour <= routine.startHour) {
+          end.setDate(end.getDate() + 1)
         }
 
-        const created = await createEvent({
-          summary: routine.title,
-          description: routine.description,
-          start: { dateTime: start.toISOString(), timeZone: tz },
-          end: { dateTime: end.toISOString(), timeZone: tz },
-        })
+        const created = await createBlockedEvent(routine.title, start, end, routine.description, tz)
+        if (created === 'skipped') {
+          skippedEvents++
+        } else if (created) {
+          createdEvents.push(created)
+        }
+      }
+    }
 
-        if (created?.id) {
-          createdEvents.push(created.id)
+    if (form.syncSleepSchedule) {
+      for (let dayOffset = 0; dayOffset < 28; dayOffset++) {
+        const sleepDate = new Date(now)
+        sleepDate.setHours(0, 0, 0, 0)
+        sleepDate.setDate(sleepDate.getDate() + dayOffset)
+
+        const sleepStart = new Date(sleepDate)
+        sleepStart.setHours(form.sleepStartHour, 0, 0, 0)
+        const sleepEnd = new Date(sleepDate)
+        sleepEnd.setHours(form.sleepEndHour, 0, 0, 0)
+        if (form.sleepEndHour <= form.sleepStartHour) {
+          sleepEnd.setDate(sleepEnd.getDate() + 1)
+        }
+
+        const createdSleep = await createBlockedEvent('Schlaf', sleepStart, sleepEnd, 'Automatisch aus Planung und Routinen eingetragen', tz)
+        if (createdSleep === 'skipped') {
+          skippedEvents++
+        } else if (createdSleep) {
+          createdEvents.push(createdSleep)
+        }
+      }
+    }
+
+    if (form.syncCommuteSchedule) {
+      for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+        for (const workDay of form.workDays) {
+          const date = nextDateForWeekday(workDay, weekOffset, now)
+
+          if (form.commuteToWorkMinutes > 0) {
+            const commuteStart = new Date(date)
+            commuteStart.setHours(form.workStartHour, 0, 0, 0)
+            commuteStart.setMinutes(commuteStart.getMinutes() - form.commuteToWorkMinutes)
+            const commuteEnd = new Date(date)
+            commuteEnd.setHours(form.workStartHour, 0, 0, 0)
+
+            const createdToWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Hinweg zur Arbeit', tz)
+            if (createdToWork === 'skipped') {
+              skippedEvents++
+            } else if (createdToWork) {
+              createdEvents.push(createdToWork)
+            }
+          }
+
+          if (form.commuteFromWorkMinutes > 0) {
+            const commuteStart = new Date(date)
+            commuteStart.setHours(form.workEndHour, 0, 0, 0)
+            const commuteEnd = new Date(date)
+            commuteEnd.setHours(form.workEndHour, 0, 0, 0)
+            commuteEnd.setMinutes(commuteEnd.getMinutes() + form.commuteFromWorkMinutes)
+
+            const createdFromWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Rueckweg von der Arbeit', tz)
+            if (createdFromWork === 'skipped') {
+              skippedEvents++
+            } else if (createdFromWork) {
+              createdEvents.push(createdFromWork)
+            }
+          }
         }
       }
     }
@@ -179,12 +241,27 @@ async function applyRoutineTemplates() {
   }
 }
 
-function hasMatchingExistingEvent(routine: RoutineTemplate, start: Date, end: Date) {
+async function createBlockedEvent(summary: string, start: Date, end: Date, description: string | undefined, tz: string) {
+  if (hasMatchingExistingEvent(summary, start, end)) {
+    return 'skipped' as const
+  }
+
+  const created = await createEvent({
+    summary,
+    description,
+    start: { dateTime: start.toISOString(), timeZone: tz },
+    end: { dateTime: end.toISOString(), timeZone: tz },
+  })
+
+  return created?.id || null
+}
+
+function hasMatchingExistingEvent(summary: string, start: Date, end: Date) {
   return (props.events || []).some(event => {
     if (!event.start.dateTime || !event.end.dateTime) return false
 
     const normalizedSummary = event.summary?.trim().toLowerCase() || ''
-    const normalizedRoutineTitle = routine.title.trim().toLowerCase()
+    const normalizedRoutineTitle = summary.trim().toLowerCase()
     const titlesMatch = normalizedSummary === normalizedRoutineTitle ||
       normalizedSummary.includes(normalizedRoutineTitle) ||
       normalizedRoutineTitle.includes(normalizedSummary)
@@ -218,6 +295,12 @@ function handleSave() {
   updatePreferences({
     workStartHour: form.workStartHour,
     workEndHour: form.workEndHour,
+    sleepStartHour: form.sleepStartHour,
+    sleepEndHour: form.sleepEndHour,
+    syncSleepSchedule: form.syncSleepSchedule,
+    commuteToWorkMinutes: form.commuteToWorkMinutes,
+    commuteFromWorkMinutes: form.commuteFromWorkMinutes,
+    syncCommuteSchedule: form.syncCommuteSchedule,
     lunchStartHour: form.lunchStartHour,
     lunchEndHour: form.lunchEndHour,
     minDeepWorkBlockMinutes: form.minDeepWorkBlockMinutes,
@@ -277,6 +360,45 @@ function handleReset() {
                 </select>
               </div>
             </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-medium text-gray-700 mb-2">Schlafzeiten</h3>
+            <label class="mb-3 flex items-center gap-2 text-sm text-gray-600">
+              <input
+                v-model="form.syncSleepSchedule"
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              >
+              Schlafzeiten beim Eintragen als blockierende Termine anlegen
+            </label>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Schlafen ab</label>
+                <select
+                  v-model.number="form.sleepStartHour"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option v-for="h in 24" :key="`sleep-start-${h - 1}`" :value="h - 1">
+                    {{ String(h - 1).padStart(2, '0') }}:00
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Aufstehen</label>
+                <select
+                  v-model.number="form.sleepEndHour"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option v-for="h in 24" :key="`sleep-end-${h - 1}`" :value="h - 1">
+                    {{ String(h - 1).padStart(2, '0') }}:00
+                  </option>
+                </select>
+              </div>
+            </div>
+            <p class="mt-2 text-xs text-gray-500">
+              Wird beim Eintragen als wiederkehrender Kalenderblock fuer die naechsten 4 Wochen angelegt.
+            </p>
           </div>
 
           <!-- Mittagspause -->
@@ -417,7 +539,45 @@ function handleReset() {
                 <option :value="7">7 Tage vorher</option>
               </select>
             </div>
-            <div />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Weg zur Arbeit</label>
+              <select
+                v-model.number="form.commuteToWorkMinutes"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option :value="0">Kein Hinweg</option>
+                <option :value="15">15 Min.</option>
+                <option :value="30">30 Min.</option>
+                <option :value="45">45 Min.</option>
+                <option :value="60">60 Min.</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Rueckweg von der Arbeit</label>
+              <select
+                v-model.number="form.commuteFromWorkMinutes"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option :value="0">Kein Rueckweg</option>
+                <option :value="15">15 Min.</option>
+                <option :value="30">30 Min.</option>
+                <option :value="45">45 Min.</option>
+                <option :value="60">60 Min.</option>
+              </select>
+            </div>
+            <label class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              <span class="flex items-center gap-2">
+                <input
+                  v-model="form.syncCommuteSchedule"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                >
+                Arbeitswege beim Eintragen automatisch rund um deine Arbeitszeiten blocken
+              </span>
+            </label>
           </div>
 
           <div class="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-4">

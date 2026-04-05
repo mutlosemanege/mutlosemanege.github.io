@@ -57,6 +57,12 @@ export interface RoutineTemplate {
 export interface UserPreferences {
   workStartHour: number
   workEndHour: number
+  sleepStartHour: number
+  sleepEndHour: number
+  syncSleepSchedule: boolean
+  commuteToWorkMinutes: number
+  commuteFromWorkMinutes: number
+  syncCommuteSchedule: boolean
   deepWorkWindows: readonly DeepWorkWindow[]
   minDeepWorkBlockMinutes: number
   taskBufferMinutes: number
@@ -70,6 +76,12 @@ export interface UserPreferences {
 export const DEFAULT_PREFERENCES: UserPreferences = {
   workStartHour: 9,
   workEndHour: 17,
+  sleepStartHour: 23,
+  sleepEndHour: 7,
+  syncSleepSchedule: false,
+  commuteToWorkMinutes: 30,
+  commuteFromWorkMinutes: 30,
+  syncCommuteSchedule: false,
   deepWorkWindows: [
     { day: 1, startHour: 9, endHour: 12 },
     { day: 2, startHour: 9, endHour: 12 },

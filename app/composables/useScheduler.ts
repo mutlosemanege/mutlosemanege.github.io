@@ -13,6 +13,10 @@ export interface ScheduledTaskPlan {
   blocks: Array<{ start: Date; end: Date }>
 }
 
+export interface ScheduleTaskOptions {
+  preferredStartByTaskId?: Record<string, string | undefined>
+}
+
 export function useScheduler() {
   const { preferences } = usePreferences()
 
@@ -152,6 +156,7 @@ export function useScheduler() {
     tasksToSchedule: readonly Task[],
     existingEvents: readonly CalendarEvent[],
     prefs: ReadonlyUserPreferences = preferences.value,
+    options: ScheduleTaskOptions = {},
   ): Map<string, ScheduledTaskPlan> {
     const result = new Map<string, ScheduledTaskPlan>()
 
@@ -235,7 +240,14 @@ export function useScheduler() {
           }
         }
 
-        const allocation = allocateTaskAcrossSlots(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs.taskBufferMinutes)
+        const allocation = allocateTaskAcrossSlots(
+          freeSlots,
+          durationMs,
+          task.isDeepWork,
+          earliestStart,
+          prefs.taskBufferMinutes,
+          options.preferredStartByTaskId?.[task.id] ? new Date(options.preferredStartByTaskId[task.id]!) : undefined,
+        )
         if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
         result.set(task.id, { blocks: allocation.blocks })
@@ -253,6 +265,7 @@ export function useScheduler() {
     needsDeepWork: boolean,
     earliestStart: Date,
     bufferMinutes: number,
+    preferredStart?: Date,
   ): {
     blocks: Array<{ start: Date; end: Date }>
     remainingSlots: TimeSlot[]
@@ -269,7 +282,7 @@ export function useScheduler() {
     ]
 
     for (const slotFilter of passes) {
-      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest)
+      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest, preferredStart)
 
       for (const slot of orderedSlots) {
         if (remainingMs <= 0) break
@@ -301,6 +314,7 @@ export function useScheduler() {
     slots: TimeSlot[],
     durationMs: number,
     earliestStart: Date,
+    preferredStart?: Date,
   ): TimeSlot[] {
     const oneHourMs = 60 * 60 * 1000
     const isShortTask = durationMs <= oneHourMs
@@ -325,6 +339,14 @@ export function useScheduler() {
       if (isLargeTask) {
         if (aAvailable !== bAvailable) {
           return bAvailable - aAvailable
+        }
+      }
+
+      if (preferredStart) {
+        const aDistance = Math.abs(aEffectiveStart - preferredStart.getTime())
+        const bDistance = Math.abs(bEffectiveStart - preferredStart.getTime())
+        if (aDistance !== bDistance) {
+          return aDistance - bDistance
         }
       }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Task } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { ScheduledTaskPlan } from '~/composables/useScheduler'
+import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useScheduler'
 
 const props = defineProps<{
   show: boolean
@@ -173,7 +173,11 @@ async function markMissed(task: Task) {
     scheduledStart: undefined,
     scheduledEnd: undefined,
     calendarEventId: undefined,
-  }], refreshedEvents)
+  }], refreshedEvents, {
+    preferredStartByTaskId: {
+      [task.id]: task.scheduledStart,
+    },
+  })
 
   if (schedule.has(task.id)) {
     planningFeedback.value = `"${task.title}" wurde automatisch neu eingeplant.`
@@ -258,11 +262,16 @@ function isGroupCollapsed(groupId: string) {
   return collapsedGroups.value.includes(groupId)
 }
 
-async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: readonly CalendarEvent[]) {
+async function applyScheduleForTasks(
+  tasksToSchedule: Task[],
+  existingEvents: readonly CalendarEvent[],
+  options: ScheduleTaskOptions = {},
+) {
   const plannedSchedule = scheduleTasks(
     tasksToSchedule,
     existingEvents,
     preferences.value,
+    options,
   )
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
