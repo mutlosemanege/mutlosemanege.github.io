@@ -1,6 +1,18 @@
 ﻿<script setup lang="ts">
-import type { Task } from '~/types/task'
+import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
+import type { RoutineTemplate, Task } from '~/types/task'
+
+type PlanningIntent = 'event' | 'task' | 'routine'
+type PreferredPeriod = 'morning' | 'afternoon' | 'evening' | 'any'
+type SlotStrategy = 'time-and-period' | 'time-only' | 'period-only' | 'any'
+
+interface PlanningTimePreference {
+  startMinutes?: number
+  endMinutes?: number
+  exactStartMinutes?: number
+  label: string
+}
 
 interface ParsedPlanningRequest {
   title: string
@@ -8,8 +20,25 @@ interface ParsedPlanningRequest {
   dateFrom: Date
   dateTo: Date
   hasExplicitDate: boolean
-  preferredPeriod: 'morning' | 'afternoon' | 'evening' | 'any'
-  intent: 'event' | 'task'
+  preferredPeriod: PreferredPeriod
+  intent: PlanningIntent
+  recurrenceDay?: number
+  recurrenceLabel?: string
+  timePreference?: PlanningTimePreference
+}
+
+interface SlotSuggestion {
+  start: Date
+  end: Date
+  reason: string
+}
+
+interface RoutinePreview {
+  template: RoutineTemplate
+  nextStart: Date
+  nextEnd: Date
+  roundedToHour: boolean
+  reason: string
 }
 
 const props = defineProps<{
@@ -22,20 +51,22 @@ const emit = defineEmits<{
   created: []
 }>()
 
-const { preferences } = usePreferences()
+const { preferences, updatePreferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { createEvent } = useCalendar()
 const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
 const durationMinutes = ref(60)
-const intentMode = ref<'auto' | 'event' | 'task'>('auto')
+const intentMode = ref<'auto' | PlanningIntent>('auto')
 const isPlanning = ref(false)
 const error = ref<string | null>(null)
 const previewEvent = ref<Omit<CalendarEvent, 'id'> | null>(null)
 const previewTask = ref<Omit<Task, 'id' | 'createdAt' | 'updatedAt'> | null>(null)
+const previewRoutine = ref<RoutinePreview | null>(null)
 const parsedDetails = ref<ParsedPlanningRequest | null>(null)
 const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
+const previewReason = ref<string | null>(null)
 
 watch(() => props.show, (show) => {
   if (!show) return
@@ -46,8 +77,10 @@ watch(() => props.show, (show) => {
   error.value = null
   previewEvent.value = null
   previewTask.value = null
+  previewRoutine.value = null
   parsedDetails.value = null
   previewTaskSlot.value = null
+  previewReason.value = null
 })
 
 async function handlePlan() {
@@ -55,14 +88,28 @@ async function handlePlan() {
 
   isPlanning.value = true
   error.value = null
+  previewEvent.value = null
+  previewTask.value = null
+  previewRoutine.value = null
+  previewTaskSlot.value = null
+  previewReason.value = null
 
   try {
     const parsed = parsePlanningPrompt(prompt.value.trim(), durationMinutes.value)
     parsedDetails.value = parsed
 
+    if (parsed.intent === 'routine') {
+      const routine = buildRoutinePreview(parsed)
+      previewRoutine.value = routine
+      previewReason.value = routine.reason
+      return
+    }
+
+    const suggestion = findBestSlot(parsed)
+    previewReason.value = suggestion?.reason || buildNoSlotReason(parsed)
+
     if (parsed.intent === 'task') {
-      const slot = findBestSlot(parsed)
-      previewTaskSlot.value = slot
+      previewTaskSlot.value = suggestion ? { start: suggestion.start, end: suggestion.end } : null
       previewTask.value = {
         title: parsed.title,
         description: `Erstellt aus Chat-Eingabe: "${prompt.value.trim()}"`,
@@ -70,30 +117,26 @@ async function handlePlan() {
         deadline: buildTaskDeadline(parsed),
         priority: inferTaskPriority(prompt.value.trim()),
         aiSuggestedPriority: undefined,
-        priorityReason: slot
+        priorityReason: suggestion
           ? 'Erstellt aus Planungs-Chat und direkt terminiert'
-          : 'Erstellt aus Planungs-Chat',
+          : 'Erstellt aus Planungs-Chat ohne direkten Slot',
         prioritySource: 'manual',
-        status: slot ? 'scheduled' : 'todo',
+        status: suggestion ? 'scheduled' : 'todo',
         projectId: undefined,
         dependencies: [],
-        scheduleBlocks: slot ? [{ start: slot.start.toISOString(), end: slot.end.toISOString() }] : undefined,
-        scheduledStart: slot?.start.toISOString(),
-        scheduledEnd: slot?.end.toISOString(),
+        scheduleBlocks: suggestion
+          ? [{ start: suggestion.start.toISOString(), end: suggestion.end.toISOString() }]
+          : undefined,
+        scheduledStart: suggestion?.start.toISOString(),
+        scheduledEnd: suggestion?.end.toISOString(),
         calendarEventId: undefined,
         isDeepWork: parsed.durationMinutes >= preferences.value.minDeepWorkBlockMinutes,
       }
-      previewEvent.value = null
       return
     }
 
-    previewTaskSlot.value = null
-    const slot = findBestSlot(parsed)
-
-    if (!slot) {
-      error.value = 'Ich habe in deinem aktuellen Planungsfenster keinen freien Termin gefunden.'
-      previewEvent.value = null
-      previewTask.value = null
+    if (!suggestion) {
+      error.value = buildNoSlotReason(parsed)
       return
     }
 
@@ -102,19 +145,16 @@ async function handlePlan() {
       summary: parsed.title,
       description: `Geplant aus Chat-Eingabe: "${prompt.value.trim()}"`,
       start: {
-        dateTime: slot.start.toISOString(),
+        dateTime: suggestion.start.toISOString(),
         timeZone: tz,
       },
       end: {
-        dateTime: slot.end.toISOString(),
+        dateTime: suggestion.end.toISOString(),
         timeZone: tz,
       },
     }
-    previewTask.value = null
   } catch (err: any) {
     error.value = err.message || 'Planung fehlgeschlagen.'
-    previewEvent.value = null
-    previewTask.value = null
   } finally {
     isPlanning.value = false
   }
@@ -192,32 +232,102 @@ async function handleCreateTask() {
   }
 }
 
+async function handleCreateRoutine() {
+  if (!previewRoutine.value) return
+
+  isPlanning.value = true
+  error.value = null
+
+  try {
+    const existingRoutine = preferences.value.routineTemplates.find(entry =>
+      entry.title.trim().toLowerCase() === previewRoutine.value!.template.title.trim().toLowerCase() &&
+      entry.day === previewRoutine.value!.template.day &&
+      entry.startHour === previewRoutine.value!.template.startHour &&
+      entry.endHour === previewRoutine.value!.template.endHour,
+    )
+
+    if (!existingRoutine) {
+      updatePreferences({
+        routineTemplates: [
+          ...preferences.value.routineTemplates,
+          previewRoutine.value.template,
+        ],
+      })
+    }
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const transientEvents: Array<{ summary: string; start: Date; end: Date }> = []
+
+    for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+      const baseDate = nextDateForWeekday(previewRoutine.value.template.day, weekOffset, new Date())
+      const start = new Date(baseDate)
+      start.setHours(previewRoutine.value.template.startHour, 0, 0, 0)
+      const end = new Date(baseDate)
+      end.setHours(previewRoutine.value.template.endHour, 0, 0, 0)
+      if (previewRoutine.value.template.endHour <= previewRoutine.value.template.startHour) {
+        end.setDate(end.getDate() + 1)
+      }
+
+      if (hasMatchingExistingEvent(previewRoutine.value.template.title, start, end, transientEvents)) {
+        continue
+      }
+
+      const created = await createEvent({
+        summary: previewRoutine.value.template.title,
+        description: previewRoutine.value.template.description || 'Aus Planungs-Chat als Routine angelegt',
+        start: { dateTime: start.toISOString(), timeZone: tz },
+        end: { dateTime: end.toISOString(), timeZone: tz },
+      })
+
+      if (created?.id) {
+        transientEvents.push({
+          summary: previewRoutine.value.template.title,
+          start,
+          end,
+        })
+      }
+    }
+
+    emit('created')
+    emit('close')
+  } catch (err: any) {
+    error.value = err.message || 'Routine konnte nicht erstellt werden.'
+  } finally {
+    isPlanning.value = false
+  }
+}
+
 function parsePlanningPrompt(text: string, fallbackDuration: number): ParsedPlanningRequest {
-  const normalized = text.toLowerCase()
+  const normalized = normalizeText(text)
   const now = new Date()
   const dateFrom = new Date(now)
   const dateTo = new Date(now)
   dateTo.setDate(dateTo.getDate() + 7)
-  let hasExplicitDate = false
 
-  let preferredPeriod: ParsedPlanningRequest['preferredPeriod'] = 'any'
-  if (normalized.includes('morgens') || normalized.includes('vormittag') || normalized.includes('vormittags')) preferredPeriod = 'morning'
-  if (normalized.includes('nachmittag') || normalized.includes('nachmittags')) preferredPeriod = 'afternoon'
-  if (normalized.includes('abend') || normalized.includes('abends')) preferredPeriod = 'evening'
+  const recurrence = extractRecurrence(normalized)
+  const timePreference = extractTimePreference(normalized, fallbackDuration)
+  const preferredPeriod = extractPreferredPeriod(normalized)
+  const weekday = recurrence?.day ?? extractWeekday(normalized)
+  let hasExplicitDate = false
+  let rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open' = 'open'
 
   if (normalized.includes('uebermorgen')) {
     hasExplicitDate = true
+    rangeMode = 'exact-day'
     dateFrom.setDate(dateFrom.getDate() + 2)
     dateTo.setTime(dateFrom.getTime())
   } else if (normalized.includes('heute')) {
     hasExplicitDate = true
+    rangeMode = 'exact-day'
     dateTo.setDate(dateFrom.getDate())
   } else if (normalized.includes('morgen')) {
     hasExplicitDate = true
+    rangeMode = 'exact-day'
     dateFrom.setDate(dateFrom.getDate() + 1)
     dateTo.setTime(dateFrom.getTime())
   } else if (normalized.includes('naechste woche')) {
     hasExplicitDate = true
+    rangeMode = 'next-week'
     const day = dateFrom.getDay()
     const daysUntilNextMonday = day === 0 ? 1 : 8 - day
     dateFrom.setDate(dateFrom.getDate() + daysUntilNextMonday)
@@ -225,53 +335,58 @@ function parsePlanningPrompt(text: string, fallbackDuration: number): ParsedPlan
     dateTo.setDate(dateTo.getDate() + 6)
   } else if (normalized.includes('diese woche')) {
     hasExplicitDate = true
-    dateTo.setDate(dateFrom.getDate() + (7 - (dateFrom.getDay() || 7)))
+    rangeMode = 'this-week'
+    dateTo.setDate(dateTo.getDate() + (7 - (dateFrom.getDay() || 7)))
   } else if (normalized.includes('wochenende')) {
     hasExplicitDate = true
+    rangeMode = 'weekend'
     const day = dateFrom.getDay()
     const daysUntilSaturday = day <= 6 ? 6 - day : 6
     dateFrom.setDate(dateFrom.getDate() + daysUntilSaturday)
     dateTo.setTime(dateFrom.getTime())
     dateTo.setDate(dateTo.getDate() + 1)
-  } else {
-    const weekday = extractWeekday(normalized)
-    if (weekday !== null) {
+  }
+
+  if (weekday !== null) {
+    const targetDate = rangeMode === 'next-week' || rangeMode === 'this-week' || rangeMode === 'weekend'
+      ? findWeekdayInRange(dateFrom, dateTo, weekday)
+      : nextDateForWeekday(weekday, 0, now)
+
+    if (targetDate) {
       hasExplicitDate = true
-      const day = dateFrom.getDay()
-      let daysUntilTarget = weekday - day
-      if (daysUntilTarget < 0) daysUntilTarget += 7
-      if (daysUntilTarget === 0) daysUntilTarget = 7
-      dateFrom.setDate(dateFrom.getDate() + daysUntilTarget)
-      dateTo.setTime(dateFrom.getTime())
+      dateFrom.setTime(targetDate.getTime())
+      dateTo.setTime(targetDate.getTime())
     }
   }
 
   const explicitDuration = extractDuration(text)
-  const title = text
-    .replace(/\b(heute|uebermorgen|morgen|naechste woche|diese woche|wochenende|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/gi, '')
-    .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|abend|abends)\b/gi, '')
-    .replace(/\b\d+\s*(min|minute|minuten|h|std|stunden)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const title = buildCleanTitle(text)
+  const intent = detectIntent(text, recurrence)
 
   return {
-    title: title || 'Neuer Termin',
+    title: title || 'Neuer Eintrag',
     durationMinutes: explicitDuration ?? fallbackDuration,
     dateFrom,
     dateTo,
     hasExplicitDate,
     preferredPeriod,
-    intent: detectIntent(text),
+    intent,
+    recurrenceDay: recurrence?.day,
+    recurrenceLabel: recurrence?.label,
+    timePreference,
   }
 }
 
-function detectIntent(text: string): 'event' | 'task' {
+function detectIntent(text: string, recurrence: { day: number; label: string } | null): PlanningIntent {
   if (intentMode.value === 'event') return 'event'
   if (intentMode.value === 'task') return 'task'
+  if (intentMode.value === 'routine') return 'routine'
 
-  const normalized = text.toLowerCase()
-  const taskHints = ['lernen', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'planen', 'review', 'recherche', 'arbeiten']
-  const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'date', 'party', 'mit ']
+  const normalized = normalizeText(text)
+  const taskHints = ['lernen', 'schnitt', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'review', 'recherche', 'arbeiten']
+  const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'party', 'date', 'feier']
+
+  if (recurrence) return 'routine'
 
   const taskMatches = taskHints.filter(hint => normalized.includes(hint)).length
   const eventMatches = eventHints.filter(hint => normalized.includes(hint)).length
@@ -280,12 +395,12 @@ function detectIntent(text: string): 'event' | 'task' {
     const explicitDuration = extractDuration(text)
     return explicitDuration && explicitDuration >= 90 ? 'task' : 'event'
   }
-  if (taskMatches > eventMatches) return 'task'
-  return 'event'
+
+  return taskMatches > eventMatches ? 'task' : 'event'
 }
 
 function inferTaskPriority(text: string): Task['priority'] {
-  const normalized = text.toLowerCase()
+  const normalized = normalizeText(text)
   if (normalized.includes('dringend') || normalized.includes('asap') || normalized.includes('wichtig')) return 'high'
   return 'medium'
 }
@@ -311,6 +426,24 @@ function extractDuration(text: string): number | null {
   return null
 }
 
+function extractPreferredPeriod(text: string): PreferredPeriod {
+  if (/(morgens|vormittag|vormittags|frueh)/.test(text)) return 'morning'
+  if (/(nachmittag|nachmittags|mittags)/.test(text)) return 'afternoon'
+  if (/(abend|abends|spaet)/.test(text)) return 'evening'
+  return 'any'
+}
+
+function extractRecurrence(text: string) {
+  if (!/(jeden|jede|immer|woechentlich|regelmaessig)/.test(text)) return null
+  const day = extractWeekday(text)
+  if (day === null) return null
+
+  return {
+    day,
+    label: `Jede Woche ${weekdayLabel(day)}`,
+  }
+}
+
 function extractWeekday(text: string): number | null {
   const weekdayMap: Record<string, number> = {
     sonntag: 0,
@@ -331,37 +464,388 @@ function extractWeekday(text: string): number | null {
   return null
 }
 
-function findBestSlot(parsed: ParsedPlanningRequest) {
+function extractTimePreference(text: string, fallbackDuration: number): PlanningTimePreference | undefined {
+  const betweenMatch = text.match(/zwischen\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\s*(?:und|-|bis)\s*(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?/)
+  if (betweenMatch) {
+    const startMinutes = toMinutes(betweenMatch[1], betweenMatch[2])
+    const endMinutes = toMinutes(betweenMatch[3], betweenMatch[4])
+    return {
+      startMinutes,
+      endMinutes,
+      label: `${formatClockMinutes(startMinutes)}-${formatClockMinutes(endMinutes)}`,
+    }
+  }
+
+  const rangeMatch = text.match(/(?:von\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:-|bis)\s*(\d{1,2})(?::(\d{2}))?\s*uhr?/)
+  if (rangeMatch) {
+    const startMinutes = toMinutes(rangeMatch[1], rangeMatch[2])
+    const endMinutes = toMinutes(rangeMatch[3], rangeMatch[4])
+    return {
+      startMinutes,
+      endMinutes,
+      label: `${formatClockMinutes(startMinutes)}-${formatClockMinutes(endMinutes)}`,
+    }
+  }
+
+  const exactMatch = text.match(/\bum\s+(\d{1,2})(?::(\d{2}))?\s*uhr?\b/)
+  if (exactMatch) {
+    const exactStartMinutes = toMinutes(exactMatch[1], exactMatch[2])
+    return {
+      exactStartMinutes,
+      startMinutes: exactStartMinutes,
+      endMinutes: exactStartMinutes + fallbackDuration,
+      label: `ab ${formatClockMinutes(exactStartMinutes)}`,
+    }
+  }
+
+  const afterMatch = text.match(/\bab\s+(\d{1,2})(?::(\d{2}))?\s*uhr?\b/)
+  if (afterMatch) {
+    const startMinutes = toMinutes(afterMatch[1], afterMatch[2])
+    return {
+      startMinutes,
+      label: `ab ${formatClockMinutes(startMinutes)}`,
+    }
+  }
+
+  const beforeMatch = text.match(/\bbis\s+(\d{1,2})(?::(\d{2}))?\s*uhr?\b/)
+  if (beforeMatch) {
+    const endMinutes = toMinutes(beforeMatch[1], beforeMatch[2])
+    return {
+      endMinutes,
+      label: `bis ${formatClockMinutes(endMinutes)}`,
+    }
+  }
+
+  return undefined
+}
+
+function buildCleanTitle(text: string) {
+  return text
+    .replace(/\b(jeden|jede|immer|woechentlich|wöchentlich|regelmaessig|regelmäßig|heute|morgen|uebermorgen|übermorgen|naechste woche|nächste woche|diese woche|wochenende|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/gi, '')
+    .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spät|spaet)\b/gi, '')
+    .replace(/\b(zwischen|um|ab|bis|von|und)\b/gi, '')
+    .replace(/\b\d{1,2}(?::\d{2})?\s*(uhr)?\b/gi, '')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(min|minute|minuten|h|std|stunden)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
+  if (parsed.recurrenceDay === undefined) {
+    throw new Error('Fuer eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
+  }
+
+  const baseStartMinutes = parsed.timePreference?.exactStartMinutes ??
+    parsed.timePreference?.startMinutes ??
+    defaultStartMinutesForPeriod(parsed.preferredPeriod)
+  const baseEndMinutes = parsed.timePreference?.endMinutes ?? (baseStartMinutes + parsed.durationMinutes)
+  const startHour = Math.max(0, Math.min(23, Math.floor(baseStartMinutes / 60)))
+  const endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(baseEndMinutes / 60)))
+  const roundedToHour = baseStartMinutes % 60 !== 0 || baseEndMinutes % 60 !== 0
+  const nextDate = nextDateForWeekday(parsed.recurrenceDay, 0, new Date())
+  const nextStart = new Date(nextDate)
+  nextStart.setHours(startHour, 0, 0, 0)
+  const nextEnd = new Date(nextDate)
+  nextEnd.setHours(endHour, 0, 0, 0)
+  if (endHour <= startHour) {
+    nextEnd.setDate(nextEnd.getDate() + 1)
+  }
+
+  return {
+    template: {
+      id: uuidv4(),
+      title: parsed.title,
+      day: parsed.recurrenceDay,
+      startHour,
+      endHour,
+      description: `Aus Planungs-Chat erstellt: "${prompt.value.trim()}"`,
+    },
+    nextStart,
+    nextEnd,
+    roundedToHour,
+    reason: buildRoutineReason(parsed, nextStart, roundedToHour),
+  }
+}
+
+function findBestSlot(parsed: ParsedPlanningRequest): SlotSuggestion | null {
   const slots = findFreeSlots(parsed.dateFrom, parsed.dateTo, props.events, preferences.value)
-  const matchingSlots = slots
-    .map(slot => {
-      const start = new Date(slot.start)
-      const end = new Date(start.getTime() + parsed.durationMinutes * 60 * 1000)
-      if (end > slot.end) return null
-      if (!matchesPeriod(start, parsed.preferredPeriod)) return null
-      return { start, end }
-    })
-    .filter((slot): slot is { start: Date; end: Date } => slot !== null)
+  const strategies = buildSlotStrategies(parsed)
 
-  if (matchingSlots.length > 0) return matchingSlots[0]
+  for (const strategy of strategies) {
+    const matches = slots
+      .map(slot => buildSlotCandidate(slot, parsed, strategy))
+      .filter((candidate): candidate is { start: Date; end: Date; score: number; strategy: SlotStrategy } => candidate !== null)
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score
+        return a.start.getTime() - b.start.getTime()
+      })
 
-  for (const slot of slots) {
-    const start = new Date(slot.start)
-    const end = new Date(start.getTime() + parsed.durationMinutes * 60 * 1000)
-    if (end <= slot.end) {
-      return { start, end }
+    if (matches.length > 0) {
+      const best = matches[0]
+      return {
+        start: best.start,
+        end: best.end,
+        reason: buildSlotReason(parsed, best.start, best.strategy),
+      }
     }
   }
 
   return null
 }
 
-function matchesPeriod(start: Date, period: ParsedPlanningRequest['preferredPeriod']) {
-  const hour = start.getHours()
-  if (period === 'any') return true
-  if (period === 'morning') return hour < 12
-  if (period === 'afternoon') return hour >= 12 && hour < 17
-  return hour >= 17
+function buildSlotStrategies(parsed: ParsedPlanningRequest): SlotStrategy[] {
+  const hasTimePreference = Boolean(parsed.timePreference)
+  const hasPeriodPreference = parsed.preferredPeriod !== 'any'
+  const strategies: SlotStrategy[] = []
+
+  if (hasTimePreference && hasPeriodPreference) strategies.push('time-and-period')
+  if (hasTimePreference) strategies.push('time-only')
+  if (hasPeriodPreference) strategies.push('period-only')
+  strategies.push('any')
+
+  return [...new Set(strategies)]
+}
+
+function buildSlotCandidate(slot: { start: Date; end: Date }, parsed: ParsedPlanningRequest, strategy: SlotStrategy) {
+  const strictTime = strategy === 'time-and-period' || strategy === 'time-only'
+  const strictPeriod = strategy === 'time-and-period' || strategy === 'period-only'
+  const durationMs = parsed.durationMinutes * 60 * 1000
+  const slotDay = new Date(slot.start)
+  slotDay.setHours(0, 0, 0, 0)
+  const dayWindow = buildDayWindow(slotDay, parsed, strictTime, strictPeriod)
+  if (dayWindow.end <= dayWindow.start) return null
+
+  let start = new Date(slot.start)
+
+  if (strictTime && parsed.timePreference?.exactStartMinutes !== undefined) {
+    start = setDayMinutes(slotDay, parsed.timePreference.exactStartMinutes)
+  } else if (dayWindow.start > start) {
+    start = new Date(dayWindow.start)
+  }
+
+  const end = new Date(start.getTime() + durationMs)
+  const latestAllowedEnd = minDate(slot.end, dayWindow.end)
+
+  if (start < slot.start || end > latestAllowedEnd) return null
+
+  const score = buildCandidateScore(parsed, start, strategy)
+  return {
+    start,
+    end,
+    score,
+    strategy,
+  }
+}
+
+function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
+  let start = setDayMinutes(day, 0)
+  let end = setDayMinutes(day, 24 * 60)
+
+  if (strictTime && parsed.timePreference) {
+    if (parsed.timePreference.exactStartMinutes !== undefined) {
+      start = setDayMinutes(day, parsed.timePreference.exactStartMinutes)
+      end = setDayMinutes(day, parsed.timePreference.exactStartMinutes + parsed.durationMinutes)
+    } else {
+      if (parsed.timePreference.startMinutes !== undefined) {
+        start = setDayMinutes(day, parsed.timePreference.startMinutes)
+      }
+      if (parsed.timePreference.endMinutes !== undefined) {
+        end = setDayMinutes(day, parsed.timePreference.endMinutes)
+      }
+    }
+  }
+
+  if (strictPeriod && parsed.preferredPeriod !== 'any') {
+    const periodWindow = periodBounds(parsed.preferredPeriod)
+    const periodStart = setDayMinutes(day, periodWindow.startMinutes)
+    const periodEnd = setDayMinutes(day, periodWindow.endMinutes)
+    if (periodStart > start) start = periodStart
+    if (periodEnd < end) end = periodEnd
+  }
+
+  return { start, end }
+}
+
+function buildCandidateScore(parsed: ParsedPlanningRequest, start: Date, strategy: SlotStrategy) {
+  let score = start.getTime()
+  const dayBase = new Date(start)
+  dayBase.setHours(0, 0, 0, 0)
+
+  if (parsed.timePreference?.exactStartMinutes !== undefined) {
+    score += Math.abs(start.getTime() - setDayMinutes(dayBase, parsed.timePreference.exactStartMinutes).getTime())
+  } else if (parsed.timePreference?.startMinutes !== undefined) {
+    score += Math.abs(start.getTime() - setDayMinutes(dayBase, parsed.timePreference.startMinutes).getTime())
+  }
+
+  if (strategy === 'time-and-period') score -= 5000000
+  if (strategy === 'time-only') score -= 3000000
+  if (strategy === 'period-only') score -= 1000000
+
+  return score
+}
+
+function buildSlotReason(parsed: ParsedPlanningRequest, start: Date, strategy: SlotStrategy) {
+  const reasons: string[] = []
+
+  if ((strategy === 'time-and-period' || strategy === 'time-only') && parsed.timePreference) {
+    reasons.push(`er in dein Zeitfenster ${parsed.timePreference.label} passt`)
+  } else if (parsed.timePreference?.exactStartMinutes !== undefined) {
+    reasons.push('die genaue Wunschzeit belegt war und ich den naechsten sinnvollen freien Slot gesucht habe')
+  }
+
+  if ((strategy === 'time-and-period' || strategy === 'period-only') && parsed.preferredPeriod !== 'any') {
+    reasons.push(`er zu deinem Wunsch "${periodLabel(parsed.preferredPeriod)}" passt`)
+  }
+
+  if (parsed.hasExplicitDate) {
+    reasons.push(`er am ${start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })} frei ist`)
+  } else {
+    reasons.push('es der frueheste freie Slot ist')
+  }
+
+  return `Gewaehlt, weil ${reasons.join(' und ')} und dort ${parsed.durationMinutes} Minuten frei waren.`
+}
+
+function buildNoSlotReason(parsed: ParsedPlanningRequest) {
+  if (parsed.timePreference && parsed.hasExplicitDate) {
+    return `Ich habe in ${parsed.timePreference.label} rund um deinen gewuenschten Zeitraum keinen freien Slot gefunden.`
+  }
+  if (parsed.preferredPeriod !== 'any' && parsed.hasExplicitDate) {
+    return `Ich habe in deinem bevorzugten Zeitraum "${periodLabel(parsed.preferredPeriod)}" keinen freien Slot gefunden.`
+  }
+  if (parsed.hasExplicitDate) {
+    return 'Ich habe in deinem gewuenschten Zeitraum keinen freien Slot gefunden.'
+  }
+  return 'Ich habe aktuell keinen passenden freien Slot gefunden.'
+}
+
+function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roundedToHour: boolean) {
+  const reasons = [
+    `${parsed.recurrenceLabel || 'Wiederkehrung'} erkannt`,
+    `naechste Ausfuehrung ${formatPreview(nextStart.toISOString())}`,
+  ]
+
+  if (parsed.timePreference) {
+    reasons.push(`Zeitfenster ${parsed.timePreference.label}`)
+  } else if (parsed.preferredPeriod !== 'any') {
+    reasons.push(`orientiert an ${periodLabel(parsed.preferredPeriod)}`)
+  }
+
+  if (roundedToHour) {
+    reasons.push('fuer Routinen aktuell auf volle Stunden gerundet')
+  }
+
+  return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und fuer die naechsten 4 Wochen in den Kalender eingetragen.`
+}
+
+function hasMatchingExistingEvent(
+  summary: string,
+  start: Date,
+  end: Date,
+  transientEvents: Array<{ summary: string; start: Date; end: Date }> = [],
+) {
+  return [...props.events, ...transientEvents.map(event => ({
+    summary: event.summary,
+    start: { dateTime: event.start.toISOString() },
+    end: { dateTime: event.end.toISOString() },
+  }))].some(event => {
+    if (!event.start.dateTime || !event.end.dateTime) return false
+
+    const normalizedSummary = event.summary?.trim().toLowerCase() || ''
+    const expectedSummary = summary.trim().toLowerCase()
+    if (normalizedSummary !== expectedSummary) return false
+
+    const eventStart = new Date(event.start.dateTime)
+    const eventEnd = new Date(event.end.dateTime)
+
+    const sameDay = eventStart.getFullYear() === start.getFullYear() &&
+      eventStart.getMonth() === start.getMonth() &&
+      eventStart.getDate() === start.getDate()
+
+    return sameDay &&
+      Math.abs(eventStart.getTime() - start.getTime()) <= 15 * 60 * 1000 &&
+      Math.abs(eventEnd.getTime() - end.getTime()) <= 15 * 60 * 1000
+  })
+}
+
+function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
+  const base = new Date(from)
+  base.setHours(0, 0, 0, 0)
+  const currentDay = base.getDay()
+  let diff = day - currentDay
+  if (diff < 0) diff += 7
+  base.setDate(base.getDate() + diff + weekOffset * 7)
+  return base
+}
+
+function findWeekdayInRange(from: Date, to: Date, weekday: number) {
+  const cursor = new Date(from)
+  cursor.setHours(0, 0, 0, 0)
+
+  while (cursor <= to) {
+    if (cursor.getDay() === weekday) {
+      return cursor
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  return null
+}
+
+function normalizeText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+}
+
+function toMinutes(hours: string, minutes?: string) {
+  return Number(hours) * 60 + Number(minutes || 0)
+}
+
+function setDayMinutes(day: Date, minutes: number) {
+  const result = new Date(day)
+  result.setHours(0, 0, 0, 0)
+  result.setMinutes(minutes)
+  return result
+}
+
+function minDate(a: Date, b: Date) {
+  return a.getTime() <= b.getTime() ? a : b
+}
+
+function periodBounds(period: PreferredPeriod) {
+  if (period === 'morning') return { startMinutes: 6 * 60, endMinutes: 12 * 60 }
+  if (period === 'afternoon') return { startMinutes: 12 * 60, endMinutes: 17 * 60 }
+  return { startMinutes: 17 * 60, endMinutes: 22 * 60 }
+}
+
+function defaultStartMinutesForPeriod(period: PreferredPeriod) {
+  if (period === 'morning') return 9 * 60
+  if (period === 'afternoon') return 14 * 60
+  if (period === 'evening') return 18 * 60
+  return preferences.value.workStartHour * 60
+}
+
+function periodLabel(period: PreferredPeriod) {
+  if (period === 'morning') return 'Vormittag'
+  if (period === 'afternoon') return 'Nachmittag'
+  if (period === 'evening') return 'Abend'
+  return 'beliebige Zeit'
+}
+
+function weekdayLabel(day: number) {
+  const weekdayLabels = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+  return weekdayLabels[day] || 'Tag'
+}
+
+function formatClockMinutes(minutes: number) {
+  const safeMinutes = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60)
+  const hours = Math.floor(safeMinutes / 60)
+  const mins = safeMinutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
 }
 
 function formatPreview(date: string | undefined) {
@@ -374,6 +858,12 @@ function formatPreview(date: string | undefined) {
     minute: '2-digit',
   })
 }
+
+function intentLabel(intent: PlanningIntent) {
+  if (intent === 'event') return 'Termin'
+  if (intent === 'task') return 'Aufgabe'
+  return 'Routine'
+}
 </script>
 
 <template>
@@ -382,12 +872,12 @@ function formatPreview(date: string | undefined) {
       <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
 
-        <div class="relative w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+        <div class="relative w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
           <div class="flex items-start justify-between gap-4">
             <div>
               <h2 class="text-xl font-semibold text-gray-900">Planungs-Chat</h2>
               <p class="mt-1 text-sm text-gray-500">
-                Schreib einfach, was du unterbringen willst. Ich suche dir den naechsten passenden freien Slot oder plane die Aufgabe direkt ein.
+                Schreib einfach, was du unterbringen willst. Ich erkenne Termin, Aufgabe oder Routine und zeige dir direkt, was daraus entsteht.
               </p>
             </div>
             <button
@@ -400,7 +890,7 @@ function formatPreview(date: string | undefined) {
             </button>
           </div>
 
-          <div class="mt-5 grid gap-4 lg:grid-cols-[1.5fr,0.9fr]">
+          <div class="mt-5 grid gap-4 lg:grid-cols-[1.45fr,1fr]">
             <div class="space-y-4">
               <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                 <label class="block text-sm font-medium text-gray-700">Was moechtest du einplanen?</label>
@@ -408,25 +898,26 @@ function formatPreview(date: string | undefined) {
                   v-model="prompt"
                   rows="5"
                   class="mt-2 w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
-                  placeholder="z.B. Treffen mit Bro morgen Abend oder 2h Videoschnitt naechste Woche vormittags"
+                  placeholder="z.B. Treffen mit Bro morgen Abend, 2h Videoschnitt zwischen 14 und 17 Uhr oder jeden Mittwoch Gym 18 bis 20 Uhr"
                 />
               </div>
 
               <div class="rounded-2xl border border-gray-200 p-4">
                 <label class="block text-sm font-medium text-gray-700">Typ</label>
-                <div class="mt-2 grid grid-cols-3 gap-2">
+                <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                   <button
                     v-for="mode in [
                       { value: 'auto', label: 'Automatisch' },
                       { value: 'event', label: 'Termin' },
                       { value: 'task', label: 'Aufgabe' },
+                      { value: 'routine', label: 'Routine' },
                     ]"
                     :key="mode.value"
                     class="rounded-xl px-3 py-2 text-sm font-medium transition-colors"
                     :class="intentMode === mode.value
                       ? 'bg-gray-900 text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                    @click="intentMode = mode.value as 'auto' | 'event' | 'task'"
+                    @click="intentMode = mode.value as 'auto' | PlanningIntent"
                   >
                     {{ mode.label }}
                   </button>
@@ -473,22 +964,41 @@ function formatPreview(date: string | undefined) {
                 <h3 class="text-sm font-semibold text-gray-900">Beispiele</h3>
                 <div class="mt-3 space-y-2 text-sm text-gray-500">
                   <p>`Treffen mit Bro morgen Abend`</p>
-                  <p>`2h Videoschnitt naechste Woche vormittags`</p>
-                  <p>`Lernsession diese Woche nachmittag`</p>
+                  <p>`2h Videoschnitt zwischen 14 und 17 Uhr`</p>
+                  <p>`jeden Mittwoch Gym 18 bis 20 Uhr`</p>
                 </div>
               </div>
 
               <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                 <h3 class="text-sm font-semibold text-gray-900">Vorschlag</h3>
+
+                <div v-if="parsedDetails" class="mt-3 flex flex-wrap gap-2">
+                  <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
+                    Erkannt als {{ intentLabel(parsedDetails.intent) }}
+                  </span>
+                  <span v-if="parsedDetails.recurrenceLabel" class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
+                    {{ parsedDetails.recurrenceLabel }}
+                  </span>
+                  <span v-if="parsedDetails.timePreference?.label" class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
+                    {{ parsedDetails.timePreference.label }}
+                  </span>
+                  <span v-else-if="parsedDetails.preferredPeriod !== 'any'" class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
+                    {{ periodLabel(parsedDetails.preferredPeriod) }}
+                  </span>
+                </div>
+
                 <div v-if="previewEvent && parsedDetails" class="mt-3 space-y-3">
                   <div class="rounded-xl bg-white p-3 shadow-sm">
                     <p class="text-sm font-medium text-gray-900">{{ parsedDetails.title }}</p>
                     <p class="mt-1 text-sm text-gray-500">
-                      {{ parsedDetails.durationMinutes }} Minuten
+                      {{ parsedDetails.durationMinutes }} Minuten, wird direkt als Termin erstellt
                     </p>
                     <p class="mt-2 text-sm text-primary-700">
                       {{ formatPreview(previewEvent.start.dateTime) }} bis
                       {{ formatPreview(previewEvent.end.dateTime) }}
+                    </p>
+                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
+                      {{ previewReason }}
                     </p>
                   </div>
 
@@ -508,14 +1018,17 @@ function formatPreview(date: string | undefined) {
                     </p>
                     <p class="mt-2 text-sm text-primary-700">
                       <template v-if="previewTaskSlot">
-                        Geplant fuer {{ formatPreview(previewTask.scheduledStart) }}
+                        Wird als Aufgabe angelegt und direkt fuer {{ formatPreview(previewTask.scheduledStart) }} terminiert
                       </template>
                       <template v-else>
-                        Noch kein freier Slot gefunden, Aufgabe wird nur angelegt.
+                        Wird nur als Aufgabe angelegt, weil gerade kein passender Slot frei ist
                       </template>
                     </p>
                     <p class="mt-1 text-xs text-gray-500">
                       Deadline: {{ previewTask.deadline ? new Date(previewTask.deadline).toLocaleDateString('de-DE') : 'keine' }}
+                    </p>
+                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
+                      {{ previewReason }}
                     </p>
                   </div>
 
@@ -525,6 +1038,33 @@ function formatPreview(date: string | undefined) {
                     @click="handleCreateTask"
                   >
                     Aufgabe erstellen
+                  </button>
+                </div>
+                <div v-else-if="previewRoutine && parsedDetails" class="mt-3 space-y-3">
+                  <div class="rounded-xl bg-white p-3 shadow-sm">
+                    <p class="text-sm font-medium text-gray-900">{{ previewRoutine.template.title }}</p>
+                    <p class="mt-1 text-sm text-gray-500">
+                      {{ weekdayLabel(previewRoutine.template.day) }},
+                      {{ String(previewRoutine.template.startHour).padStart(2, '0') }}:00 bis
+                      {{ String(previewRoutine.template.endHour).padStart(2, '0') }}:00
+                    </p>
+                    <p class="mt-2 text-sm text-primary-700">
+                      Wird als Routine-Vorlage gespeichert und fuer die naechsten 4 Wochen eingetragen
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">
+                      Naechste Ausfuehrung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
+                    </p>
+                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
+                      {{ previewReason }}
+                    </p>
+                  </div>
+
+                  <button
+                    class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
+                    :disabled="isPlanning"
+                    @click="handleCreateRoutine"
+                  >
+                    Routine speichern
                   </button>
                 </div>
                 <p v-else class="mt-3 text-sm text-gray-500">

@@ -45,11 +45,11 @@ Rahmen:
 - [x] In der UI anzeigen, wie stark sich der neue Termin vom alten unterscheidet
 
 ### 4. Planungs-Chat smarter machen
-- [ ] Wiederholungen wie `jeden Mittwoch` besser erkennen
-- [ ] Wochentage und Zeitfenster praeziser parsen
-- [ ] Besser zwischen `Termin`, `Aufgabe` und `Routine` unterscheiden
-- [ ] Klar anzeigen, ob etwas direkt terminiert oder nur als Aufgabe angelegt wird
-- [ ] Chat-Vorschlag mit Begruendung ausgeben: warum genau dieser Slot gewaehlt wurde
+- [x] Wiederholungen wie `jeden Mittwoch` besser erkennen
+- [x] Wochentage und Zeitfenster praeziser parsen
+- [x] Besser zwischen `Termin`, `Aufgabe` und `Routine` unterscheiden
+- [x] Klar anzeigen, ob etwas direkt terminiert oder nur als Aufgabe angelegt wird
+- [x] Chat-Vorschlag mit Begruendung ausgeben: warum genau dieser Slot gewaehlt wurde
 
 ### 5. Projektgenerator enger mit Planung koppeln
 - [ ] Nach Projekt-Erstellung optional direkt erste Terminierung anbieten
