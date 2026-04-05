@@ -104,8 +104,8 @@ Rahmen:
 - [x] One-click Aktionen fuer `heute neu planen`, `fuer morgen schieben`, `kleinere Luecke finden`
 
 ### 13. Projektfortschritt und Abschlusslogik verbessern
-- [ ] Projekte mit echtem Fortschritt, Restaufwand und naechsten Schritten sichtbar machen
-- [ ] Abgeschlossene Projekte archivieren statt nur loeschen
+- [x] Projekte mit echtem Fortschritt, Restaufwand und naechsten Schritten sichtbar machen
+- [x] Abgeschlossene Projekte archivieren statt nur loeschen
 - [ ] Teilfortschritte und Zwischenstaende bei Aufgaben erlauben
 - [ ] Projektgenerator spaeter mit Review nach einigen Tagen koppeln: `Plan war realistisch / zu gross / zu klein`
 

@@ -36,6 +36,7 @@ export interface Project {
   description: string
   taskIds: string[]
   deadline?: string
+  archivedAt?: string
   createdAt: string
   updatedAt: string
 }

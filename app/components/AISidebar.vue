@@ -13,7 +13,7 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProjectWithTasks } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
@@ -22,6 +22,7 @@ const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } =
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
 const collapsedGroups = ref<string[]>([])
+const showArchivedProjects = ref(false)
 const planningFeedback = ref<string | null>(null)
 const priorityFeedback = ref<string | null>(null)
 const decisionTransparency = ref<DecisionTransparency | null>(null)
@@ -355,9 +356,12 @@ const priorityInsights = computed(() => {
 })
 
 const tasksByProject = computed(() => {
-  const groups = projects.value.map(project => ({
+  const groups = projects.value
+    .filter(project => !project.archivedAt)
+    .map(project => ({
     id: project.id,
     name: project.name,
+    archivedAt: project.archivedAt,
     tasks: tasks.value.filter(task => task.projectId === project.id),
   })).filter(group => group.tasks.length > 0)
 
@@ -373,10 +377,22 @@ const tasksByProject = computed(() => {
   return groups
 })
 
+const archivedTaskGroups = computed(() => {
+  return projects.value
+    .filter(project => Boolean(project.archivedAt))
+    .map(project => ({
+      id: project.id,
+      name: project.name,
+      archivedAt: project.archivedAt,
+      tasks: tasks.value.filter(task => task.projectId === project.id),
+    }))
+})
+
 const filteredTaskGroups = computed(() => {
   return tasksByProject.value
     .map(group => ({
       ...group,
+      fullTasks: group.tasks,
       tasks: group.tasks.filter(matchesActiveFilter),
     }))
     .filter(group => group.tasks.length > 0)
@@ -387,6 +403,45 @@ function taskStatusLabel(task: Task) {
   if (task.status === 'scheduled') return 'Eingeplant'
   if (task.status === 'missed') return 'Neu planen'
   return 'Offen'
+}
+
+function getGroupTasks(group: { tasks: Task[]; fullTasks?: Task[] }) {
+  return group.fullTasks || group.tasks
+}
+
+function projectProgress(group: { tasks: Task[]; fullTasks?: Task[] }) {
+  const sourceTasks = getGroupTasks(group)
+  const total = sourceTasks.length
+  const done = sourceTasks.filter(task => task.status === 'done').length
+  const percent = total === 0 ? 0 : Math.round((done / total) * 100)
+  return { total, done, percent }
+}
+
+function projectRemainingHours(group: { tasks: Task[]; fullTasks?: Task[] }) {
+  const remainingMinutes = getGroupTasks(group)
+    .filter(task => task.status !== 'done')
+    .reduce((sum, task) => sum + task.estimatedMinutes, 0)
+  return Math.round((remainingMinutes / 60) * 10) / 10
+}
+
+function projectNextStep(group: { tasks: Task[]; fullTasks?: Task[] }) {
+  const openTasks = getGroupTasks(group)
+    .filter(task => task.status !== 'done')
+    .sort((a, b) => {
+      const priorityDiff = priorityRank[b.priority] - priorityRank[a.priority]
+      if (priorityDiff !== 0) return priorityDiff
+
+      const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
+      const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
+      return aDeadline - bDeadline
+    })
+
+  return openTasks[0] || null
+}
+
+function isProjectCompleted(group: { tasks: Task[]; fullTasks?: Task[] }) {
+  const sourceTasks = getGroupTasks(group)
+  return sourceTasks.length > 0 && sourceTasks.every(task => task.status === 'done')
 }
 
 function taskScheduleSummary(task: Task) {
@@ -408,6 +463,16 @@ function formatTaskDateTime(value?: string) {
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+  })
+}
+
+function formatArchivedDate(value?: string) {
+  if (!value) return null
+
+  return new Date(value).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
   })
 }
 
@@ -956,6 +1021,32 @@ async function removeProject(groupId: string) {
     planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht geloescht werden.`
   }
 }
+
+async function archiveProjectGroup(groupId: string) {
+  const projectGroup = tasksByProject.value.find(group => group.id === groupId)
+  if (!projectGroup || groupId === 'inbox') return
+
+  try {
+    await archiveProject(groupId)
+    planningFeedback.value = `Projekt "${projectGroup.name}" wurde archiviert.`
+  } catch (error) {
+    console.error(`Fehler beim Archivieren des Projekts "${projectGroup.name}":`, error)
+    planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht archiviert werden.`
+  }
+}
+
+async function restoreArchivedProject(groupId: string) {
+  const projectGroup = archivedTaskGroups.value.find(group => group.id === groupId)
+  if (!projectGroup) return
+
+  try {
+    await restoreProject(groupId)
+    planningFeedback.value = `Projekt "${projectGroup.name}" wurde wieder aktiviert.`
+  } catch (error) {
+    console.error(`Fehler beim Wiederherstellen des Projekts "${projectGroup.name}":`, error)
+    planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht wiederhergestellt werden.`
+  }
+}
 </script>
 
 <template>
@@ -1136,149 +1227,249 @@ async function removeProject(groupId: string) {
           <p class="text-xs text-gray-400 mt-1">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p>
         </div>
 
-        <div v-else-if="filteredTaskGroups.length > 0" class="space-y-4">
-          <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
-            <div class="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-50">
+        <div v-else class="space-y-4">
+          <div v-if="filteredTaskGroups.length > 0" class="space-y-4">
+            <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
+              <div class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    class="flex min-w-0 flex-1 items-start gap-2 text-left"
+                    @click="toggleGroup(group.id)"
+                  >
+                    <svg
+                      class="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400 transition-transform"
+                      :class="{ 'rotate-90': !isGroupCollapsed(group.id) }"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        <h3 class="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
+                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                          {{ projectProgress(group).done }}/{{ projectProgress(group).total }}
+                        </span>
+                      </div>
+                      <div class="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          class="h-full rounded-full bg-primary-500 transition-all"
+                          :style="{ width: `${projectProgress(group).percent}%` }"
+                        />
+                      </div>
+                      <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                        <span>{{ projectProgress(group).percent }}% erledigt</span>
+                        <span>{{ projectRemainingHours(group) }} h Restaufwand</span>
+                        <span>{{ getGroupTasks(group).length }} Aufgaben</span>
+                      </div>
+                      <p v-if="projectNextStep(group)" class="mt-2 text-xs text-gray-600">
+                        Nächster Schritt: <span class="font-medium text-gray-800">{{ projectNextStep(group)?.title }}</span>
+                      </p>
+                      <p v-else class="mt-2 text-xs text-green-700">
+                        Projekt abgeschlossen und bereit zum Archivieren.
+                      </p>
+                    </div>
+                  </button>
+                  <div class="flex flex-shrink-0 items-center gap-1">
+                    <button
+                      v-if="group.id !== 'inbox' && isProjectCompleted(group)"
+                      type="button"
+                      class="rounded-md px-2 py-1 text-[11px] text-amber-700 transition hover:bg-amber-50"
+                      @click="archiveProjectGroup(group.id)"
+                    >
+                      Archivieren
+                    </button>
+                    <button
+                      v-if="group.id !== 'inbox'"
+                      type="button"
+                      class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
+                      @click="removeProject(group.id)"
+                    >
+                      Löschen
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="!isGroupCollapsed(group.id)" class="space-y-2">
+                <div
+                  v-for="task in group.tasks"
+                  :key="task.id"
+                  class="rounded-lg border border-gray-200 p-3 transition-colors hover:border-gray-300 cursor-pointer"
+                  :class="{ 'opacity-50': task.status === 'done' }"
+                  @click="emit('edit-task', task)"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
+                        <span
+                          class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                          :class="priorityColors[task.priority]"
+                        >
+                          {{ task.priority }}
+                        </span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          {{ taskStatusLabel(task) }}
+                        </span>
+                      </div>
+
+                      <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
+                        <span>{{ task.estimatedMinutes }} Min.</span>
+                        <span v-if="task.deadline">
+                          Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
+                        </span>
+                        <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
+                        <span v-if="task.prioritySource === 'ai'" class="text-indigo-500">KI-Vorschlag</span>
+                        <span v-else-if="task.prioritySource === 'system'" class="text-red-500">Deadline-Druck</span>
+                        <span v-else-if="task.prioritySource === 'manual'" class="text-gray-500">Manuell</span>
+                      </div>
+
+                      <div
+                        v-if="getTaskInsight(task)?.riskLabels.length"
+                        class="mt-2 flex flex-wrap gap-1"
+                      >
+                        <span
+                          v-for="riskLabel in getTaskInsight(task)?.riskLabels"
+                          :key="`${task.id}-${riskLabel}`"
+                          class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                        >
+                          {{ riskLabel }}
+                        </span>
+                      </div>
+
+                      <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
+                        Geplant: {{ taskScheduleSummary(task) }}
+                      </div>
+
+                      <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
+                        Grund: {{ task.priorityReason }}
+                      </div>
+
+                      <div
+                        v-if="task.aiSuggestedPriority && task.aiSuggestedPriority !== task.priority"
+                        class="mt-1 text-xs text-gray-500"
+                      >
+                        KI wollte {{ task.aiSuggestedPriority }}, lokal jetzt {{ task.priority }}.
+                      </div>
+
+                      <div
+                        v-if="getTaskInsight(task)?.headline && getTaskInsight(task)?.headline !== task.priorityReason"
+                        class="mt-1 text-xs text-gray-500"
+                      >
+                        Kontext: {{ getTaskInsight(task)?.headline }}
+                      </div>
+
+                      <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
+                        <button
+                          v-for="priorityOption in priorityOptions"
+                          :key="priorityOption"
+                          class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
+                          :class="task.priority === priorityOption
+                            ? 'border-primary-300 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                          @click="changePriority(task, priorityOption)"
+                        >
+                          {{ priorityOption }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-1" @click.stop>
+                      <button
+                        v-if="task.status === 'scheduled'"
+                        class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                        title="Nicht geschafft, neu einplanen"
+                        @click="openRescheduleDialog(task)"
+                      >
+                        Nicht geschafft
+                      </button>
+                      <button
+                        v-if="task.status !== 'done'"
+                        class="p-1 text-gray-400 hover:text-green-600 rounded"
+                        title="Als erledigt markieren"
+                        @click="markDone(task)"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div
+            v-else
+            class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center"
+          >
+            <p class="text-sm text-gray-500">Keine Aufgaben für den aktuellen Filter gefunden.</p>
+          </div>
+
+          <section v-if="archivedTaskGroups.length > 0" class="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div class="flex items-center justify-between gap-3">
               <button
                 type="button"
                 class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                @click="toggleGroup(group.id)"
+                @click="showArchivedProjects = !showArchivedProjects"
               >
                 <svg
                   class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform"
-                  :class="{ 'rotate-90': !isGroupCollapsed(group.id) }"
+                  :class="{ 'rotate-90': showArchivedProjects }"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
-                <h3 class="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
+                <div>
+                  <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Archivierte Projekte</h3>
+                  <p class="mt-1 text-[11px] text-gray-400">{{ archivedTaskGroups.length }} archiviert</p>
+                </div>
               </button>
-              <div class="flex items-center gap-2">
-                <button
-                  v-if="group.id !== 'inbox'"
-                  type="button"
-                  class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
-                  @click="removeProject(group.id)"
-                >
-                  Projekt loeschen
-                </button>
-                <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
-              </div>
             </div>
 
-            <div v-if="!isGroupCollapsed(group.id)" class="space-y-2">
+            <div v-if="showArchivedProjects" class="mt-3 space-y-2">
               <div
-                v-for="task in group.tasks"
-                :key="task.id"
-                class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-                :class="{ 'opacity-50': task.status === 'done' }"
-                @click="emit('edit-task', task)"
+                v-for="group in archivedTaskGroups"
+                :key="group.id"
+                class="rounded-lg border border-gray-200 bg-white p-3"
               >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
-                      <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
-                      <span
-                        class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        :class="priorityColors[task.priority]"
-                      >
-                        {{ task.priority }}
-                      </span>
-                      <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                        {{ taskStatusLabel(task) }}
+                      <h4 class="text-sm font-medium text-gray-900">{{ group.name }}</h4>
+                      <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                        {{ projectProgress(group).done }}/{{ projectProgress(group).total }}
                       </span>
                     </div>
-
-                    <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
-                      <span>{{ task.estimatedMinutes }} Min.</span>
-                      <span v-if="task.deadline">
-                        Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
-                      </span>
-                      <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
-                      <span v-if="task.prioritySource === 'ai'" class="text-indigo-500">KI-Vorschlag</span>
-                      <span v-else-if="task.prioritySource === 'system'" class="text-red-500">Deadline-Druck</span>
-                      <span v-else-if="task.prioritySource === 'manual'" class="text-gray-500">Manuell</span>
+                    <div class="mt-1 text-xs text-gray-500">
+                      Archiviert am {{ formatArchivedDate(group.archivedAt) || 'unbekannt' }}
                     </div>
-
-                    <div
-                      v-if="getTaskInsight(task)?.riskLabels.length"
-                      class="mt-2 flex flex-wrap gap-1"
-                    >
-                      <span
-                        v-for="riskLabel in getTaskInsight(task)?.riskLabels"
-                        :key="`${task.id}-${riskLabel}`"
-                        class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
-                      >
-                        {{ riskLabel }}
-                      </span>
+                    <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                      <span>{{ projectProgress(group).percent }}% erledigt</span>
+                      <span>{{ projectRemainingHours(group) }} h Restaufwand</span>
                     </div>
-
-                    <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
-                      Geplant: {{ taskScheduleSummary(task) }}
-                    </div>
-
-                    <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
-                      Grund: {{ task.priorityReason }}
-                    </div>
-
-                    <div
-                      v-if="task.aiSuggestedPriority && task.aiSuggestedPriority !== task.priority"
-                      class="mt-1 text-xs text-gray-500"
-                    >
-                      KI wollte {{ task.aiSuggestedPriority }}, lokal jetzt {{ task.priority }}.
-                    </div>
-
-                    <div
-                      v-if="getTaskInsight(task)?.headline && getTaskInsight(task)?.headline !== task.priorityReason"
-                      class="mt-1 text-xs text-gray-500"
-                    >
-                      Kontext: {{ getTaskInsight(task)?.headline }}
-                    </div>
-
-                    <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
-                      <button
-                        v-for="priorityOption in priorityOptions"
-                        :key="priorityOption"
-                        class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
-                        :class="task.priority === priorityOption
-                          ? 'border-primary-300 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
-                        @click="changePriority(task, priorityOption)"
-                      >
-                        {{ priorityOption }}
-                      </button>
-                    </div>
+                    <p v-if="projectNextStep(group)" class="mt-2 text-xs text-gray-600">
+                      Beim Wiederherstellen zuerst: <span class="font-medium text-gray-800">{{ projectNextStep(group)?.title }}</span>
+                    </p>
                   </div>
 
-                  <div class="flex items-center gap-1" @click.stop>
-                    <button
-                      v-if="task.status === 'scheduled'"
-                      class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
-                      title="Nicht geschafft, neu einplanen"
-                      @click="openRescheduleDialog(task)"
-                    >
-                      Nicht geschafft
-                    </button>
-                    <button
-                      v-if="task.status !== 'done'"
-                      class="p-1 text-gray-400 hover:text-green-600 rounded"
-                      title="Als erledigt markieren"
-                      @click="markDone(task)"
-                    >
-                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                      </svg>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md px-2 py-1 text-[11px] text-primary-700 transition hover:bg-primary-50"
+                    @click="restoreArchivedProject(group.id)"
+                  >
+                    Wiederherstellen
+                  </button>
                 </div>
               </div>
             </div>
           </section>
-        </div>
-        <div v-else class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
-          <p class="text-sm text-gray-500">Keine Aufgaben fuer den aktuellen Filter gefunden.</p>
         </div>
       </div>
     </div>

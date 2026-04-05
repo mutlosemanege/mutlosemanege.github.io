@@ -192,6 +192,34 @@ export function useTasks() {
     return true
   }
 
+  async function archiveProject(id: string): Promise<Project | null> {
+    const existing = await get<Project>(`${PROJECT_PREFIX}${id}`)
+    if (!existing) return null
+
+    const updated: Project = {
+      ...existing,
+      archivedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    await set(`${PROJECT_PREFIX}${id}`, updated)
+    await loadProjects()
+    return updated
+  }
+
+  async function restoreProject(id: string): Promise<Project | null> {
+    const existing = await get<Project>(`${PROJECT_PREFIX}${id}`)
+    if (!existing) return null
+
+    const updated: Project = {
+      ...existing,
+      archivedAt: undefined,
+      updatedAt: new Date().toISOString(),
+    }
+    await set(`${PROJECT_PREFIX}${id}`, updated)
+    await loadProjects()
+    return updated
+  }
+
   async function deleteProjectWithTasks(id: string): Promise<boolean> {
     await acquireMutex()
     try {
@@ -272,6 +300,8 @@ export function useTasks() {
     createProject,
     updateProject,
     deleteProject,
+    archiveProject,
+    restoreProject,
     deleteProjectWithTasks,
     getTasksByProject,
     getUnscheduledTasks,
