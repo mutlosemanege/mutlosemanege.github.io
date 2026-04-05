@@ -192,6 +192,42 @@ export function useTasks() {
     return true
   }
 
+  async function deleteProjectWithTasks(id: string): Promise<boolean> {
+    await acquireMutex()
+    try {
+      const existingProject = await get<Project>(`${PROJECT_PREFIX}${id}`)
+      const taskIdsToDelete = new Set<string>([
+        ...(existingProject?.taskIds || []),
+        ...tasks.value
+          .filter(task => task.projectId === id)
+          .map(task => task.id),
+      ])
+
+      for (const taskId of taskIdsToDelete) {
+        await del(`${TASK_PREFIX}${taskId}`)
+      }
+
+      for (const task of tasks.value) {
+        if (taskIdsToDelete.has(task.id)) continue
+
+        const updatedDeps = task.dependencies.filter(dep => !taskIdsToDelete.has(dep))
+        if (updatedDeps.length !== task.dependencies.length) {
+          await set(`${TASK_PREFIX}${task.id}`, {
+            ...task,
+            dependencies: updatedDeps,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      }
+
+      await del(`${PROJECT_PREFIX}${id}`)
+      await Promise.all([loadProjects(), loadTasks()])
+      return true
+    } finally {
+      releaseMutex()
+    }
+  }
+
   // --- Hilfsfunktionen ---
 
   function getTasksByProject(projectId: string): Task[] {
@@ -236,6 +272,7 @@ export function useTasks() {
     createProject,
     updateProject,
     deleteProject,
+    deleteProjectWithTasks,
     getTasksByProject,
     getUnscheduledTasks,
     getScheduledTasks,

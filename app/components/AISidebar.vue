@@ -13,7 +13,7 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProject } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProjectWithTasks } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
@@ -540,11 +540,16 @@ async function removeProject(groupId: string) {
       } else if (task.calendarEventId) {
         await deleteEvent(task.calendarEventId)
       }
-      await deleteTask(task.id)
     }
 
-    await deleteProject(groupId)
-    await refreshCalendarEvents()
+    await deleteProjectWithTasks(groupId)
+
+    try {
+      await refreshCalendarEvents()
+    } catch (refreshError) {
+      console.warn('Kalender konnte nach Projektloeschung nicht neu geladen werden:', refreshError)
+    }
+
     planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
   } catch (error) {
     console.error(`Fehler beim Loeschen des Projekts "${projectGroup.name}":`, error)
