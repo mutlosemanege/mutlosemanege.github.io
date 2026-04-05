@@ -21,6 +21,7 @@ const { preferences } = usePreferences()
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
 const collapsedGroups = ref<string[]>([])
+const planningFeedback = ref<string | null>(null)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -66,6 +67,8 @@ async function handleAutoSchedule() {
   const unscheduled = getUnscheduledTasks()
   if (unscheduled.length === 0) return
 
+  planningFeedback.value = null
+
   const schedule = scheduleTasks(
     unscheduled,
     props.events,
@@ -102,6 +105,27 @@ async function handleAutoSchedule() {
   const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
   await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+
+  const scheduledCount = schedule.size
+  const unscheduledCount = unscheduled.length - scheduledCount
+
+  if (scheduledCount === 0) {
+    planningFeedback.value = 'Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.'
+    return
+  }
+
+  if (unscheduledCount > 0) {
+    const remainingTitles = unscheduled
+      .filter(task => !schedule.has(task.id))
+      .slice(0, 3)
+      .map(task => task.title)
+      .join(', ')
+
+    planningFeedback.value = `${scheduledCount} Aufgaben eingeplant, ${unscheduledCount} noch offen. ${remainingTitles ? `Noch offen: ${remainingTitles}` : ''}`
+    return
+  }
+
+  planningFeedback.value = `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`
 }
 
 async function markDone(task: Task) {
@@ -267,6 +291,12 @@ function isGroupCollapsed(groupId: string) {
       <div v-if="aiError" class="px-4 py-2">
         <div class="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs">
           {{ aiError }}
+        </div>
+      </div>
+
+      <div v-if="planningFeedback" class="px-4 py-2">
+        <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          {{ planningFeedback }}
         </div>
       </div>
 

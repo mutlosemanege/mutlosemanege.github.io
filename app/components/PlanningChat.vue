@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Task } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 
 interface ParsedPlanningRequest {
@@ -7,6 +8,7 @@ interface ParsedPlanningRequest {
   dateFrom: Date
   dateTo: Date
   preferredPeriod: 'morning' | 'afternoon' | 'evening' | 'any'
+  intent: 'event' | 'task'
 }
 
 const props = defineProps<{
@@ -22,21 +24,26 @@ const emit = defineEmits<{
 const { preferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { createEvent } = useCalendar()
+const { createTask } = useTasks()
 
 const prompt = ref('')
 const durationMinutes = ref(60)
+const intentMode = ref<'auto' | 'event' | 'task'>('auto')
 const isPlanning = ref(false)
 const error = ref<string | null>(null)
 const previewEvent = ref<Omit<CalendarEvent, 'id'> | null>(null)
+const previewTask = ref<Omit<Task, 'id' | 'createdAt' | 'updatedAt'> | null>(null)
 const parsedDetails = ref<ParsedPlanningRequest | null>(null)
 
 watch(() => props.show, (show) => {
   if (!show) return
   prompt.value = ''
   durationMinutes.value = 60
+  intentMode.value = 'auto'
   isPlanning.value = false
   error.value = null
   previewEvent.value = null
+  previewTask.value = null
   parsedDetails.value = null
 })
 
@@ -48,12 +55,33 @@ async function handlePlan() {
 
   try {
     const parsed = parsePlanningPrompt(prompt.value.trim(), durationMinutes.value)
+    parsedDetails.value = parsed
+
+    if (parsed.intent === 'task') {
+      previewTask.value = {
+        title: parsed.title,
+        description: `Erstellt aus Chat-Eingabe: "${prompt.value.trim()}"`,
+        estimatedMinutes: parsed.durationMinutes,
+        deadline: buildTaskDeadline(parsed),
+        priority: inferTaskPriority(prompt.value.trim()),
+        status: 'todo',
+        projectId: undefined,
+        dependencies: [],
+        scheduledStart: undefined,
+        scheduledEnd: undefined,
+        calendarEventId: undefined,
+        isDeepWork: parsed.durationMinutes >= preferences.value.minDeepWorkBlockMinutes,
+      }
+      previewEvent.value = null
+      return
+    }
+
     const slot = findBestSlot(parsed)
 
     if (!slot) {
       error.value = 'Ich habe in deinem aktuellen Planungsfenster keinen freien Termin gefunden.'
       previewEvent.value = null
-      parsedDetails.value = parsed
+      previewTask.value = null
       return
     }
 
@@ -70,10 +98,11 @@ async function handlePlan() {
         timeZone: tz,
       },
     }
-    parsedDetails.value = parsed
+    previewTask.value = null
   } catch (err: any) {
     error.value = err.message || 'Planung fehlgeschlagen.'
     previewEvent.value = null
+    previewTask.value = null
   } finally {
     isPlanning.value = false
   }
@@ -95,6 +124,23 @@ async function handleCreate() {
     emit('close')
   } catch (err: any) {
     error.value = err.message || 'Termin konnte nicht erstellt werden.'
+  } finally {
+    isPlanning.value = false
+  }
+}
+
+async function handleCreateTask() {
+  if (!previewTask.value) return
+
+  isPlanning.value = true
+  error.value = null
+
+  try {
+    await createTask(previewTask.value)
+    emit('created')
+    emit('close')
+  } catch (err: any) {
+    error.value = err.message || 'Aufgabe konnte nicht erstellt werden.'
   } finally {
     isPlanning.value = false
   }
@@ -150,7 +196,33 @@ function parsePlanningPrompt(text: string, fallbackDuration: number): ParsedPlan
     dateFrom,
     dateTo,
     preferredPeriod,
+    intent: detectIntent(text),
   }
+}
+
+function detectIntent(text: string): 'event' | 'task' {
+  if (intentMode.value === 'event') return 'event'
+  if (intentMode.value === 'task') return 'task'
+
+  const normalized = text.toLowerCase()
+  const taskHints = ['lernen', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'planen', 'review', 'recherche']
+  const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'date', 'party']
+
+  if (eventHints.some(hint => normalized.includes(hint))) return 'event'
+  if (taskHints.some(hint => normalized.includes(hint))) return 'task'
+  return 'event'
+}
+
+function inferTaskPriority(text: string): Task['priority'] {
+  const normalized = text.toLowerCase()
+  if (normalized.includes('dringend') || normalized.includes('asap') || normalized.includes('wichtig')) return 'high'
+  return 'medium'
+}
+
+function buildTaskDeadline(parsed: ParsedPlanningRequest) {
+  const deadline = new Date(parsed.dateTo)
+  deadline.setHours(23, 59, 59, 999)
+  return deadline.toISOString()
 }
 
 function extractDuration(text: string): number | null {
@@ -249,6 +321,27 @@ function formatPreview(date: string | undefined) {
               </div>
 
               <div class="rounded-2xl border border-gray-200 p-4">
+                <label class="block text-sm font-medium text-gray-700">Typ</label>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button
+                    v-for="mode in [
+                      { value: 'auto', label: 'Automatisch' },
+                      { value: 'event', label: 'Termin' },
+                      { value: 'task', label: 'Aufgabe' },
+                    ]"
+                    :key="mode.value"
+                    class="rounded-xl px-3 py-2 text-sm font-medium transition-colors"
+                    :class="intentMode === mode.value
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    @click="intentMode = mode.value as 'auto' | 'event' | 'task'"
+                  >
+                    {{ mode.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-gray-200 p-4">
                 <label class="block text-sm font-medium text-gray-700">Standarddauer</label>
                 <select
                   v-model.number="durationMinutes"
@@ -313,6 +406,25 @@ function formatPreview(date: string | undefined) {
                     @click="handleCreate"
                   >
                     Termin erstellen
+                  </button>
+                </div>
+                <div v-else-if="previewTask && parsedDetails" class="mt-3 space-y-3">
+                  <div class="rounded-xl bg-white p-3 shadow-sm">
+                    <p class="text-sm font-medium text-gray-900">{{ previewTask.title }}</p>
+                    <p class="mt-1 text-sm text-gray-500">
+                      {{ previewTask.estimatedMinutes }} Minuten, Prioritaet {{ previewTask.priority }}
+                    </p>
+                    <p class="mt-2 text-sm text-primary-700">
+                      Deadline: {{ previewTask.deadline ? new Date(previewTask.deadline).toLocaleDateString('de-DE') : 'keine' }}
+                    </p>
+                  </div>
+
+                  <button
+                    class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
+                    :disabled="isPlanning"
+                    @click="handleCreateTask"
+                  >
+                    Aufgabe erstellen
                   </button>
                 </div>
                 <p v-else class="mt-3 text-sm text-gray-500">
