@@ -78,24 +78,35 @@ async function handleAutoSchedule() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   // Tasks in Google Calendar eintragen
-  for (const [taskId, slot] of schedule) {
+  for (const [taskId, plan] of schedule) {
     const task = tasks.value.find(t => t.id === taskId)
     if (!task) continue
 
-    const calEvent = await createEvent({
-      summary: task.title,
-      description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
-      start: { dateTime: slot.start.toISOString(), timeZone: tz },
-      end: { dateTime: slot.end.toISOString(), timeZone: tz },
-      colorId: task.isDeepWork ? '3' : '9', // Lila fuer Deep Work, Indigo fuer normal
-    })
+    const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
 
-    if (calEvent?.id) {
+    for (const [index, block] of plan.blocks.entries()) {
+      const calEvent = await createEvent({
+        summary: plan.blocks.length > 1 ? `${task.title} (${index + 1}/${plan.blocks.length})` : task.title,
+        description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
+        start: { dateTime: block.start.toISOString(), timeZone: tz },
+        end: { dateTime: block.end.toISOString(), timeZone: tz },
+        colorId: task.isDeepWork ? '3' : '9',
+      })
+
+      createdBlocks.push({
+        start: block.start.toISOString(),
+        end: block.end.toISOString(),
+        calendarEventId: calEvent?.id,
+      })
+    }
+
+    if (createdBlocks.length > 0) {
       await updateTask(taskId, {
         status: 'scheduled',
-        scheduledStart: slot.start.toISOString(),
-        scheduledEnd: slot.end.toISOString(),
-        calendarEventId: calEvent.id,
+        scheduleBlocks: createdBlocks,
+        scheduledStart: createdBlocks[0].start,
+        scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
+        calendarEventId: createdBlocks[0].calendarEventId,
       })
     }
   }
@@ -133,12 +144,19 @@ async function markDone(task: Task) {
 }
 
 async function markMissed(task: Task) {
-  if (task.calendarEventId) {
+  const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+
+  if (calendarIds.length > 0) {
+    for (const calendarId of calendarIds) {
+      await deleteEvent(calendarId!)
+    }
+  } else if (task.calendarEventId) {
     await deleteEvent(task.calendarEventId)
   }
 
   await updateTask(task.id, {
     status: 'missed',
+    scheduleBlocks: undefined,
     scheduledStart: undefined,
     scheduledEnd: undefined,
     calendarEventId: undefined,
@@ -183,6 +201,16 @@ function taskStatusLabel(task: Task) {
   if (task.status === 'scheduled') return 'Eingeplant'
   if (task.status === 'missed') return 'Neu planen'
   return 'Offen'
+}
+
+function taskScheduleSummary(task: Task) {
+  if (!task.scheduleBlocks || task.scheduleBlocks.length === 0) return null
+
+  const firstBlock = task.scheduleBlocks[0]
+  const label = `${new Date(firstBlock.start).toLocaleDateString('de-DE')} ${new Date(firstBlock.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
+
+  if (task.scheduleBlocks.length === 1) return label
+  return `${label} + ${task.scheduleBlocks.length - 1} weitere Bloecke`
 }
 
 function matchesActiveFilter(task: Task) {
@@ -359,9 +387,8 @@ function isGroupCollapsed(groupId: string) {
                       <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
                     </div>
 
-                    <div v-if="task.scheduledStart" class="mt-1 text-xs text-blue-500">
-                      Geplant: {{ new Date(task.scheduledStart).toLocaleDateString('de-DE') }}
-                      {{ new Date(task.scheduledStart).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                    <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
+                      Geplant: {{ taskScheduleSummary(task) }}
                     </div>
 
                     <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>

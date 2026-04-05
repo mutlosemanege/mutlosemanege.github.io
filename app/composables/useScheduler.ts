@@ -9,6 +9,10 @@ export interface TimeSlot {
   isDeepWork: boolean
 }
 
+export interface ScheduledTaskPlan {
+  blocks: Array<{ start: Date; end: Date }>
+}
+
 export function useScheduler() {
   const { preferences } = usePreferences()
 
@@ -147,8 +151,8 @@ export function useScheduler() {
     tasksToSchedule: readonly Task[],
     existingEvents: readonly CalendarEvent[],
     prefs: ReadonlyUserPreferences = preferences.value,
-  ): Map<string, { start: Date; end: Date }> {
-    const result = new Map<string, { start: Date; end: Date }>()
+  ): Map<string, ScheduledTaskPlan> {
+    const result = new Map<string, ScheduledTaskPlan>()
 
     // Tasks sortieren: Prioritaet absteigend, Deadline aufsteigend
     const sorted = [...tasksToSchedule].sort((a, b) => {
@@ -162,7 +166,7 @@ export function useScheduler() {
       return aDeadline - bDeadline
     })
 
-    // Planungszeitraum: ab jetzt, bis zur spaetesten Deadline oder max. 90 Tage
+    // Planungszeitraum: ab jetzt, bis zur spaetesten Deadline oder max. 180 Tage
     const now = new Date()
     const latestDeadline = sorted.reduce<number>((max, task) => {
       if (!task.deadline) return max
@@ -171,10 +175,10 @@ export function useScheduler() {
 
     const planEnd = new Date(Math.max(
       latestDeadline + 7 * 24 * 60 * 60 * 1000,
-      now.getTime() + 21 * 24 * 60 * 60 * 1000,
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
     ))
     const maxEnd = new Date(now)
-    maxEnd.setDate(maxEnd.getDate() + 90)
+    maxEnd.setDate(maxEnd.getDate() + 180)
     if (planEnd > maxEnd) {
       planEnd.setTime(maxEnd.getTime())
     }
@@ -196,17 +200,18 @@ export function useScheduler() {
         let earliestStart = now
 
         for (const depId of task.dependencies) {
-          const depSlot = result.get(depId)
-          if (depSlot && depSlot.end > earliestStart) {
-            earliestStart = depSlot.end
+          const depPlan = result.get(depId)
+          const depEnd = depPlan?.blocks[depPlan.blocks.length - 1]?.end
+          if (depEnd && depEnd > earliestStart) {
+            earliestStart = depEnd
           }
         }
 
-        const booking = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart)
-        if (!booking) continue
+        const allocation = allocateTaskAcrossSlots(freeSlots, durationMs, task.isDeepWork, earliestStart)
+        if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
-        result.set(task.id, { start: booking.start, end: booking.end })
-        freeSlots = splitSlotAfterBooking(freeSlots, booking.slot, booking.start, booking.end)
+        result.set(task.id, { blocks: allocation.blocks })
+        freeSlots = allocation.remainingSlots
         madeProgress = true
       }
     }
@@ -257,6 +262,52 @@ export function useScheduler() {
     }
 
     return null
+  }
+
+  function allocateTaskAcrossSlots(
+    slots: TimeSlot[],
+    durationMs: number,
+    needsDeepWork: boolean,
+    earliestStart: Date,
+  ): {
+    blocks: Array<{ start: Date; end: Date }>
+    remainingSlots: TimeSlot[]
+    scheduledMs: number
+  } {
+    let remainingMs = durationMs
+    let currentEarliest = earliestStart
+    let workingSlots = [...slots]
+    const blocks: Array<{ start: Date; end: Date }> = []
+
+    const passes = [
+      (slot: TimeSlot) => needsDeepWork ? slot.isDeepWork : !slot.isDeepWork,
+      (_slot: TimeSlot) => true,
+    ]
+
+    for (const slotFilter of passes) {
+      for (const slot of [...workingSlots]) {
+        if (remainingMs <= 0) break
+        if (!slotFilter(slot)) continue
+
+        const effectiveStart = new Date(Math.max(slot.start.getTime(), currentEarliest.getTime()))
+        const availableMs = slot.end.getTime() - effectiveStart.getTime()
+        if (availableMs < 15 * 60 * 1000) continue
+
+        const bookedMs = Math.min(remainingMs, availableMs)
+        const bookEnd = new Date(effectiveStart.getTime() + bookedMs)
+
+        blocks.push({ start: effectiveStart, end: bookEnd })
+        workingSlots = splitSlotAfterBooking(workingSlots, slot, effectiveStart, bookEnd)
+        remainingMs -= bookedMs
+        currentEarliest = bookEnd
+      }
+    }
+
+    return {
+      blocks,
+      remainingSlots: workingSlots,
+      scheduledMs: durationMs - remainingMs,
+    }
   }
 
   /**

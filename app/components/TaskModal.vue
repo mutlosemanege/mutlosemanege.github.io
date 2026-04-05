@@ -91,6 +91,7 @@ function handleSave() {
     status: props.task?.status || 'todo',
     projectId: projectId.value || undefined,
     dependencies: dependencies.value,
+    scheduleBlocks: props.task?.scheduleBlocks,
     scheduledStart: props.task?.scheduledStart,
     scheduledEnd: props.task?.scheduledEnd,
     calendarEventId: props.task?.calendarEventId,

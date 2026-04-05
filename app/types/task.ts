@@ -8,12 +8,19 @@ export interface Task {
   status: TaskStatus
   projectId?: string
   dependencies: readonly string[] // Task-IDs die vorher erledigt sein muessen
+  scheduleBlocks?: readonly TaskScheduleBlock[]
   scheduledStart?: string // ISO 8601
   scheduledEnd?: string
   calendarEventId?: string // Verknuepftes Google Calendar Event
   isDeepWork: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface TaskScheduleBlock {
+  start: string
+  end: string
+  calendarEventId?: string
 }
 
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'

@@ -67,6 +67,7 @@ async function handlePlan() {
         status: 'todo',
         projectId: undefined,
         dependencies: [],
+        scheduleBlocks: undefined,
         scheduledStart: undefined,
         scheduledEnd: undefined,
         calendarEventId: undefined,

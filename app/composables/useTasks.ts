@@ -174,12 +174,12 @@ export function useTasks() {
   function getUnscheduledTasks(): Task[] {
     return tasks.value.filter(t =>
       (t.status === 'todo' || t.status === 'missed') &&
-      !t.scheduledStart
+      (!t.scheduleBlocks || t.scheduleBlocks.length === 0)
     )
   }
 
   function getScheduledTasks(): Task[] {
-    return tasks.value.filter(t => t.scheduledStart !== undefined)
+    return tasks.value.filter(t => (t.scheduleBlocks?.length || 0) > 0)
   }
 
   function getPendingTasks(): Task[] {
