@@ -66,6 +66,24 @@ interface TaskPriorityInsight {
   riskLabels: string[]
 }
 
+interface SchedulingDiagnosis {
+  taskId: string
+  title: string
+  code: 'dependency' | 'deadline' | 'deep-work' | 'work-window' | 'no-slot'
+  severity: 'high' | 'medium' | 'low'
+  summary: string
+  detail: string
+}
+
+const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
+const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
+  dependency: 'Dependency blockiert',
+  deadline: 'Deadline unrealistisch',
+  'deep-work': 'Zu wenig Fokuszeit',
+  'work-window': 'Arbeitsfenster zu eng',
+  'no-slot': 'Kein passender Slot',
+}
+
 // KI-Priorisierung
 async function handlePrioritize() {
   const pending = getPendingTasks()
@@ -127,23 +145,31 @@ async function handleAutoSchedule() {
   if (unscheduled.length === 0) return
 
   planningFeedback.value = null
+  planningDiagnostics.value = []
 
   const currentEvents = await refreshCalendarEvents()
   const schedule = await applyScheduleForTasks(unscheduled, currentEvents)
 
   const scheduledCount = schedule.size
-  const unscheduledCount = unscheduled.length - scheduledCount
+  const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
+  const unscheduledCount = remainingTasks.length
+  const scheduleEvents = buildScheduleEvents(schedule, unscheduled)
+  const diagnostics = remainingTasks
+    .map(task => diagnoseSchedulingIssue(task, [...currentEvents, ...scheduleEvents]))
+    .sort(sortSchedulingDiagnosis)
+
+  planningDiagnostics.value = diagnostics
 
   if (scheduledCount === 0) {
-    planningFeedback.value = 'Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.'
+    const topReasons = diagnostics.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
+    planningFeedback.value = `Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.${topReasons ? ` Hauptgruende: ${topReasons}` : ''}`
     return
   }
 
   if (unscheduledCount > 0) {
-    const remainingTitles = unscheduled
-      .filter(task => !schedule.has(task.id))
+    const remainingTitles = diagnostics
       .slice(0, 3)
-      .map(task => `${task.title} (${explainUnscheduledTask(task)})`)
+      .map(entry => `${entry.title} (${entry.summary})`)
       .join(', ')
 
     planningFeedback.value = `${scheduledCount} Aufgaben eingeplant, ${unscheduledCount} noch offen. ${remainingTitles ? `Noch offen: ${remainingTitles}` : ''}`
@@ -151,28 +177,6 @@ async function handleAutoSchedule() {
   }
 
   planningFeedback.value = `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`
-}
-
-function explainUnscheduledTask(task: Task) {
-  if (task.dependencies.length > 0) {
-    const blockingDependency = task.dependencies
-      .map(depId => tasks.value.find(candidate => candidate.id === depId))
-      .find(candidate => candidate && candidate.status !== 'done' && candidate.status !== 'scheduled')
-
-    if (blockingDependency) {
-      return `wartet auf ${blockingDependency.title}`
-    }
-  }
-
-  if (task.isDeepWork) {
-    return 'braucht Fokuszeit'
-  }
-
-  if (task.deadline) {
-    return 'vor Deadline kein passender Slot'
-  }
-
-  return 'aktuell kein passender Slot'
 }
 
 async function markDone(task: Task) {
@@ -415,6 +419,131 @@ function addDays(date: Date, days: number) {
   return copy
 }
 
+function buildScheduleEvents(schedule: Map<string, ScheduledTaskPlan>, sourceTasks: Task[]) {
+  const events: CalendarEvent[] = []
+
+  for (const [taskId, plan] of schedule) {
+    const task = sourceTasks.find(entry => entry.id === taskId) || tasks.value.find(entry => entry.id === taskId)
+    if (!task) continue
+
+    for (const block of plan.blocks) {
+      events.push({
+        summary: task.title,
+        description: `[KALENDER-AI-TASK:${taskId}]`,
+        start: { dateTime: block.start.toISOString() },
+        end: { dateTime: block.end.toISOString() },
+      })
+    }
+  }
+
+  return events
+}
+
+function diagnoseSchedulingIssue(task: Task, existingEvents: readonly CalendarEvent[]): SchedulingDiagnosis {
+  const blocker = getBlockingDependency(task)
+  if (blocker) {
+    return {
+      taskId: task.id,
+      title: task.title,
+      code: 'dependency',
+      severity: 'high',
+      summary: 'Dependency blockiert',
+      detail: `Diese Aufgabe wartet noch auf "${blocker.title}".`,
+    }
+  }
+
+  const from = new Date()
+  const to = task.deadline ? new Date(task.deadline) : addDays(from, 14)
+  const allSlots = findFreeSlots(from, to, existingEvents, preferences.value)
+  const earliestReadyAt = getEarliestReadyAt(task)
+  const usableSlots = allSlots.filter(slot => slot.end > earliestReadyAt)
+  const effectiveMinutes = usableSlots.reduce((sum, slot) => {
+    const start = Math.max(slot.start.getTime(), earliestReadyAt.getTime())
+    return sum + Math.max(0, (slot.end.getTime() - start) / 60000)
+  }, 0)
+
+  if (usableSlots.length === 0) {
+    return {
+      taskId: task.id,
+      title: task.title,
+      code: 'work-window',
+      severity: 'medium',
+      summary: 'Arbeitsfenster zu eng',
+      detail: 'Im aktuellen Arbeitsfenster gibt es keinen freien Block, in dem diese Aufgabe starten kann.',
+    }
+  }
+
+  if (task.isDeepWork) {
+    const deepWorkMinutes = usableSlots
+      .filter(slot => slot.isDeepWork)
+      .reduce((sum, slot) => {
+        const start = Math.max(slot.start.getTime(), earliestReadyAt.getTime())
+        return sum + Math.max(0, (slot.end.getTime() - start) / 60000)
+      }, 0)
+
+    if (deepWorkMinutes < task.estimatedMinutes && effectiveMinutes >= task.estimatedMinutes) {
+      return {
+        taskId: task.id,
+        title: task.title,
+        code: 'deep-work',
+        severity: 'medium',
+        summary: 'Zu wenig Fokuszeit',
+        detail: `Es gibt genug freie Zeit, aber nicht genug Deep-Work-Fenster fuer ${task.estimatedMinutes} Minuten.`,
+      }
+    }
+  }
+
+  if (task.deadline && effectiveMinutes < task.estimatedMinutes) {
+    return {
+      taskId: task.id,
+      title: task.title,
+      code: 'deadline',
+      severity: 'high',
+      summary: 'Deadline unrealistisch',
+      detail: `Bis zur Deadline fehlen freie ${task.isDeepWork ? 'Fokus-' : ''}Minuten fuer ${task.estimatedMinutes} Minuten Aufwand.`,
+    }
+  }
+
+  return {
+    taskId: task.id,
+    title: task.title,
+    code: 'no-slot',
+    severity: 'low',
+    summary: 'Kein passender Slot',
+    detail: 'Aktuell wurde kein passender freier Block fuer diese Aufgabe gefunden.',
+  }
+}
+
+function getEarliestReadyAt(task: Task) {
+  let earliestStart = new Date()
+
+  for (const depId of task.dependencies) {
+    const dependencyTask = tasks.value.find(candidate => candidate.id === depId)
+    const dependencyEnd = dependencyTask?.scheduleBlocks?.[dependencyTask.scheduleBlocks.length - 1]?.end ||
+      dependencyTask?.scheduledEnd
+    if (dependencyEnd) {
+      const end = new Date(dependencyEnd)
+      if (end > earliestStart) {
+        earliestStart = end
+      }
+    }
+  }
+
+  return earliestStart
+}
+
+function sortSchedulingDiagnosis(a: SchedulingDiagnosis, b: SchedulingDiagnosis) {
+  const severityRank = { high: 0, medium: 1, low: 2 }
+  const severityDiff = severityRank[a.severity] - severityRank[b.severity]
+  if (severityDiff !== 0) return severityDiff
+
+  const aTask = tasks.value.find(task => task.id === a.taskId)
+  const bTask = tasks.value.find(task => task.id === b.taskId)
+  const aDeadline = aTask?.deadline ? new Date(aTask.deadline).getTime() : Infinity
+  const bDeadline = bTask?.deadline ? new Date(bTask.deadline).getTime() : Infinity
+  return aDeadline - bDeadline
+}
+
 function matchesActiveFilter(task: Task) {
   if (activeFilter.value === 'all') return true
   if (activeFilter.value === 'open') {
@@ -653,6 +782,45 @@ async function removeProject(groupId: string) {
       <div v-if="planningFeedback" class="px-4 py-2">
         <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
           {{ planningFeedback }}
+        </div>
+      </div>
+
+      <div v-if="planningDiagnostics.length > 0" class="px-4 pb-2">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-amber-800">Planungsanalyse</h3>
+            <div class="flex flex-wrap gap-1">
+              <span
+                v-for="code in [...new Set(planningDiagnostics.map(entry => entry.code))]"
+                :key="code"
+                class="rounded-full bg-white px-2 py-0.5 text-[11px] text-amber-700"
+              >
+                {{ diagnosisLabels[code] }}: {{ planningDiagnostics.filter(entry => entry.code === code).length }}
+              </span>
+            </div>
+          </div>
+
+          <div class="mt-3 space-y-2">
+            <div
+              v-for="entry in planningDiagnostics.slice(0, 5)"
+              :key="entry.taskId"
+              class="rounded-lg bg-white px-3 py-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-gray-900">{{ entry.title }}</span>
+                <span class="rounded-full px-2 py-0.5 text-[11px]"
+                  :class="entry.severity === 'high'
+                    ? 'bg-red-100 text-red-700'
+                    : entry.severity === 'medium'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-gray-100 text-gray-600'"
+                >
+                  {{ entry.summary }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500">{{ entry.detail }}</p>
+            </div>
+          </div>
         </div>
       </div>
 

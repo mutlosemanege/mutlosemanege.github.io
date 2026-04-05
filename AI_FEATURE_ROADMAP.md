@@ -29,10 +29,10 @@ Rahmen:
 - [x] Risiken sichtbar machen: `passt kaum noch vor Deadline`, `blockiert andere Aufgaben`, `braucht Fokuszeit`
 
 ### 2. Auto-Planen erklaerbarer machen
-- [ ] Fuer nicht eingeplante Aufgaben konkrete Gruende anzeigen
-- [ ] Zwischen `kein Slot`, `Dependency blockiert`, `zu wenig Deep-Work-Fenster` und `Deadline unrealistisch` unterscheiden
-- [ ] Restaufgaben nach Schweregrad der Planungsprobleme sortieren
-- [ ] Feedback nach Auto-Planen in der Sidebar besser strukturieren
+- [x] Fuer nicht eingeplante Aufgaben konkrete Gruende anzeigen
+- [x] Zwischen `kein Slot`, `Dependency blockiert`, `zu wenig Deep-Work-Fenster` und `Deadline unrealistisch` unterscheiden
+- [x] Restaufgaben nach Schweregrad der Planungsprobleme sortieren
+- [x] Feedback nach Auto-Planen in der Sidebar besser strukturieren
 
 ### 3. Rescheduling weiter verbessern
 - [ ] Mehrere Rescheduling-Modi einfuehren
