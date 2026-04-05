@@ -12,21 +12,20 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, getPendingTasks, getUnscheduledTasks, updateTask, loadTasks } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks } = useScheduler()
-const { createEvent, fetchEvents } = useCalendar()
+const { createEvent, fetchEvents, deleteEvent } = useCalendar()
 const { preferences } = usePreferences()
 
 const showProjectGenerator = ref(false)
-const activeTab = ref<'tasks' | 'schedule'>('tasks')
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
   const all = tasks.value
   return {
     total: all.length,
-    todo: all.filter(t => t.status === 'todo').length,
+    todo: all.filter(t => t.status === 'todo' || t.status === 'missed').length,
     scheduled: all.filter(t => t.status === 'scheduled').length,
     done: all.filter(t => t.status === 'done').length,
     unscheduled: getUnscheduledTasks().length,
@@ -39,6 +38,8 @@ const priorityColors: Record<string, string> = {
   medium: 'bg-yellow-100 text-yellow-700',
   low: 'bg-green-100 text-green-700',
 }
+
+const priorityOptions: Task['priority'][] = ['critical', 'high', 'medium', 'low']
 
 // KI-Priorisierung
 async function handlePrioritize() {
@@ -91,12 +92,56 @@ async function handleAutoSchedule() {
   // Kalender neu laden
   const now = new Date()
   const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
   await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
 }
 
 async function markDone(task: Task) {
   await updateTask(task.id, { status: 'done' })
+}
+
+async function markMissed(task: Task) {
+  if (task.calendarEventId) {
+    await deleteEvent(task.calendarEventId)
+  }
+
+  await updateTask(task.id, {
+    status: 'missed',
+    scheduledStart: undefined,
+    scheduledEnd: undefined,
+    calendarEventId: undefined,
+  })
+}
+
+async function changePriority(task: Task, priority: Task['priority']) {
+  if (task.priority === priority) return
+  await updateTask(task.id, { priority })
+}
+
+const tasksByProject = computed(() => {
+  const groups = projects.value.map(project => ({
+    id: project.id,
+    name: project.name,
+    tasks: tasks.value.filter(task => task.projectId === project.id),
+  })).filter(group => group.tasks.length > 0)
+
+  const inboxTasks = tasks.value.filter(task => !task.projectId)
+  if (inboxTasks.length > 0) {
+    groups.unshift({
+      id: 'inbox',
+      name: 'Ohne Projekt',
+      tasks: inboxTasks,
+    })
+  }
+
+  return groups
+})
+
+function taskStatusLabel(task: Task) {
+  if (task.status === 'done') return 'Erledigt'
+  if (task.status === 'scheduled') return 'Eingeplant'
+  if (task.status === 'missed') return 'Neu planen'
+  return 'Offen'
 }
 </script>
 
@@ -180,49 +225,86 @@ async function markDone(task: Task) {
           <p class="text-xs text-gray-400 mt-1">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p>
         </div>
 
-        <div v-else class="space-y-2">
-          <div
-            v-for="task in tasks"
-            :key="task.id"
-            class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-            :class="{ 'opacity-50': task.status === 'done' }"
-            @click="emit('edit-task', task)"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
-                  <span
-                    class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    :class="priorityColors[task.priority]"
+        <div v-else class="space-y-4">
+          <section v-for="group in tasksByProject" :key="group.id" class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
+              <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
+            </div>
+
+            <div
+              v-for="task in group.tasks"
+              :key="task.id"
+              class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
+              :class="{ 'opacity-50': task.status === 'done' }"
+              @click="emit('edit-task', task)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
+                    <span
+                      class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                      :class="priorityColors[task.priority]"
+                    >
+                      {{ task.priority }}
+                    </span>
+                    <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      {{ taskStatusLabel(task) }}
+                    </span>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
+                    <span>{{ task.estimatedMinutes }} Min.</span>
+                    <span v-if="task.deadline">
+                      Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
+                    </span>
+                    <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
+                  </div>
+
+                  <div v-if="task.scheduledStart" class="mt-1 text-xs text-blue-500">
+                    Geplant: {{ new Date(task.scheduledStart).toLocaleDateString('de-DE') }}
+                    {{ new Date(task.scheduledStart).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                  </div>
+
+                  <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
+                    <button
+                      v-for="priorityOption in priorityOptions"
+                      :key="priorityOption"
+                      class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
+                      :class="task.priority === priorityOption
+                        ? 'border-primary-300 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                      @click="changePriority(task, priorityOption)"
+                    >
+                      {{ priorityOption }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-1" @click.stop>
+                  <button
+                    v-if="task.status === 'scheduled'"
+                    class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                    title="Nicht geschafft, neu einplanen"
+                    @click="markMissed(task)"
                   >
-                    {{ task.priority }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                  <span>{{ task.estimatedMinutes }} Min.</span>
-                  <span v-if="task.deadline">
-                    Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
-                  </span>
-                  <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
-                </div>
-                <div v-if="task.scheduledStart" class="mt-1 text-xs text-blue-500">
-                  Geplant: {{ new Date(task.scheduledStart).toLocaleDateString('de-DE') }}
-                  {{ new Date(task.scheduledStart).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                    Nicht geschafft
+                  </button>
+                  <button
+                    v-if="task.status !== 'done'"
+                    class="p-1 text-gray-400 hover:text-green-600 rounded"
+                    title="Als erledigt markieren"
+                    @click="markDone(task)"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </button>
                 </div>
               </div>
-              <button
-                v-if="task.status !== 'done'"
-                class="p-1 text-gray-400 hover:text-green-600 rounded"
-                title="Als erledigt markieren"
-                @click.stop="markDone(task)"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>

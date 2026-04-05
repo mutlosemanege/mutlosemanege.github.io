@@ -73,11 +73,11 @@ const emit = defineEmits<{
             <span class="hidden sm:inline">Aufgabe</span>
           </button>
 
-          <!-- Einstellungen -->
+          <!-- Planung -->
           <button
             v-if="isLoggedIn"
             class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Einstellungen"
+            title="Planung und Routinen"
             @click="emit('open-settings')"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

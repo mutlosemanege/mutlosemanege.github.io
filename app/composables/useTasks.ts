@@ -1,6 +1,6 @@
-import { get, set, del, keys, entries } from 'idb-keyval'
+import { get, set, del, keys } from 'idb-keyval'
 import { v4 as uuidv4 } from 'uuid'
-import type { Task, Project, TaskPriority, TaskStatus } from '~/types/task'
+import type { Task, Project } from '~/types/task'
 
 const tasks = ref<Task[]>([])
 const projects = ref<Project[]>([])
@@ -10,6 +10,30 @@ const TASK_PREFIX = 'task:'
 const PROJECT_PREFIX = 'project:'
 
 export function useTasks() {
+  async function attachTaskToProject(projectId: string | undefined, taskId: string) {
+    if (!projectId) return
+    const project = await get<Project>(`${PROJECT_PREFIX}${projectId}`)
+    if (!project || project.taskIds.includes(taskId)) return
+
+    await set(`${PROJECT_PREFIX}${projectId}`, {
+      ...project,
+      taskIds: [...project.taskIds, taskId],
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  async function detachTaskFromProject(projectId: string | undefined, taskId: string) {
+    if (!projectId) return
+    const project = await get<Project>(`${PROJECT_PREFIX}${projectId}`)
+    if (!project || !project.taskIds.includes(taskId)) return
+
+    await set(`${PROJECT_PREFIX}${projectId}`, {
+      ...project,
+      taskIds: project.taskIds.filter(id => id !== taskId),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
   // --- Task CRUD ---
 
   async function loadTasks() {
@@ -40,6 +64,8 @@ export function useTasks() {
       updatedAt: now,
     }
     await set(`${TASK_PREFIX}${task.id}`, task)
+    await attachTaskToProject(task.projectId, task.id)
+    await loadProjects()
     await loadTasks()
     return task
   }
@@ -54,6 +80,11 @@ export function useTasks() {
       updatedAt: new Date().toISOString(),
     }
     await set(`${TASK_PREFIX}${id}`, updated)
+    if (existing.projectId !== updated.projectId) {
+      await detachTaskFromProject(existing.projectId, id)
+      await attachTaskToProject(updated.projectId, id)
+      await loadProjects()
+    }
     await loadTasks()
     return updated
   }
@@ -141,7 +172,10 @@ export function useTasks() {
   }
 
   function getUnscheduledTasks(): Task[] {
-    return tasks.value.filter(t => t.status === 'todo' && !t.scheduledStart)
+    return tasks.value.filter(t =>
+      (t.status === 'todo' || t.status === 'missed') &&
+      !t.scheduledStart
+    )
   }
 
   function getScheduledTasks(): Task[] {

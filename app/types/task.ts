@@ -17,7 +17,7 @@ export interface Task {
 }
 
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
-export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done'
+export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done' | 'missed'
 
 export interface Project {
   id: string

@@ -100,7 +100,10 @@ function handleReset() {
 
         <!-- Modal -->
         <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-          <h2 class="text-lg font-semibold text-gray-900">Einstellungen</h2>
+          <h2 class="text-lg font-semibold text-gray-900">Planung und Routinen</h2>
+          <p class="text-sm text-gray-500">
+            Lege hier fest, wann du normalerweise arbeitest und welche Zeiten der Planer frei halten soll.
+          </p>
 
           <!-- Arbeitszeiten -->
           <div>

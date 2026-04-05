@@ -14,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const isEditing = computed(() => !!props.task?.id)
+const { projects, tasks } = useTasks()
 
 const title = ref('')
 const description = ref('')
@@ -21,6 +22,8 @@ const estimatedMinutes = ref(30)
 const deadline = ref('')
 const priority = ref<TaskPriority>('medium')
 const isDeepWork = ref(false)
+const projectId = ref('')
+const dependencies = ref<string[]>([])
 
 const priorityOptions: { value: TaskPriority; label: string; color: string }[] = [
   { value: 'critical', label: 'Kritisch', color: 'text-red-600' },
@@ -49,6 +52,8 @@ watch(() => props.show, (val) => {
     deadline.value = props.task.deadline ? props.task.deadline.slice(0, 10) : ''
     priority.value = props.task.priority
     isDeepWork.value = props.task.isDeepWork
+    projectId.value = props.task.projectId || ''
+    dependencies.value = [...props.task.dependencies]
   } else {
     title.value = ''
     description.value = ''
@@ -56,8 +61,23 @@ watch(() => props.show, (val) => {
     deadline.value = props.defaultDate || ''
     priority.value = 'medium'
     isDeepWork.value = false
+    projectId.value = ''
+    dependencies.value = []
   }
 })
+
+const availableDependencies = computed(() =>
+  tasks.value.filter(task => task.id !== props.task?.id)
+)
+
+function toggleDependency(taskId: string) {
+  if (dependencies.value.includes(taskId)) {
+    dependencies.value = dependencies.value.filter(id => id !== taskId)
+    return
+  }
+
+  dependencies.value = [...dependencies.value, taskId]
+}
 
 function handleSave() {
   if (!title.value.trim()) return
@@ -69,8 +89,8 @@ function handleSave() {
     deadline: deadline.value ? new Date(`${deadline.value}T23:59:59`).toISOString() : undefined,
     priority: priority.value,
     status: props.task?.status || 'todo',
-    projectId: props.task?.projectId,
-    dependencies: props.task?.dependencies || [],
+    projectId: projectId.value || undefined,
+    dependencies: dependencies.value,
     scheduledStart: props.task?.scheduledStart,
     scheduledEnd: props.task?.scheduledEnd,
     calendarEventId: props.task?.calendarEventId,
@@ -156,6 +176,38 @@ function handleDelete() {
                 type="date"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               >
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Projekt</label>
+              <select
+                v-model="projectId"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option value="">Kein Projekt</option>
+                <option v-for="project in projects" :key="project.id" :value="project.id">
+                  {{ project.name }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="availableDependencies.length > 0">
+              <label class="block text-sm font-medium text-gray-700 mb-2">Abhaengigkeiten</label>
+              <div class="max-h-32 overflow-y-auto space-y-1.5 rounded-lg border border-gray-200 p-2">
+                <label
+                  v-for="task in availableDependencies"
+                  :key="task.id"
+                  class="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1 hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="dependencies.includes(task.id)"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    @change="toggleDependency(task.id)"
+                  >
+                  <span class="text-sm text-gray-700">{{ task.title }}</span>
+                </label>
+              </div>
             </div>
 
             <!-- Deep Work Toggle -->

@@ -99,10 +99,12 @@ export function useScheduler() {
         const slotStart = new Date(cursor)
         const slotEnd = new Date(busy.start)
         if (slotEnd.getTime() - slotStart.getTime() >= 15 * 60 * 1000) { // Min. 15 Min.
+          const slotDurationMinutes = (slotEnd.getTime() - slotStart.getTime()) / 60000
           freeSlots.push({
             start: slotStart,
             end: slotEnd,
-            isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork),
+            isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork) &&
+              slotDurationMinutes >= prefs.minDeepWorkBlockMinutes,
           })
         }
       }
@@ -114,10 +116,12 @@ export function useScheduler() {
       const slotStart = new Date(cursor)
       const slotEnd = new Date(dayEnd)
       if (slotEnd.getTime() - slotStart.getTime() >= 15 * 60 * 1000) {
+        const slotDurationMinutes = (slotEnd.getTime() - slotStart.getTime()) / 60000
         freeSlots.push({
           start: slotStart,
           end: slotEnd,
-          isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork),
+          isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork) &&
+            slotDurationMinutes >= prefs.minDeepWorkBlockMinutes,
         })
       }
     }
@@ -158,71 +162,52 @@ export function useScheduler() {
       return aDeadline - bDeadline
     })
 
-    // Planungszeitraum: ab jetzt, 14 Tage voraus
+    // Planungszeitraum: ab jetzt, bis zur spaetesten Deadline oder max. 90 Tage
     const now = new Date()
-    const planEnd = new Date(now)
-    planEnd.setDate(planEnd.getDate() + 14)
+    const latestDeadline = sorted.reduce<number>((max, task) => {
+      if (!task.deadline) return max
+      return Math.max(max, new Date(task.deadline).getTime())
+    }, now.getTime())
+
+    const planEnd = new Date(Math.max(
+      latestDeadline + 7 * 24 * 60 * 60 * 1000,
+      now.getTime() + 21 * 24 * 60 * 60 * 1000,
+    ))
+    const maxEnd = new Date(now)
+    maxEnd.setDate(maxEnd.getDate() + 90)
+    if (planEnd > maxEnd) {
+      planEnd.setTime(maxEnd.getTime())
+    }
 
     // Alle freien Slots finden
     let freeSlots = findFreeSlots(now, planEnd, existingEvents, prefs)
+    let madeProgress = true
 
-    // Bereits eingeplante Tasks als "belegt" beruecksichtigen
-    const virtualBusy: CalendarEvent[] = [...existingEvents]
+    while (madeProgress) {
+      madeProgress = false
 
-    for (const task of sorted) {
-      if (task.status === 'done') continue
+      for (const task of sorted) {
+        if (result.has(task.id) || task.status === 'done') continue
 
-      // Dependencies pruefen: alle Abhaengigkeiten muessen eingeplant sein
-      if (task.dependencies.length > 0) {
         const allDepsScheduled = task.dependencies.every(depId => result.has(depId))
-        if (!allDepsScheduled) continue // Spaeter nochmal versuchen
-      }
+        if (!allDepsScheduled) continue
 
-      const durationMs = task.estimatedMinutes * 60 * 1000
+        const durationMs = task.estimatedMinutes * 60 * 1000
+        let earliestStart = now
 
-      // Frueheste Startzeit (nach Dependencies)
-      let earliestStart = now
-      for (const depId of task.dependencies) {
-        const depSlot = result.get(depId)
-        if (depSlot && depSlot.end > earliestStart) {
-          earliestStart = depSlot.end
+        for (const depId of task.dependencies) {
+          const depSlot = result.get(depId)
+          if (depSlot && depSlot.end > earliestStart) {
+            earliestStart = depSlot.end
+          }
         }
-      }
 
-      // Passenden Slot finden
-      const slot = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs)
-      if (slot) {
-        const scheduledStart = new Date(slot.start)
-        const scheduledEnd = new Date(scheduledStart.getTime() + durationMs)
-        result.set(task.id, { start: scheduledStart, end: scheduledEnd })
+        const booking = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart)
+        if (!booking) continue
 
-        // Slot aufteilen (verbleibender Rest bleibt frei)
-        freeSlots = splitSlotAfterBooking(freeSlots, slot, scheduledStart, scheduledEnd)
-      }
-    }
-
-    // Zweiter Durchlauf fuer Tasks die wegen Dependencies uebersprungen wurden
-    for (const task of sorted) {
-      if (result.has(task.id) || task.status === 'done') continue
-
-      const allDepsScheduled = task.dependencies.every(depId => result.has(depId))
-      if (!allDepsScheduled) continue
-
-      const durationMs = task.estimatedMinutes * 60 * 1000
-      let earliestStart = now
-      for (const depId of task.dependencies) {
-        const depSlot = result.get(depId)
-        if (depSlot && depSlot.end > earliestStart) {
-          earliestStart = depSlot.end
-        }
-      }
-
-      const slot = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs)
-      if (slot) {
-        const scheduledStart = new Date(slot.start)
-        const scheduledEnd = new Date(scheduledStart.getTime() + durationMs)
-        result.set(task.id, { start: scheduledStart, end: scheduledEnd })
-        freeSlots = splitSlotAfterBooking(freeSlots, slot, scheduledStart, scheduledEnd)
+        result.set(task.id, { start: booking.start, end: booking.end })
+        freeSlots = splitSlotAfterBooking(freeSlots, booking.slot, booking.start, booking.end)
+        madeProgress = true
       }
     }
 
@@ -237,8 +222,7 @@ export function useScheduler() {
     durationMs: number,
     needsDeepWork: boolean,
     earliestStart: Date,
-    prefs: ReadonlyUserPreferences,
-  ): TimeSlot | null {
+  ): { slot: TimeSlot; start: Date; end: Date } | null {
     for (const slot of slots) {
       // Slot muss nach earliestStart beginnen
       const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
@@ -252,14 +236,24 @@ export function useScheduler() {
       // Nicht-Deep-Work-Tasks NICHT in Deep-Work-Slots (schuetzt Fokuszeit)
       if (!needsDeepWork && slot.isDeepWork) continue
 
-      return slot
+      return {
+        slot,
+        start: effectiveStart,
+        end: new Date(effectiveStart.getTime() + durationMs),
+      }
     }
 
     // Fallback: Wenn kein passender Slot, auch "falsche" Slots akzeptieren
     for (const slot of slots) {
       const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
       const availableMs = slot.end.getTime() - effectiveStart.getTime()
-      if (availableMs >= durationMs) return slot
+      if (availableMs >= durationMs) {
+        return {
+          slot,
+          start: effectiveStart,
+          end: new Date(effectiveStart.getTime() + durationMs),
+        }
+      }
     }
 
     return null

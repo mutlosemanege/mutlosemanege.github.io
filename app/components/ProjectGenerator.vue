@@ -15,6 +15,7 @@ const { createProject, createTask } = useTasks()
 
 const description = ref('')
 const deadline = ref('')
+const projectType = ref('allgemein')
 const step = ref<'input' | 'review' | 'done'>('input')
 
 interface PreviewTask {
@@ -36,6 +37,7 @@ watch(() => props.show, (val) => {
   if (!val) return
   description.value = ''
   deadline.value = ''
+  projectType.value = 'allgemein'
   step.value = 'input'
   projectName.value = ''
   previewTasks.value = []
@@ -44,8 +46,12 @@ watch(() => props.show, (val) => {
 async function handleGenerate() {
   if (!description.value.trim()) return
 
+  const promptDescription = projectType.value === 'allgemein'
+    ? description.value.trim()
+    : `Projekttyp: ${projectType.value}\n${description.value.trim()}`
+
   const result = await generateProject(
-    description.value.trim(),
+    promptDescription,
     deadline.value || undefined,
   )
 
@@ -128,12 +134,28 @@ const totalHours = computed(() => Math.round(totalMinutes.value / 60 * 10) / 10)
 
             <div class="space-y-3">
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Projekttyp</label>
+                <select
+                  v-model="projectType"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option value="allgemein">Allgemein</option>
+                  <option value="programmierung">Programmierung</option>
+                  <option value="videoschnitt">Videoschnitt</option>
+                  <option value="content">Content</option>
+                  <option value="lernen">Lernen</option>
+                  <option value="privat">Privat</option>
+                  <option value="organisation">Organisation</option>
+                </select>
+              </div>
+
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Projektbeschreibung</label>
                 <textarea
                   v-model="description"
                   rows="4"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
-                  placeholder="z.B. Website Redesign mit 5 Unterseiten, Responsive Design und SEO-Optimierung..."
+                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Pruefung vorbereiten oder Website relaunchen..."
                 />
               </div>
 
