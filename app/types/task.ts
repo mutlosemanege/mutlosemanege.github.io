@@ -56,6 +56,7 @@ export interface UserPreferences {
   workEndHour: number
   deepWorkWindows: readonly DeepWorkWindow[]
   minDeepWorkBlockMinutes: number
+  taskBufferMinutes: number
   lunchStartHour: number
   lunchEndHour: number
   deadlineWarningDays: number
@@ -74,6 +75,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     { day: 5, startHour: 9, endHour: 12 },
   ],
   minDeepWorkBlockMinutes: 90,
+  taskBufferMinutes: 15,
   lunchStartHour: 12,
   lunchEndHour: 13,
   deadlineWarningDays: 3,

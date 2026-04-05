@@ -29,6 +29,7 @@ const form = reactive({
   lunchStartHour: 12,
   lunchEndHour: 13,
   minDeepWorkBlockMinutes: 90,
+  taskBufferMinutes: 15,
   deadlineWarningDays: 3,
   workDays: [1, 2, 3, 4, 5] as number[],
   deepWorkWindows: [] as DeepWorkWindow[],
@@ -53,6 +54,7 @@ watch(() => props.show, (val) => {
   form.lunchStartHour = p.lunchStartHour
   form.lunchEndHour = p.lunchEndHour
   form.minDeepWorkBlockMinutes = p.minDeepWorkBlockMinutes
+  form.taskBufferMinutes = p.taskBufferMinutes
   form.deadlineWarningDays = p.deadlineWarningDays
   form.workDays = [...p.workDays]
   form.deepWorkWindows = p.deepWorkWindows.map(w => ({ ...w }))
@@ -204,6 +206,7 @@ function handleSave() {
     lunchStartHour: form.lunchStartHour,
     lunchEndHour: form.lunchEndHour,
     minDeepWorkBlockMinutes: form.minDeepWorkBlockMinutes,
+    taskBufferMinutes: form.taskBufferMinutes,
     deadlineWarningDays: form.deadlineWarningDays,
     workDays: [...form.workDays],
     deepWorkWindows: form.deepWorkWindows.map(w => ({ ...w })),
@@ -371,6 +374,22 @@ function handleReset() {
               </select>
             </div>
             <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Puffer zwischen Aufgaben</label>
+              <select
+                v-model.number="form.taskBufferMinutes"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option :value="0">Kein Puffer</option>
+                <option :value="10">10 Min.</option>
+                <option :value="15">15 Min.</option>
+                <option :value="20">20 Min.</option>
+                <option :value="30">30 Min.</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Deadline-Warnung</label>
               <select
                 v-model.number="form.deadlineWarningDays"
@@ -383,6 +402,7 @@ function handleReset() {
                 <option :value="7">7 Tage vorher</option>
               </select>
             </div>
+            <div />
           </div>
 
           <div class="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-4">

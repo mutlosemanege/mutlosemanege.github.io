@@ -57,6 +57,7 @@ export function useScheduler() {
     existingEvents: readonly CalendarEvent[],
     prefs: UserPreferences,
   ): TimeSlot[] {
+    const bufferMs = prefs.taskBufferMinutes * 60 * 1000
     const dayStart = new Date(day)
     dayStart.setHours(prefs.workStartHour, 0, 0, 0)
 
@@ -82,8 +83,8 @@ export function useScheduler() {
       // Nur Events die an diesem Tag liegen
       if (eventEnd > dayStart && eventStart < dayEnd) {
         busyPeriods.push({
-          start: new Date(Math.max(eventStart.getTime(), dayStart.getTime())),
-          end: new Date(Math.min(eventEnd.getTime(), dayEnd.getTime())),
+          start: new Date(Math.max(eventStart.getTime() - bufferMs, dayStart.getTime())),
+          end: new Date(Math.min(eventEnd.getTime() + bufferMs, dayEnd.getTime())),
         })
       }
     }
@@ -160,7 +161,12 @@ export function useScheduler() {
       const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
       if (pDiff !== 0) return pDiff
 
-      // Bei gleicher Prioritaet: fruehere Deadline zuerst
+      // Bei gleicher Prioritaet: hoehster Deadline-Druck zuerst
+      const aPressure = getDeadlinePressureScore(a)
+      const bPressure = getDeadlinePressureScore(b)
+      if (aPressure !== bPressure) return bPressure - aPressure
+
+      // Danach fruehere Deadline zuerst
       const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
       const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
       return aDeadline - bDeadline
@@ -207,7 +213,7 @@ export function useScheduler() {
           }
         }
 
-        const allocation = allocateTaskAcrossSlots(freeSlots, durationMs, task.isDeepWork, earliestStart)
+        const allocation = allocateTaskAcrossSlots(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs.taskBufferMinutes)
         if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
         result.set(task.id, { blocks: allocation.blocks })
@@ -269,6 +275,7 @@ export function useScheduler() {
     durationMs: number,
     needsDeepWork: boolean,
     earliestStart: Date,
+    bufferMinutes: number,
   ): {
     blocks: Array<{ start: Date; end: Date }>
     remainingSlots: TimeSlot[]
@@ -297,11 +304,12 @@ export function useScheduler() {
 
         const bookedMs = Math.min(remainingMs, availableMs)
         const bookEnd = new Date(effectiveStart.getTime() + bookedMs)
+        const slotRelease = new Date(bookEnd.getTime() + bufferMinutes * 60 * 1000)
 
         blocks.push({ start: effectiveStart, end: bookEnd })
-        workingSlots = splitSlotAfterBooking(workingSlots, slot, effectiveStart, bookEnd)
+        workingSlots = splitSlotAfterBooking(workingSlots, slot, effectiveStart, slotRelease)
         remainingMs -= bookedMs
-        currentEarliest = bookEnd
+        currentEarliest = slotRelease
       }
     }
 
@@ -345,6 +353,18 @@ export function useScheduler() {
 
       return aEffectiveStart - bEffectiveStart
     })
+  }
+
+  function getDeadlinePressureScore(task: Task): number {
+    if (!task.deadline) return 0
+
+    const deadlineMs = new Date(task.deadline).getTime()
+    const nowMs = Date.now()
+    const remainingMs = Math.max(deadlineMs - nowMs, 60 * 60 * 1000)
+    const remainingHours = remainingMs / (60 * 60 * 1000)
+    const taskHours = Math.max(task.estimatedMinutes / 60, 0.25)
+
+    return taskHours / remainingHours
   }
 
   /**
