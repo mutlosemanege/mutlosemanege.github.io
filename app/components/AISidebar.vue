@@ -77,6 +77,13 @@ interface SchedulingDiagnosis {
   detail: string
 }
 
+interface SlotAlternative {
+  start: string
+  end: string
+  label: string
+  detail: string
+}
+
 type RescheduleMode = 'same-time' | 'today' | 'next' | 'redistribute'
 
 interface DecisionTransparency {
@@ -96,8 +103,10 @@ interface PlanVariantPreview {
 }
 
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
+const schedulingAlternatives = ref<Record<string, SlotAlternative[]>>({})
 const planVariants = ref<PlanVariantPreview[]>([])
 const applyingVariantStyle = ref<PlanningStyle | null>(null)
+const applyingAlternativeTaskId = ref<string | null>(null)
 const rescheduleTask = ref<Task | null>(null)
 const selectedRescheduleMode = ref<RescheduleMode>('same-time')
 const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
@@ -242,32 +251,27 @@ async function handleAutoSchedule() {
 
   planningFeedback.value = null
   planningDiagnostics.value = []
+  schedulingAlternatives.value = {}
   planVariants.value = []
   decisionTransparency.value = null
 
   const currentEvents = await refreshCalendarEvents()
   const schedule = await applyScheduleForTasks(unscheduled, currentEvents)
+  const updatedEvents = [...calendarEvents.value]
+  const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
+  await refreshSchedulingInsights(schedule, remainingTasks, updatedEvents)
 
   const scheduledCount = schedule.size
-  const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
   const unscheduledCount = remainingTasks.length
-  const scheduleEvents = buildScheduleEvents(schedule, unscheduled)
-  const diagnostics = remainingTasks
-    .map(task => diagnoseSchedulingIssue(task, [...currentEvents, ...scheduleEvents]))
-    .sort(sortSchedulingDiagnosis)
-
-  planningDiagnostics.value = diagnostics
-  decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, remainingTasks, diagnostics)
-  await evaluatePlanVariants(remainingTasks, [...currentEvents, ...scheduleEvents])
 
   if (scheduledCount === 0) {
-    const topReasons = diagnostics.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
+    const topReasons = planningDiagnostics.value.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
     planningFeedback.value = `Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.${topReasons ? ` Hauptgruende: ${topReasons}` : ''}`
     return
   }
 
   if (unscheduledCount > 0) {
-    const remainingTitles = diagnostics
+    const remainingTitles = planningDiagnostics.value
       .slice(0, 3)
       .map(entry => `${entry.title} (${entry.summary})`)
       .join(', ')
@@ -323,6 +327,7 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   const previousStart = task.scheduledStart
   recordTaskMiss(previousStart ? new Date(previousStart) : new Date())
   decisionTransparency.value = null
+  schedulingAlternatives.value = {}
   planVariants.value = []
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
 
@@ -452,6 +457,21 @@ function buildVariantHighlight(
   }
 }
 
+async function refreshSchedulingInsights(
+  schedule: Map<string, ScheduledTaskPlan>,
+  remainingTasks: readonly Task[],
+  existingEvents: readonly CalendarEvent[],
+) {
+  const diagnostics = remainingTasks
+    .map(task => diagnoseSchedulingIssue(task, existingEvents))
+    .sort(sortSchedulingDiagnosis)
+
+  planningDiagnostics.value = diagnostics
+  decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, [...remainingTasks], diagnostics)
+  schedulingAlternatives.value = buildSchedulingAlternativesMap(remainingTasks, existingEvents)
+  await evaluatePlanVariants(remainingTasks, existingEvents)
+}
+
 async function applyPlanVariant(style: PlanningStyle) {
   const unscheduled = getUnscheduledTasks()
   if (unscheduled.length === 0) return
@@ -459,22 +479,17 @@ async function applyPlanVariant(style: PlanningStyle) {
   applyingVariantStyle.value = style
   planningFeedback.value = null
   planningDiagnostics.value = []
+  schedulingAlternatives.value = {}
   decisionTransparency.value = null
 
   try {
     const variant = planVariantOptions.find(option => option.style === style)
     const currentEvents = await refreshCalendarEvents()
     const schedule = await applyScheduleForTasks(unscheduled, currentEvents, {}, buildPreferencesForStyle(style))
-    const scheduledCount = schedule.size
     const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
-    const scheduleEvents = buildScheduleEvents(schedule, unscheduled)
-    const diagnostics = remainingTasks
-      .map(task => diagnoseSchedulingIssue(task, [...currentEvents, ...scheduleEvents]))
-      .sort(sortSchedulingDiagnosis)
-
-    planningDiagnostics.value = diagnostics
-    decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, remainingTasks, diagnostics)
-    await evaluatePlanVariants(remainingTasks, [...currentEvents, ...scheduleEvents])
+    const updatedEvents = [...calendarEvents.value]
+    await refreshSchedulingInsights(schedule, remainingTasks, updatedEvents)
+    const scheduledCount = schedule.size
 
     if (scheduledCount === 0) {
       planningFeedback.value = `${variant?.label || style} konnte aktuell keine weiteren Aufgaben einplanen.`
@@ -495,6 +510,127 @@ async function applyPlanVariant(style: PlanningStyle) {
 function isRecommendedPlanVariant(style: PlanningStyle) {
   const best = planVariants.value[0]
   return best?.style === style && best.scheduledCount > 0
+}
+
+function buildSchedulingAlternativesMap(
+  sourceTasks: readonly Task[],
+  existingEvents: readonly CalendarEvent[],
+) {
+  const alternatives: Record<string, SlotAlternative[]> = {}
+
+  for (const task of sourceTasks) {
+    const slots = suggestAlternativeSlots(task, existingEvents)
+    if (slots.length > 0) {
+      alternatives[task.id] = slots
+    }
+  }
+
+  return alternatives
+}
+
+function suggestAlternativeSlots(task: Task, existingEvents: readonly CalendarEvent[]) {
+  if (getBlockingDependency(task)) {
+    return []
+  }
+
+  const earliestReadyAt = getEarliestReadyAt(task)
+  const deadline = task.deadline ? new Date(task.deadline) : undefined
+  const searchEnd = deadline
+    ? addDays(deadline, 7)
+    : addDays(earliestReadyAt, 14)
+
+  const viableSlots = findFreeSlots(earliestReadyAt, searchEnd, existingEvents, preferences.value)
+    .filter(slot => !task.isDeepWork || slot.isDeepWork)
+    .map(slot => {
+      const start = new Date(Math.max(slot.start.getTime(), earliestReadyAt.getTime()))
+      const end = new Date(start.getTime() + task.estimatedMinutes * 60000)
+      return {
+        start,
+        end,
+        fits: end <= slot.end,
+      }
+    })
+    .filter(slot => slot.fits)
+    .slice(0, 2)
+
+  return viableSlots.map(slot => ({
+    start: slot.start.toISOString(),
+    end: slot.end.toISOString(),
+    label: formatAlternativeSlotLabel(slot.start, slot.end),
+    detail: deadline && slot.end > deadline
+      ? 'Wuerde erst nach der aktuellen Deadline stattfinden.'
+      : task.isDeepWork
+        ? 'Passt in ein freies Fokusfenster.'
+        : 'Naechster freier Block ohne Kollision.',
+  }))
+}
+
+function formatAlternativeSlotLabel(start: Date, end: Date) {
+  const sameDay = start.toDateString() === end.toDateString()
+  const dateLabel = start.toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  })
+  const startLabel = start.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const endLabel = end.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  if (sameDay) {
+    return `${dateLabel}, ${startLabel} - ${endLabel}`
+  }
+
+  return `${dateLabel}, ${startLabel} bis ${endLabel}`
+}
+
+async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative) {
+  const task = tasks.value.find(entry => entry.id === taskId)
+  if (!task) return
+
+  applyingAlternativeTaskId.value = taskId
+  planningFeedback.value = null
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const createdEvent = await createEvent({
+      summary: task.title,
+      description: `[KALENDER-AI-TASK:${task.id}]\n${task.description || ''}`,
+      start: { dateTime: alternative.start, timeZone: tz },
+      end: { dateTime: alternative.end, timeZone: tz },
+      colorId: task.isDeepWork ? '3' : '9',
+    })
+
+    if (!createdEvent?.id) {
+      throw new Error('Kalendereintrag konnte nicht erstellt werden.')
+    }
+
+    await updateTask(task.id, {
+      status: 'scheduled',
+      scheduleBlocks: [{
+        start: alternative.start,
+        end: alternative.end,
+        calendarEventId: createdEvent.id,
+      }],
+      scheduledStart: alternative.start,
+      scheduledEnd: alternative.end,
+      calendarEventId: createdEvent.id,
+    })
+
+    const updatedEvents = await refreshCalendarEvents()
+    const remainingTasks = getUnscheduledTasks()
+    await refreshSchedulingInsights(new Map(), remainingTasks, updatedEvents)
+    planningFeedback.value = `"${task.title}" wurde auf ${alternative.label} eingeplant.`
+  } catch (error) {
+    console.error(`Fehler beim Anwenden eines Alternativ-Slots fuer "${task.title}":`, error)
+    planningFeedback.value = `"${task.title}" konnte nicht auf den vorgeschlagenen Slot eingeplant werden.`
+  } finally {
+    applyingAlternativeTaskId.value = null
+  }
 }
 
 const priorityInsights = computed(() => {
@@ -1371,6 +1507,28 @@ async function restoreArchivedProject(groupId: string) {
                 </span>
               </div>
               <p class="mt-1 text-xs text-gray-500">{{ entry.detail }}</p>
+
+              <div v-if="schedulingAlternatives[entry.taskId]?.length" class="mt-3 space-y-2">
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Direkte Alternativen</div>
+                <div class="space-y-2">
+                  <button
+                    v-for="alternative in schedulingAlternatives[entry.taskId]"
+                    :key="`${entry.taskId}-${alternative.start}`"
+                    type="button"
+                    class="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="applyingAlternativeTaskId === entry.taskId"
+                    @click="applyAlternativeSlot(entry.taskId, alternative)"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-xs font-medium text-emerald-900">{{ alternative.label }}</span>
+                      <span class="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-emerald-700">
+                        Diesen Slot nehmen
+                      </span>
+                    </div>
+                    <p class="mt-1 text-[11px] text-emerald-800">{{ alternative.detail }}</p>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
