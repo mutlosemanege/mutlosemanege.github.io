@@ -530,21 +530,26 @@ async function removeProject(groupId: string) {
   const confirmed = window.confirm(`Projekt "${projectGroup.name}" wirklich loeschen? Alle zugehoerigen Aufgaben und geplanten Kalendereintraege werden entfernt.`)
   if (!confirmed) return
 
-  for (const task of projectGroup.tasks) {
-    const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
-    if (calendarIds.length > 0) {
-      for (const calendarId of calendarIds) {
-        await deleteEvent(calendarId!)
+  try {
+    for (const task of projectGroup.tasks) {
+      const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+      if (calendarIds.length > 0) {
+        for (const calendarId of calendarIds) {
+          await deleteEvent(calendarId!)
+        }
+      } else if (task.calendarEventId) {
+        await deleteEvent(task.calendarEventId)
       }
-    } else if (task.calendarEventId) {
-      await deleteEvent(task.calendarEventId)
+      await deleteTask(task.id)
     }
-    await deleteTask(task.id)
-  }
 
-  await deleteProject(groupId)
-  await refreshCalendarEvents()
-  planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
+    await deleteProject(groupId)
+    await refreshCalendarEvents()
+    planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
+  } catch (error) {
+    console.error(`Fehler beim Loeschen des Projekts "${projectGroup.name}":`, error)
+    planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht geloescht werden.`
+  }
 }
 </script>
 
@@ -655,13 +660,14 @@ async function removeProject(groupId: string) {
 
         <div v-else-if="filteredTaskGroups.length > 0" class="space-y-4">
           <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
-            <button
-              class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-gray-50"
-              @click="toggleGroup(group.id)"
-            >
-              <div class="flex items-center gap-2">
+            <div class="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-50">
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                @click="toggleGroup(group.id)"
+              >
                 <svg
-                  class="h-4 w-4 text-gray-400 transition-transform"
+                  class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform"
                   :class="{ 'rotate-90': !isGroupCollapsed(group.id) }"
                   fill="none"
                   stroke="currentColor"
@@ -669,19 +675,20 @@ async function removeProject(groupId: string) {
                 >
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
-              </div>
+                <h3 class="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
+              </button>
               <div class="flex items-center gap-2">
                 <button
                   v-if="group.id !== 'inbox'"
+                  type="button"
                   class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
-                  @click.stop="removeProject(group.id)"
+                  @click="removeProject(group.id)"
                 >
                   Projekt loeschen
                 </button>
                 <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
               </div>
-            </button>
+            </div>
 
             <div v-if="!isGroupCollapsed(group.id)" class="space-y-2">
               <div
