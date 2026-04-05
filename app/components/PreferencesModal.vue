@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { DeepWorkWindow } from '~/types/task'
+import { v4 as uuidv4 } from 'uuid'
+import type { DeepWorkWindow, RoutineTemplate } from '~/types/task'
 
 const props = defineProps<{
   show: boolean
@@ -9,7 +10,12 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { preferences, updatePreferences, setDeepWorkWindow, removeDeepWorkWindow, resetPreferences } = usePreferences()
+const {
+  preferences,
+  updatePreferences,
+  resetPreferences,
+} = usePreferences()
+const { createEvent, fetchEvents } = useCalendar()
 
 const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
@@ -24,7 +30,18 @@ const form = reactive({
   deadlineWarningDays: 3,
   workDays: [1, 2, 3, 4, 5] as number[],
   deepWorkWindows: [] as DeepWorkWindow[],
+  routineTemplates: [] as RoutineTemplate[],
 })
+
+const routineDraft = reactive({
+  title: '',
+  day: 1,
+  startHour: 9,
+  endHour: 10,
+  description: '',
+})
+const isApplyingRoutines = ref(false)
+const routineFeedback = ref<string | null>(null)
 
 watch(() => props.show, (val) => {
   if (!val) return
@@ -37,6 +54,8 @@ watch(() => props.show, (val) => {
   form.deadlineWarningDays = p.deadlineWarningDays
   form.workDays = [...p.workDays]
   form.deepWorkWindows = p.deepWorkWindows.map(w => ({ ...w }))
+  form.routineTemplates = p.routineTemplates.map(r => ({ ...r }))
+  routineFeedback.value = null
 })
 
 function toggleWorkDay(day: number) {
@@ -71,6 +90,88 @@ function updateDeepWorkHour(day: number, field: 'startHour' | 'endHour', value: 
   if (w) w[field] = value
 }
 
+function addRoutine() {
+  if (!routineDraft.title.trim() || routineDraft.startHour >= routineDraft.endHour) return
+
+  form.routineTemplates.push({
+    id: uuidv4(),
+    title: routineDraft.title.trim(),
+    day: routineDraft.day,
+    startHour: routineDraft.startHour,
+    endHour: routineDraft.endHour,
+    description: routineDraft.description.trim() || undefined,
+  })
+
+  routineDraft.title = ''
+  routineDraft.day = 1
+  routineDraft.startHour = form.workStartHour
+  routineDraft.endHour = Math.min(form.workStartHour + 1, form.workEndHour)
+  routineDraft.description = ''
+}
+
+function updateRoutineHour(id: string, field: 'startHour' | 'endHour', value: number) {
+  const routine = form.routineTemplates.find(entry => entry.id === id)
+  if (routine) {
+    routine[field] = value
+  }
+}
+
+async function applyRoutineTemplates() {
+  if (form.routineTemplates.length === 0) {
+    routineFeedback.value = 'Lege zuerst mindestens eine Routine an.'
+    return
+  }
+
+  isApplyingRoutines.value = true
+  routineFeedback.value = null
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const createdEvents: string[] = []
+    const now = new Date()
+
+    for (const routine of form.routineTemplates) {
+      for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+        const date = nextDateForWeekday(routine.day, weekOffset, now)
+        const start = new Date(date)
+        start.setHours(routine.startHour, 0, 0, 0)
+        const end = new Date(date)
+        end.setHours(routine.endHour, 0, 0, 0)
+
+        const created = await createEvent({
+          summary: routine.title,
+          description: routine.description,
+          start: { dateTime: start.toISOString(), timeZone: tz },
+          end: { dateTime: end.toISOString(), timeZone: tz },
+        })
+
+        if (created?.id) {
+          createdEvents.push(created.id)
+        }
+      }
+    }
+
+    const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
+    await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+    routineFeedback.value = `${createdEvents.length} Routinen wurden in den Kalender eingetragen.`
+  } catch (error: any) {
+    routineFeedback.value = error.message || 'Routinen konnten nicht eingetragen werden.'
+  } finally {
+    isApplyingRoutines.value = false
+  }
+}
+
+function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
+  const base = new Date(from)
+  base.setHours(0, 0, 0, 0)
+  const currentDay = base.getDay()
+  let diff = day - currentDay
+  if (diff < 0) diff += 7
+  base.setDate(base.getDate() + diff + weekOffset * 7)
+  return base
+}
+
 function handleSave() {
   updatePreferences({
     workStartHour: form.workStartHour,
@@ -81,6 +182,7 @@ function handleSave() {
     deadlineWarningDays: form.deadlineWarningDays,
     workDays: [...form.workDays],
     deepWorkWindows: form.deepWorkWindows.map(w => ({ ...w })),
+    routineTemplates: form.routineTemplates.map(r => ({ ...r })),
   })
   emit('close')
 }
@@ -255,6 +357,121 @@ function handleReset() {
                 <option :value="5">5 Tage vorher</option>
                 <option :value="7">7 Tage vorher</option>
               </select>
+            </div>
+          </div>
+
+          <div class="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-medium text-gray-700">Feste Routinen</h3>
+                <p class="text-xs text-gray-500 mt-1">
+                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlage an und trage sie gesammelt ein.
+                </p>
+              </div>
+              <button
+                class="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-black disabled:opacity-50"
+                :disabled="isApplyingRoutines"
+                @click="applyRoutineTemplates"
+              >
+                {{ isApplyingRoutines ? 'Trage ein...' : 'Naechste 4 Wochen eintragen' }}
+              </button>
+            </div>
+
+            <div class="grid gap-2 md:grid-cols-2">
+              <input
+                v-model="routineDraft.title"
+                type="text"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                placeholder="z.B. Vorlesung, Gym, Team Call"
+              >
+              <select
+                v-model.number="routineDraft.day"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              >
+                <option v-for="(name, index) in dayNames" :key="name" :value="index">
+                  {{ name }}
+                </option>
+              </select>
+              <select
+                v-model.number="routineDraft.startHour"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              >
+                <option v-for="h in 24" :key="`start-${h}`" :value="h - 1">
+                  Start {{ String(h - 1).padStart(2, '0') }}:00
+                </option>
+              </select>
+              <select
+                v-model.number="routineDraft.endHour"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              >
+                <option v-for="h in 24" :key="`end-${h}`" :value="h">
+                  Ende {{ String(h).padStart(2, '0') }}:00
+                </option>
+              </select>
+            </div>
+
+            <textarea
+              v-model="routineDraft.description"
+              rows="2"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              placeholder="Optionaler Hinweis, z.B. Raum, Link oder was du mitbringen musst"
+            />
+
+            <button
+              class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-100"
+              @click="addRoutine"
+            >
+              Routine hinzufuegen
+            </button>
+
+            <div v-if="form.routineTemplates.length > 0" class="space-y-2">
+              <div
+                v-for="routine in form.routineTemplates"
+                :key="routine.id"
+                class="rounded-xl border border-gray-200 bg-white p-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium text-gray-900">{{ routine.title }}</div>
+                    <div class="mt-1 text-xs text-gray-500">
+                      {{ dayNames[routine.day] }}
+                    </div>
+                    <div v-if="routine.description" class="mt-1 text-xs text-gray-400">
+                      {{ routine.description }}
+                    </div>
+                  </div>
+                  <button
+                    class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                    @click="form.routineTemplates = form.routineTemplates.filter(entry => entry.id !== routine.id)"
+                  >
+                    Entfernen
+                  </button>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                  <select
+                    :value="routine.startHour"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    @change="updateRoutineHour(routine.id, 'startHour', Number(($event.target as HTMLSelectElement).value))"
+                  >
+                    <option v-for="h in 24" :key="`${routine.id}-start-${h}`" :value="h - 1">
+                      Start {{ String(h - 1).padStart(2, '0') }}:00
+                    </option>
+                  </select>
+                  <select
+                    :value="routine.endHour"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    @change="updateRoutineHour(routine.id, 'endHour', Number(($event.target as HTMLSelectElement).value))"
+                  >
+                    <option v-for="h in 24" :key="`${routine.id}-end-${h}`" :value="h">
+                      Ende {{ String(h).padStart(2, '0') }}:00
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="routineFeedback" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+              {{ routineFeedback }}
             </div>
           </div>
 

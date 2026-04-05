@@ -35,6 +35,15 @@ export interface DeepWorkWindow {
   endHour: number
 }
 
+export interface RoutineTemplate {
+  id: string
+  title: string
+  day: number
+  startHour: number
+  endHour: number
+  description?: string
+}
+
 export interface UserPreferences {
   workStartHour: number
   workEndHour: number
@@ -44,6 +53,7 @@ export interface UserPreferences {
   lunchEndHour: number
   deadlineWarningDays: number
   workDays: readonly number[] // 1=Mo, 2=Di, ..., 5=Fr (default Mo-Fr)
+  routineTemplates: readonly RoutineTemplate[]
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -61,4 +71,5 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   lunchEndHour: 13,
   deadlineWarningDays: 3,
   workDays: [1, 2, 3, 4, 5],
+  routineTemplates: [],
 }

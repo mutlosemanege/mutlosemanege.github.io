@@ -1,5 +1,5 @@
 import { DEFAULT_PREFERENCES } from '~/types/task'
-import type { UserPreferences, DeepWorkWindow } from '~/types/task'
+import type { UserPreferences, DeepWorkWindow, RoutineTemplate } from '~/types/task'
 
 const STORAGE_KEY = 'kalender-ai-preferences'
 
