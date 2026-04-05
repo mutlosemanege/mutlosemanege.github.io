@@ -15,13 +15,14 @@
 - [x] Event-Modal in [EventModal.vue](d:/kalender-ai/app/components/EventModal.vue) redesigniert
 - [x] Planungs-Chat in [PlanningChat.vue](d:/kalender-ai/app/components/PlanningChat.vue) auf Dark-Glass-Look umgestellt
 - [x] Projektgenerator in [ProjectGenerator.vue](d:/kalender-ai/app/components/ProjectGenerator.vue) auf Dark-Glass-Look umgestellt
+- [x] Desktop: echte [AISidebar.vue](d:/kalender-ai/app/components/AISidebar.vue) als persistente rechte Spalte angedockt
+- [x] [AISidebar.vue](d:/kalender-ai/app/components/AISidebar.vue) Header-, Heute- und Aktionsbereich auf Dark-Premium-Look umgestellt
 
 ## In Arbeit
 - [ ] `AISidebar.vue` komplett auf Premium-Dark-Panel umziehen
 - [ ] `PreferencesModal.vue` vollständig an neues Designsystem angleichen
 
 ## Offen
-- [ ] Desktop: `AISidebar` als echte persistente rechte Spalte andocken statt nur Schnellzugriffskarte
 - [ ] Mobile: `AISidebar` als sauberer Fullscreen-/Bottom-Sheet-Flow prüfen
 - [ ] `PreferencesModal.vue`: alle Sektionen visuell vereinheitlichen
 - [ ] `ProjectGenerator.vue`: Step-2-Review noch feiner polieren
@@ -40,3 +41,6 @@
 - [ ] Projektgenerator Schritt 1 bis 3 testen
 - [ ] Aufgaben-Sidebar: Priorisierung, Auto-Planen, Rescheduling, Projektgruppen testen
 - [ ] Einstellungen/Routinen/Import testen
+
+
+

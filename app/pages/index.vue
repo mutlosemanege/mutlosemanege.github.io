@@ -111,9 +111,30 @@ const todayPressure = computed(() => {
   return 'Heute wirkt der Plan machbar und es gibt noch nutzbare freie Blöcke.'
 })
 
+let desktopSidebarQuery: MediaQueryList | null = null
+let onDesktopSidebarChange: ((event: MediaQueryListEvent) => void) | null = null
+
+function updateDesktopSidebar(matches: boolean) {
+  isDesktopSidebar.value = matches
+  if (matches) {
+    showSidebar.value = false
+  }
+}
+
 onMounted(async () => {
   initClient()
   await initTasks()
+
+  desktopSidebarQuery = window.matchMedia('(min-width: 1280px)')
+  updateDesktopSidebar(desktopSidebarQuery.matches)
+  onDesktopSidebarChange = (event) => updateDesktopSidebar(event.matches)
+  desktopSidebarQuery.addEventListener('change', onDesktopSidebarChange)
+})
+
+onBeforeUnmount(() => {
+  if (desktopSidebarQuery && onDesktopSidebarChange) {
+    desktopSidebarQuery.removeEventListener('change', onDesktopSidebarChange)
+  }
 })
 
 const timeRange = computed(() => {
@@ -591,43 +612,13 @@ function formatSlotRange(start: Date, end: Date) {
           </div>
         </main>
 
-        <aside class="hidden w-[320px] flex-shrink-0 border-l border-border-subtle bg-surface/45 px-5 py-6 xl:block">
-          <div class="glass-card p-5">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">KI Cockpit</p>
-            <h3 class="mt-3 text-lg font-semibold text-text-primary">Dein Planungsraum</h3>
-            <p class="mt-2 text-sm leading-6 text-text-secondary">
-              Die vollständige Aufgaben- und KI-Seite bleibt aktiv. Im nächsten Redesign-Schritt wird sie hier dauerhaft angedockt.
-            </p>
-            <div class="mt-5 space-y-3">
-              <button class="btn-primary flex w-full items-center justify-between px-4 py-3 text-sm" @click="showSidebar = true">
-                Aufgaben öffnen
-                <span>{{ todayPendingTasks.length }}</span>
-              </button>
-              <button class="btn-secondary flex w-full items-center justify-between px-4 py-3 text-sm" @click="showPlanningChat = true">
-                KI Planer starten
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
-                </svg>
-              </button>
-              <button class="btn-secondary flex w-full items-center justify-between px-4 py-3 text-sm" @click="showPreferences = true">
-                Routinen prüfen
-                <span>{{ preferences.routineTemplates?.length || 0 }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="glass-card mt-4 p-5">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Nächster Termin</p>
-            <div v-if="todayEvents[0]" class="mt-3">
-              <div class="text-sm font-medium text-text-primary">{{ todayEvents[0].summary }}</div>
-              <div class="mt-1 text-xs text-text-secondary">
-                {{ formatDateTime(todayEvents[0].start.dateTime || `${todayEvents[0].start.date}T00:00:00`) }}
-              </div>
-            </div>
-            <p v-else class="mt-3 text-sm leading-6 text-text-secondary">
-              Heute ist noch kein nächster Termin sichtbar. Das ist ein guter Moment für Fokusarbeit.
-            </p>
-          </div>
+        <aside v-if="isDesktopSidebar" class="hidden w-[380px] flex-shrink-0 border-l border-border-subtle bg-surface/35 xl:block">
+          <AISidebar
+            :show="true"
+            :persistent="true"
+            :events="events"
+            @edit-task="onEditTask"
+          />
         </aside>
       </div>
     </div>
@@ -689,6 +680,7 @@ function formatSlotRange(start: Date, end: Date) {
     />
 
     <AISidebar
+      v-if="!isDesktopSidebar"
       :show="showSidebar"
       :events="events"
       @close="showSidebar = false"
@@ -703,3 +695,9 @@ function formatSlotRange(start: Date, end: Date) {
     />
   </div>
 </template>
+
+
+
+
+
+

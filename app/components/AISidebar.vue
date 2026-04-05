@@ -5,6 +5,7 @@ import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useSc
 
 const props = defineProps<{
   show: boolean
+  persistent?: boolean
   events: readonly CalendarEvent[]
 }>()
 
@@ -20,7 +21,7 @@ const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatu
 const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } = usePreferences()
 
 const showProjectGenerator = ref(false)
-const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
+const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done' | 'missed'>('all')
 const collapsedGroups = ref<string[]>([])
 const showArchivedProjects = ref(false)
 const planningFeedback = ref<string | null>(null)
@@ -39,11 +40,84 @@ const stats = computed(() => {
   }
 })
 
+const todayWindow = computed(() => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setHours(23, 59, 59, 999)
+  return { start, end }
+})
+
+const todayTasks = computed(() => {
+  return tasks.value.filter((task) => {
+    if (task.deadline) {
+      const deadline = new Date(task.deadline)
+      if (
+        deadline.getFullYear() === todayWindow.value.start.getFullYear() &&
+        deadline.getMonth() === todayWindow.value.start.getMonth() &&
+        deadline.getDate() === todayWindow.value.start.getDate()
+      ) {
+        return true
+      }
+    }
+
+    const taskStart = task.scheduleBlocks?.[0]?.start || task.scheduledStart
+    if (taskStart) {
+      const start = new Date(taskStart)
+      if (
+        start.getFullYear() === todayWindow.value.start.getFullYear() &&
+        start.getMonth() === todayWindow.value.start.getMonth() &&
+        start.getDate() === todayWindow.value.start.getDate()
+      ) {
+        return true
+      }
+    }
+
+    return false
+  })
+})
+
+const todayDueOrScheduledCount = computed(() => todayTasks.value.length)
+const todayDoneCount = computed(() => todayTasks.value.filter(task => task.status === 'done').length)
+const todayUpcomingEvent = computed(() => {
+  const now = new Date()
+  return [...props.events]
+    .filter((event) => {
+      const value = event.start.dateTime || event.start.date
+      if (!value) return false
+      const start = new Date(value)
+      return start >= now && start <= todayWindow.value.end
+    })
+    .sort((a, b) => {
+      const aStart = new Date(a.start.dateTime || a.start.date || '').getTime()
+      const bStart = new Date(b.start.dateTime || b.start.date || '').getTime()
+      return aStart - bStart
+    })[0] || null
+})
+
+const todayRemainingWorkMinutes = computed(() => {
+  const now = new Date()
+  const slots = findFreeSlots(now, todayWindow.value.end, props.events, preferences.value)
+  return Math.round(slots.reduce((sum, slot) => sum + ((slot.end.getTime() - slot.start.getTime()) / 60000), 0))
+})
+
+const aiHeaderMessage = computed(() => {
+  if (stats.value.todo === 0 && stats.value.scheduled === 0) {
+    return 'Heute sieht ruhig aus. Du kannst entspannt neu planen.'
+  }
+
+  if (todayDueOrScheduledCount.value > 0) {
+    return `Heute stehen ${todayDueOrScheduledCount.value} Aufgaben im Fokus, ${stats.value.scheduled} davon sind bereits eingeplant.`
+  }
+
+  return `${stats.value.todo} offene Aufgaben warten auf eine Entscheidung.`
+})
+
 const priorityColors: Record<string, string> = {
-  critical: 'bg-red-100 text-red-700',
-  high: 'bg-orange-100 text-orange-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-green-100 text-green-700',
+  critical: 'border border-priority-critical/30 bg-priority-critical/15 text-priority-critical',
+  high: 'border border-priority-high/30 bg-priority-high/15 text-priority-high',
+  medium: 'border border-priority-medium/30 bg-priority-medium/15 text-priority-medium',
+  low: 'border border-priority-low/30 bg-priority-low/15 text-priority-low',
 }
 
 const priorityOptions: Task['priority'][] = ['critical', 'high', 'medium', 'low']
@@ -52,6 +126,7 @@ const filterOptions = [
   { value: 'open' as const, label: 'Offen' },
   { value: 'scheduled' as const, label: 'Geplant' },
   { value: 'done' as const, label: 'Erledigt' },
+  { value: 'missed' as const, label: 'Verpasst' },
 ]
 
 const priorityRank: Record<TaskPriority, number> = {
@@ -1437,6 +1512,7 @@ function matchesActiveFilter(task: Task) {
     return task.status === 'todo' || task.status === 'missed' || task.status === 'in_progress'
   }
   if (activeFilter.value === 'scheduled') return task.status === 'scheduled'
+  if (activeFilter.value === 'missed') return task.status === 'missed'
   return task.status === 'done'
 }
 
@@ -1623,148 +1699,229 @@ async function restoreArchivedProject(groupId: string) {
 
 <template>
   <Transition name="sidebar">
-    <div v-if="show" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-full flex-col border-l border-gray-200 bg-white shadow-2xl sm:w-96">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900">Aufgaben</h2>
-        <button
-          class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-          @click="emit('close')"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+    <div
+      v-if="show || props.persistent"
+      :class="props.persistent ? 'relative h-full min-h-0 w-full' : 'fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm'"
+    >
+      <div v-if="!props.persistent" class="absolute inset-0" @click="emit('close')" />
 
-      <!-- Stats -->
-      <div class="grid grid-cols-4 gap-2 px-4 py-3 border-b border-gray-100 text-center">
-        <div>
-          <div class="text-lg font-bold text-gray-900">{{ stats.total }}</div>
-          <div class="text-xs text-gray-500">Gesamt</div>
-        </div>
-        <div>
-          <div class="text-lg font-bold text-yellow-600">{{ stats.todo }}</div>
-          <div class="text-xs text-gray-500">Offen</div>
-        </div>
-        <div>
-          <div class="text-lg font-bold text-blue-600">{{ stats.scheduled }}</div>
-          <div class="text-xs text-gray-500">Geplant</div>
-        </div>
-        <div>
-          <div class="text-lg font-bold text-green-600">{{ stats.done }}</div>
-          <div class="text-xs text-gray-500">Erledigt</div>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="px-4 py-3 border-b border-gray-100 space-y-2">
-        <div class="flex gap-2">
-          <button
-            class="flex-1 px-3 py-2 text-sm font-medium bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-            :disabled="isProcessing || stats.todo === 0"
-            @click="handlePrioritize"
-          >
-            <svg v-if="isProcessing" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            KI-Priorisierung
-          </button>
-          <button
-            class="flex-1 px-3 py-2 text-sm font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50"
-            :disabled="stats.unscheduled === 0"
-            @click="handleAutoSchedule"
-          >
-            Auto-Planen
-          </button>
-        </div>
-        <button
-          class="w-full px-3 py-2 text-sm font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
-          @click="showProjectGenerator = true"
-        >
-          KI-Projekt generieren
-        </button>
-        <div class="flex flex-wrap gap-1 pt-1">
-          <button
-            v-for="filter in filterOptions"
-            :key="filter.value"
-            class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
-            :class="activeFilter === filter.value
-              ? 'bg-gray-900 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            @click="activeFilter = filter.value"
-          >
-            {{ filter.label }}
-          </button>
-        </div>
-      </div>
-
-      <!-- AI Error -->
-      <div v-if="aiError" class="px-4 py-2">
-        <div class="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs">
-          {{ aiError }}
-        </div>
-      </div>
-
-      <div v-if="priorityFeedback" class="px-4 py-2">
-        <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
-          {{ priorityFeedback }}
-        </div>
-      </div>
-
-      <div v-if="planningFeedback" class="px-4 py-2">
-        <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          {{ planningFeedback }}
-        </div>
-      </div>
-
-      <div v-if="calendarSyncStatus" class="px-4 py-2">
-        <div
-          class="rounded-lg border px-3 py-2 text-xs"
-          :class="calendarSyncStatus.state === 'error'
-            ? 'border-red-200 bg-red-50 text-red-700'
-            : calendarSyncStatus.state === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-slate-50 text-slate-700'"
-        >
-          Kalenderstatus: {{ calendarSyncStatus.message }}
-        </div>
-      </div>
-
-      <div v-if="decisionTransparency" class="px-4 pb-2">
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-700">{{ decisionTransparency.title }}</h3>
-
-          <div class="mt-2 space-y-2">
-            <div>
-              <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Warum?</div>
-              <ul class="mt-1 space-y-1 text-xs text-slate-700">
-                <li v-for="reason in decisionTransparency.why" :key="reason">
-                  {{ reason }}
-                </li>
-              </ul>
-            </div>
-
-            <div v-if="decisionTransparency.uncertainty" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Unsicherheit: {{ decisionTransparency.uncertainty }}
-            </div>
-
-            <div v-if="decisionTransparency.alternatives.length > 0">
-              <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Alternativen</div>
-              <div class="mt-1 flex flex-wrap gap-1.5">
-                <span
-                  v-for="alternative in decisionTransparency.alternatives"
-                  :key="alternative"
-                  class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600"
-                >
-                  {{ alternative }}
+      <div
+        :class="props.persistent
+          ? 'relative flex h-full min-h-0 w-full flex-col border-l border-border-subtle bg-surface/55 backdrop-blur-glass'
+          : 'relative flex h-full w-full max-w-full flex-col border-l border-border-subtle bg-surface/90 shadow-2xl sm:my-4 sm:mr-4 sm:w-[420px] sm:rounded-glass-lg sm:border sm:bg-surface-secondary/85'"
+      >
+        <div class="border-b border-border-subtle px-4 py-4 sm:px-5">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-purple/25 to-accent-blue/20 text-accent-purple shadow-glow-purple">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l2.4 4.86L20 10l-4 3.89L17 20l-5-2.67L7 20l1-6.11L4 10l5.6-2.14L12 3Z" />
+                  </svg>
                 </span>
+                <div>
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">KI Assistent</p>
+                  <h2 class="mt-1 text-lg font-semibold text-text-primary">Aufgabenraum</h2>
+                </div>
               </div>
+              <p class="mt-3 text-sm leading-6 text-text-secondary">{{ aiHeaderMessage }}</p>
+            </div>
+
+            <button
+              v-if="!props.persistent"
+              type="button"
+              class="btn-secondary inline-flex h-10 w-10 items-center justify-center"
+              @click="emit('close')"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mt-4 grid grid-cols-4 gap-2">
+            <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-2 text-center">
+              <div class="text-base font-semibold text-text-primary">{{ stats.total }}</div>
+              <div class="text-[11px] text-text-muted">Gesamt</div>
+            </div>
+            <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-2 text-center">
+              <div class="text-base font-semibold text-priority-high">{{ stats.todo }}</div>
+              <div class="text-[11px] text-text-muted">Offen</div>
+            </div>
+            <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-2 text-center">
+              <div class="text-base font-semibold text-accent-blue">{{ stats.scheduled }}</div>
+              <div class="text-[11px] text-text-muted">Geplant</div>
+            </div>
+            <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-2 text-center">
+              <div class="text-base font-semibold text-accent-green">{{ stats.done }}</div>
+              <div class="text-[11px] text-text-muted">Erledigt</div>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent-blue">Heute</p>
+                <h3 class="mt-2 text-base font-semibold text-text-primary">
+                  {{ new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }) }}
+                </h3>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                {{ todayDoneCount }}/{{ todayDueOrScheduledCount || todayDoneCount }} erledigt
+              </div>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold text-text-primary">{{ todayDueOrScheduledCount }}</div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Aufgaben heute</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold text-accent-green">{{ Math.round((todayRemainingWorkMinutes / 60) * 10) / 10 }}h</div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Freie Zeit</div>
+              </div>
+            </div>
+            <div class="mt-3 rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Nächster Termin</div>
+              <p v-if="todayUpcomingEvent" class="mt-2 text-sm font-medium text-text-primary">{{ todayUpcomingEvent.summary }}</p>
+              <p v-if="todayUpcomingEvent" class="mt-1 text-xs text-text-secondary">
+                {{ formatTaskDateTime(todayUpcomingEvent.start.dateTime || `${todayUpcomingEvent.start.date}T00:00:00`) }}
+              </p>
+              <p v-else class="mt-2 text-sm text-text-secondary">Heute ist noch kein weiterer Termin im Kalender sichtbar.</p>
             </div>
           </div>
         </div>
-      </div>
+
+        <div class="px-4 py-4 sm:px-5">
+          <div class="space-y-3">
+            <button
+              type="button"
+              class="btn-primary flex w-full items-start justify-between gap-4 px-4 py-4 text-left disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="isProcessing || stats.todo === 0"
+              @click="handlePrioritize"
+            >
+              <div>
+                <div class="text-sm font-semibold">KI-Priorisierung</div>
+                <div class="mt-1 text-xs text-white/80">Aufgaben nach Dringlichkeit sortieren</div>
+              </div>
+              <svg v-if="isProcessing" class="mt-0.5 h-4 w-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              class="btn-accent-green flex w-full items-start justify-between gap-4 px-4 py-4 text-left disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="stats.unscheduled === 0"
+              @click="handleAutoSchedule"
+            >
+              <div>
+                <div class="text-sm font-semibold">Auto-Planen</div>
+                <div class="mt-1 text-xs text-[#0B1020]/80">Freie Zeitslots automatisch füllen</div>
+              </div>
+              <span class="rounded-full bg-black/10 px-2 py-1 text-[11px] font-medium text-[#0B1020]">
+                {{ stats.unscheduled }} offen
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="glass-card group w-full border border-accent-purple/20 p-4 text-left transition hover:-translate-y-0.5 hover:border-accent-purple/35 hover:shadow-glass-hover"
+              @click="showProjectGenerator = true"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <div class="text-sm font-semibold text-text-primary">Projekt generieren</div>
+                  <div class="mt-1 text-xs text-text-secondary">KI erstellt Aufgaben aus einer Projektbeschreibung</div>
+                </div>
+                <svg class="h-4 w-4 flex-shrink-0 text-accent-purple transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 12h14m-6-6 6 6-6 6" />
+                </svg>
+              </div>
+            </button>
+
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+              <button
+                v-for="filter in filterOptions"
+                :key="filter.value"
+                type="button"
+                class="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="activeFilter === filter.value
+                  ? 'bg-accent-purple/20 text-accent-purple-soft'
+                  : 'bg-white/[0.05] text-text-secondary hover:bg-white/[0.08] hover:text-text-primary'"
+                @click="activeFilter = filter.value"
+              >
+                {{ filter.label }}
+              </button>
+            </div>
+
+            <div
+              v-if="aiError"
+              class="rounded-glass border border-priority-critical/25 bg-priority-critical/10 px-4 py-3 text-xs text-[#FFD3DC]"
+            >
+              {{ aiError }}
+            </div>
+
+            <div
+              v-if="priorityFeedback"
+              class="rounded-glass border border-accent-purple/25 bg-accent-purple/10 px-4 py-3 text-xs text-accent-purple-soft"
+            >
+              {{ priorityFeedback }}
+            </div>
+
+            <div
+              v-if="planningFeedback"
+              class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3 text-xs text-accent-blue"
+            >
+              {{ planningFeedback }}
+            </div>
+
+            <div
+              v-if="calendarSyncStatus"
+              class="rounded-glass border px-4 py-3 text-xs"
+              :class="calendarSyncStatus.state === 'error'
+                ? 'border-priority-critical/25 bg-priority-critical/10 text-[#FFD3DC]'
+                : calendarSyncStatus.state === 'success'
+                  ? 'border-accent-green/25 bg-accent-green/10 text-accent-green'
+                  : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
+            >
+              Kalenderstatus: {{ calendarSyncStatus.message }}
+            </div>
+
+            <div v-if="decisionTransparency" class="glass-card p-4">
+              <h3 class="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">{{ decisionTransparency.title }}</h3>
+
+              <div class="mt-3 space-y-3">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Warum?</div>
+                  <ul class="mt-2 space-y-1 text-xs text-text-secondary">
+                    <li v-for="reason in decisionTransparency.why" :key="reason">
+                      {{ reason }}
+                    </li>
+                  </ul>
+                </div>
+
+                <div
+                  v-if="decisionTransparency.uncertainty"
+                  class="rounded-glass border border-priority-high/20 bg-priority-high/10 px-3 py-2 text-xs text-priority-high"
+                >
+                  Unsicherheit: {{ decisionTransparency.uncertainty }}
+                </div>
+
+                <div v-if="decisionTransparency.alternatives.length > 0">
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-green">Alternativen</div>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <span
+                      v-for="alternative in decisionTransparency.alternatives"
+                      :key="alternative"
+                      class="rounded-full border border-border-subtle bg-white/[0.04] px-2.5 py-1 text-[11px] text-text-secondary"
+                    >
+                      {{ alternative }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
       <div v-if="planningDiagnostics.length > 0" class="px-4 pb-2">
         <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -2245,23 +2402,24 @@ async function restoreArchivedProject(groupId: string) {
 
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="rescheduleTask" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/40" @click="closeRescheduleDialog" />
+      <div v-if="rescheduleTask" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="absolute inset-0" @click="closeRescheduleDialog" />
 
-        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="glass-card-elevated relative w-full max-h-[92vh] overflow-y-auto rounded-t-glass-xl p-6 sm:max-w-md sm:rounded-glass-lg">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <h3 class="text-lg font-semibold text-gray-900">Neu einplanen</h3>
-              <p class="mt-1 text-sm text-gray-500">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Neu einplanen</p>
+              <h3 class="mt-2 text-lg font-semibold text-text-primary">Neu einplanen</h3>
+              <p class="mt-1 text-sm text-text-secondary">
                 Wähle, wie <span class="font-medium text-gray-700">{{ rescheduleTask.title }}</span> neu geplant werden soll.
               </p>
-              <p v-if="formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start)" class="mt-2 text-xs text-gray-400">
+              <p v-if="formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start)" class="mt-2 text-xs text-text-muted">
                 Bisher: {{ formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start) }}
               </p>
             </div>
-            <button class="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" @click="closeRescheduleDialog">
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            <button class="btn-secondary inline-flex h-10 w-10 items-center justify-center" @click="closeRescheduleDialog">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
@@ -2270,41 +2428,41 @@ async function restoreArchivedProject(groupId: string) {
             <label
               v-for="option in rescheduleModeOptions"
               :key="option.value"
-              class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors"
+              class="flex cursor-pointer items-start gap-3 rounded-glass border px-3 py-3 transition-colors"
               :class="selectedRescheduleMode === option.value
-                ? 'border-primary-300 bg-primary-50'
-                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'"
+                ? 'border-accent-purple/30 bg-accent-purple/12'
+                : 'border-border-subtle bg-white/[0.03] hover:border-border-strong hover:bg-white/[0.05]'"
             >
               <input
                 v-model="selectedRescheduleMode"
                 type="radio"
-                class="mt-1 border-gray-300 text-primary-600 focus:ring-primary-500"
+                class="mt-1 border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                 :value="option.value"
               >
               <div>
-                <div class="flex items-center gap-2 text-sm font-medium text-gray-900">
+                <div class="flex items-center gap-2 text-sm font-medium text-text-primary">
                   <span>{{ option.label }}</span>
                   <span
                     v-if="option.value === 'same-time'"
-                    class="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700"
+                    class="rounded-full bg-accent-purple/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-purple-soft"
                   >
                     empfohlen
                   </span>
                 </div>
-                <div class="mt-1 text-xs text-gray-500">{{ option.description }}</div>
+                <div class="mt-1 text-xs text-text-secondary">{{ option.description }}</div>
               </div>
             </label>
           </div>
 
           <div class="mt-5 flex justify-end gap-2">
             <button
-              class="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+              class="btn-secondary px-4 py-2 text-sm"
               @click="closeRescheduleDialog"
             >
               Abbrechen
             </button>
             <button
-              class="rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              class="btn-primary px-4 py-2 text-sm"
               @click="confirmReschedule"
             >
               Neu einplanen
@@ -2317,38 +2475,39 @@ async function restoreArchivedProject(groupId: string) {
 
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="previewDisplacement" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/40" @click="previewDisplacement = null" />
+      <div v-if="previewDisplacement" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="absolute inset-0" @click="previewDisplacement = null" />
 
-        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-          <h3 class="text-lg font-semibold text-gray-900">Änderungsvorschau</h3>
-          <p class="mt-1 text-sm text-gray-500">
+        <div class="glass-card-elevated relative w-full max-h-[92vh] overflow-y-auto rounded-t-glass-xl p-6 sm:max-w-md sm:rounded-glass-lg">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Änderungsvorschau</p>
+          <h3 class="mt-2 text-lg font-semibold text-text-primary">Umplanung prüfen</h3>
+          <p class="mt-1 text-sm text-text-secondary">
             {{ previewDisplacement.incomingTitle }} würde {{ previewDisplacement.displacedTitle }} verdrängen.
           </p>
 
           <div class="mt-4 space-y-3">
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Wird frei gemacht</div>
-              <p class="mt-1 text-sm font-medium text-gray-900">{{ previewDisplacement.displacedTitle }}</p>
-              <p class="mt-1 text-xs text-gray-500">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
+            <div class="rounded-glass border border-border-subtle bg-white/[0.03] p-3">
+              <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">Wird frei gemacht</div>
+              <p class="mt-1 text-sm font-medium text-text-primary">{{ previewDisplacement.displacedTitle }}</p>
+              <p class="mt-1 text-xs text-text-secondary">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
             </div>
 
-            <div class="rounded-xl border border-violet-200 bg-violet-50 p-3">
-              <div class="text-xs font-semibold uppercase tracking-wide text-violet-700">Wird eingeplant</div>
-              <p class="mt-1 text-sm font-medium text-gray-900">{{ previewDisplacement.incomingTitle }}</p>
-              <p class="mt-1 text-xs text-violet-800">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
+            <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-3">
+              <div class="text-xs font-semibold uppercase tracking-wide text-accent-purple-soft">Wird eingeplant</div>
+              <p class="mt-1 text-sm font-medium text-text-primary">{{ previewDisplacement.incomingTitle }}</p>
+              <p class="mt-1 text-xs text-text-secondary">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
             </div>
           </div>
 
           <div class="mt-5 flex justify-end gap-2">
             <button
-              class="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+              class="btn-secondary px-4 py-2 text-sm"
               @click="previewDisplacement = null"
             >
               Abbrechen
             </button>
             <button
-              class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              class="btn-primary px-4 py-2 text-sm disabled:opacity-50"
               :disabled="applyingDisplacementId === previewDisplacement.incomingTaskId"
               @click="applyDisplacementSuggestion(previewDisplacement)"
             >
