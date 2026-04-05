@@ -1,5 +1,7 @@
 # Kalender-AI
 
+> Verknüpft mit: [[_INDEX]] · [[GOOGLE_SETUP]] · [[NETLIFY_SETUP]] · [[AI_FEATURE_ROADMAP]]
+
 KI-gestützte Google Kalender Web-App. Plane, priorisiere und manage Aufgaben mit Claude-Unterstützung — direkt mit deinem Google Kalender verknüpft.
 
 **Stack:** Nuxt 4 (SPA) · Tailwind CSS · Google Calendar API · Anthropic Claude API · Netlify

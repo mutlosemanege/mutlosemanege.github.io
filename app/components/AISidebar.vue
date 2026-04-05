@@ -1078,6 +1078,7 @@ async function removeProject(groupId: string) {
   <!-- Project Generator Modal -->
   <ProjectGenerator
     :show="showProjectGenerator"
+    :events="events"
     @close="showProjectGenerator = false"
     @created="showProjectGenerator = false"
   />

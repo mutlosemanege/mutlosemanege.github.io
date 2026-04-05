@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> Verknüpft mit: [[_INDEX]] · [[AI_FEATURE_ROADMAP]] · [[REDESIGN-PROMPT]]
+> Skills: [[skills/Greedy-Scheduler]] · [[skills/KI-Priorisierung]] · [[skills/Nuxt-Serverless-KI]] · [[skills/Google-OAuth2-Browser]] · [[skills/IndexedDB-Vue3]]
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview

@@ -52,10 +52,10 @@ Rahmen:
 - [x] Chat-Vorschlag mit Begruendung ausgeben: warum genau dieser Slot gewaehlt wurde
 
 ### 5. Projektgenerator enger mit Planung koppeln
-- [ ] Nach Projekt-Erstellung optional direkt erste Terminierung anbieten
-- [ ] Zu grosse Projekte markieren, wenn der Umfang unplausibel wirkt
-- [ ] Projekt-Review mit lesbaren Dependencies und besserem Reihenfolgegefuehl verbessern
-- [ ] Nach Generierung sichtbar machen, welche Aufgaben zuerst wichtig sind
+- [x] Nach Projekt-Erstellung optional direkt erste Terminierung anbieten
+- [x] Zu grosse Projekte markieren, wenn der Umfang unplausibel wirkt
+- [x] Projekt-Review mit lesbaren Dependencies und besserem Reihenfolgegefuehl verbessern
+- [x] Nach Generierung sichtbar machen, welche Aufgaben zuerst wichtig sind
 
 ## Danach bauen
 
