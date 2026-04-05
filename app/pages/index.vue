@@ -5,6 +5,9 @@ import type { Task } from '~/types/task'
 const { isLoggedIn, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
+const { preferences } = usePreferences()
+const { findFreeSlots } = useScheduler()
+const { warnings, criticalCount } = useDeadlineWatcher()
 
 const currentView = ref<'month' | 'week'>('month')
 const currentDate = ref(new Date())
@@ -16,6 +19,95 @@ const showPlanningChat = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
 const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
+
+const todayRange = computed(() => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  return { start, end }
+})
+
+const todayEvents = computed(() => {
+  return events.value.filter((event) => {
+    const value = event.start.dateTime || event.start.date
+    if (!value) return false
+    const eventStart = new Date(value)
+    return eventStart >= todayRange.value.start && eventStart <= todayRange.value.end
+  })
+})
+
+const todayPendingTasks = computed(() => {
+  return tasks.value.filter(task => task.status !== 'done')
+})
+
+const todayFreeSlots = computed(() => {
+  return findFreeSlots(
+    todayRange.value.start,
+    todayRange.value.end,
+    events.value,
+    preferences.value,
+  )
+})
+
+const todayFocusSlots = computed(() => {
+  return todayFreeSlots.value
+    .filter(slot => slot.isDeepWork)
+    .slice(0, 3)
+})
+
+const todayFreeMinutes = computed(() => {
+  return Math.round(
+    todayFreeSlots.value.reduce((sum, slot) => sum + ((slot.end.getTime() - slot.start.getTime()) / 60000), 0),
+  )
+})
+
+const nextBestTask = computed(() => {
+  const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 }
+
+  return [...todayPendingTasks.value]
+    .sort((a, b) => {
+      const aScheduled = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity
+      const bScheduled = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity
+      if (aScheduled !== bScheduled) return aScheduled - bScheduled
+
+      const priorityDiff = priorityRank[a.priority] - priorityRank[b.priority]
+      if (priorityDiff !== 0) return priorityDiff
+
+      const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
+      const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
+      return aDeadline - bDeadline
+    })[0] || null
+})
+
+const nextBestTaskReason = computed(() => {
+  const task = nextBestTask.value
+  if (!task) return 'Gerade ist nichts Dringendes offen.'
+  if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
+  if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
+  if (task.priorityReason) return task.priorityReason
+  return 'Aktuell die wichtigste offene Aufgabe.'
+})
+
+const todayPressure = computed(() => {
+  if (criticalCount.value > 0) {
+    return `${criticalCount.value} kritische Deadline-Warnung${criticalCount.value > 1 ? 'en' : ''} brauchen heute Aufmerksamkeit.`
+  }
+
+  const openMinutes = todayPendingTasks.value
+    .filter(task => !task.scheduledStart)
+    .reduce((sum, task) => sum + task.estimatedMinutes, 0)
+
+  if (openMinutes > todayFreeMinutes.value) {
+    return 'Heute ist mehr offene Arbeit vorhanden, als freie Zeit sichtbar ist.'
+  }
+
+  if (todayFocusSlots.value.length === 0) {
+    return 'Heute ist kein klarer Fokusblock mehr frei.'
+  }
+
+  return 'Heute wirkt der Plan machbar und es gibt noch nutzbare freie Blöcke.'
+})
 
 // Initialize Google auth and tasks on mount
 onMounted(async () => {
@@ -133,6 +225,19 @@ async function onDeleteTask(taskId: string) {
 async function onPlanningChatCreated() {
   await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
 }
+
+function formatDateTime(value?: string) {
+  if (!value) return ''
+  return new Date(value).toLocaleString('de-DE', {
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatSlotRange(start: Date, end: Date) {
+  return `${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} bis ${end.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
+}
 </script>
 
 <template>
@@ -171,6 +276,92 @@ async function onPlanningChatCreated() {
 
     <!-- Calendar content -->
     <div v-else class="max-w-7xl mx-auto px-4 py-6">
+      <div class="mb-6 grid gap-4 lg:grid-cols-[1.2fr,0.9fr,0.9fr]">
+        <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-primary-600">Heute</p>
+              <h2 class="mt-1 text-xl font-semibold text-gray-900">
+                {{ new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }) }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500">{{ todayPressure }}</p>
+            </div>
+            <button
+              class="rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-black"
+              @click="showPlanningChat = true"
+            >
+              Neu planen
+            </button>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div class="rounded-xl bg-gray-50 px-3 py-3">
+              <div class="text-lg font-semibold text-gray-900">{{ todayEvents.length }}</div>
+              <div class="text-xs text-gray-500">Termine heute</div>
+            </div>
+            <div class="rounded-xl bg-gray-50 px-3 py-3">
+              <div class="text-lg font-semibold text-gray-900">{{ todayPendingTasks.length }}</div>
+              <div class="text-xs text-gray-500">Offene Aufgaben</div>
+            </div>
+            <div class="rounded-xl bg-gray-50 px-3 py-3">
+              <div class="text-lg font-semibold text-gray-900">{{ Math.round(todayFreeMinutes / 60 * 10) / 10 }}h</div>
+              <div class="text-xs text-gray-500">Freie Zeit heute</div>
+            </div>
+            <div class="rounded-xl bg-gray-50 px-3 py-3">
+              <div class="text-lg font-semibold" :class="criticalCount > 0 ? 'text-red-600' : 'text-gray-900'">{{ criticalCount }}</div>
+              <div class="text-xs text-gray-500">Kritische Warnungen</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600">Nächster Bester Schritt</p>
+          <div v-if="nextBestTask" class="mt-3">
+            <h3 class="text-lg font-semibold text-gray-900">{{ nextBestTask.title }}</h3>
+            <p class="mt-2 text-sm text-gray-500">{{ nextBestTaskReason }}</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+                {{ nextBestTask.priority }}
+              </span>
+              <span v-if="nextBestTask.deadline" class="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
+                Deadline {{ new Date(nextBestTask.deadline).toLocaleDateString('de-DE') }}
+              </span>
+              <span v-if="nextBestTask.scheduledStart" class="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                Geplant {{ formatDateTime(nextBestTask.scheduledStart) }}
+              </span>
+            </div>
+            <button
+              class="mt-4 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              @click="onEditTask(nextBestTask)"
+            >
+              Aufgabe öffnen
+            </button>
+          </div>
+          <p v-else class="mt-3 text-sm text-gray-500">
+            Gerade ist nichts offen. Du kannst entspannt neue Aufgaben oder Termine planen.
+          </p>
+        </section>
+
+        <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-violet-600">Freie Fokusblöcke</p>
+          <div v-if="todayFocusSlots.length > 0" class="mt-3 space-y-2">
+            <div
+              v-for="slot in todayFocusSlots"
+              :key="slot.start.toISOString()"
+              class="rounded-xl bg-violet-50 px-3 py-3"
+            >
+              <div class="text-sm font-medium text-violet-900">{{ formatSlotRange(slot.start, slot.end) }}</div>
+              <div class="mt-1 text-xs text-violet-700">
+                {{ Math.round((slot.end.getTime() - slot.start.getTime()) / 60000) }} Minuten ruhige Zeit
+              </div>
+            </div>
+          </div>
+          <p v-else class="mt-3 text-sm text-gray-500">
+            Heute ist kein längerer Fokusblock mehr frei. Kleinere Slots sind aber noch möglich.
+          </p>
+        </section>
+      </div>
+
       <!-- Navigation controls -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-2">

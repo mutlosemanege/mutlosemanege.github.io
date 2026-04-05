@@ -98,9 +98,9 @@ Rahmen:
 - [x] Im Chat und Scheduler sichtbar machen, ob ein Slot aus Arbeits- oder Freizeitverfuegbarkeit stammt
 
 ### 12. Heute-Ansicht und Fokuszentrale bauen
-- [ ] Eine klare `Heute`-Zusammenfassung mit wichtigsten Aufgaben, Deadlines und freien Bloecken
-- [ ] Eine sichtbare `Naechster bester Schritt`-Empfehlung einbauen
-- [ ] Ueberlastung und unrealistische Tage frueh markieren
+- [x] Eine klare `Heute`-Zusammenfassung mit wichtigsten Aufgaben, Deadlines und freien Bloecken
+- [x] Eine sichtbare `Naechster bester Schritt`-Empfehlung einbauen
+- [x] Ueberlastung und unrealistische Tage frueh markieren
 - [ ] One-click Aktionen fuer `heute neu planen`, `fuer morgen schieben`, `kleinere Luecke finden`
 
 ### 13. Projektfortschritt und Abschlusslogik verbessern
