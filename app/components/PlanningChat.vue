@@ -926,7 +926,7 @@ function intentLabel(intent: PlanningIntent) {
       <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
 
-        <div class="relative w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+        <div class="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
           <div class="flex items-start justify-between gap-4">
             <div>
               <h2 class="text-xl font-semibold text-gray-900">Planungs-Chat</h2>
