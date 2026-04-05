@@ -3,6 +3,22 @@ import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle } from '~/types/task'
 
+type ImportEntryType = 'routine' | 'fixed-event'
+
+interface ImportReviewEntry {
+  id: string
+  enabled: boolean
+  title: string
+  type: ImportEntryType
+  repeatMode: RoutineRepeatMode
+  day: number
+  date: string
+  startHour: number
+  endHour: number
+  description: string
+  alsoAddToCalendar: boolean
+}
+
 const props = defineProps<{
   show: boolean
   events?: readonly CalendarEvent[]
@@ -75,6 +91,11 @@ const behaviorSummary = computed(() => {
     rescheduled: signals.rescheduledCount,
   }
 })
+const importImagePreview = ref<string | null>(null)
+const importImageName = ref<string | null>(null)
+const importFeedback = ref<string | null>(null)
+const isApplyingImport = ref(false)
+const importReviewEntries = ref<ImportReviewEntry[]>([])
 
 watch(() => props.show, (val) => {
   if (!val) return
@@ -102,6 +123,10 @@ watch(() => props.show, (val) => {
   }))
   routineExceptionDrafts.value = {}
   routineFeedback.value = null
+  importImagePreview.value = null
+  importImageName.value = null
+  importReviewEntries.value = []
+  importFeedback.value = null
 })
 
 function toggleWorkDay(day: number) {
@@ -156,6 +181,58 @@ function addRoutine() {
   routineDraft.startHour = form.workStartHour
   routineDraft.endHour = Math.min(form.workStartHour + 1, form.workEndHour)
   routineDraft.description = ''
+}
+
+function addImportReviewEntry() {
+  importReviewEntries.value = [
+    ...importReviewEntries.value,
+    createImportReviewEntry(),
+  ]
+}
+
+function removeImportReviewEntry(id: string) {
+  importReviewEntries.value = importReviewEntries.value.filter(entry => entry.id !== id)
+}
+
+function createImportReviewEntry(): ImportReviewEntry {
+  const nextWorkDay = form.workDays[0] ?? 1
+  return {
+    id: uuidv4(),
+    enabled: true,
+    title: '',
+    type: 'routine',
+    repeatMode: 'weekly',
+    day: nextWorkDay,
+    date: '',
+    startHour: form.workStartHour,
+    endHour: Math.min(form.workStartHour + 1, form.workEndHour),
+    description: '',
+    alsoAddToCalendar: false,
+  }
+}
+
+function handleImportImageChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    importImagePreview.value = typeof reader.result === 'string' ? reader.result : null
+    importImageName.value = file.name
+    importFeedback.value = 'Bild geladen. Pruefe jetzt die Eintraege darunter und uebernimm nur, was wirklich passt.'
+    if (importReviewEntries.value.length === 0) {
+      importReviewEntries.value = [createImportReviewEntry()]
+    }
+  }
+  reader.readAsDataURL(file)
+  input.value = ''
+}
+
+function clearImportImage() {
+  importImagePreview.value = null
+  importImageName.value = null
+  importFeedback.value = null
 }
 
 function updateRoutineHour(id: string, field: 'startHour' | 'endHour', value: number) {
@@ -308,6 +385,99 @@ async function applyRoutineTemplates() {
   }
 }
 
+async function applyImportEntries() {
+  const selectedEntries = importReviewEntries.value.filter(entry => entry.enabled && entry.title.trim() && entry.startHour < entry.endHour)
+  if (selectedEntries.length === 0) {
+    importFeedback.value = 'Fuege zuerst mindestens einen gueltigen Import-Eintrag hinzu.'
+    return
+  }
+
+  isApplyingImport.value = true
+  importFeedback.value = null
+
+  try {
+    let savedRoutines = 0
+    let createdEvents = 0
+    let skippedDuplicates = 0
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+    for (const entry of selectedEntries) {
+      if (entry.type === 'routine') {
+        if (hasMatchingRoutineTemplate(entry)) {
+          skippedDuplicates++
+          continue
+        }
+
+        const routine: RoutineTemplate = {
+          id: uuidv4(),
+          title: entry.title.trim(),
+          repeatMode: entry.repeatMode,
+          day: entry.repeatMode === 'weekly' ? entry.day : undefined,
+          startHour: entry.startHour,
+          endHour: entry.endHour,
+          description: entry.description.trim() || undefined,
+          skipDates: [],
+        }
+
+        form.routineTemplates.push(routine)
+        savedRoutines++
+
+        if (entry.alsoAddToCalendar) {
+          for (const date of collectRoutineDates(routine, new Date(), 28)) {
+            const start = new Date(date)
+            start.setHours(routine.startHour, 0, 0, 0)
+            const end = new Date(date)
+            end.setHours(routine.endHour, 0, 0, 0)
+            if (routine.endHour <= routine.startHour) {
+              end.setDate(end.getDate() + 1)
+            }
+
+            const created = await createBlockedEvent(routine.title, start, end, routine.description, tz)
+            if (created === 'skipped') {
+              skippedDuplicates++
+            } else if (created) {
+              createdEvents++
+            }
+          }
+        }
+        continue
+      }
+
+      if (!entry.date) {
+        continue
+      }
+
+      const start = new Date(`${entry.date}T00:00:00`)
+      start.setHours(entry.startHour, 0, 0, 0)
+      const end = new Date(`${entry.date}T00:00:00`)
+      end.setHours(entry.endHour, 0, 0, 0)
+      if (entry.endHour <= entry.startHour) {
+        end.setDate(end.getDate() + 1)
+      }
+
+      const created = await createBlockedEvent(entry.title.trim(), start, end, entry.description.trim() || undefined, tz)
+      if (created === 'skipped') {
+        skippedDuplicates++
+      } else if (created) {
+        createdEvents++
+      }
+    }
+
+    if (createdEvents > 0) {
+      const now = new Date()
+      const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
+      await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+    }
+
+    importFeedback.value = `${savedRoutines} Routinen gespeichert, ${createdEvents} feste Termine eingetragen.${skippedDuplicates > 0 ? ` ${skippedDuplicates} aehnliche Eintraege wurden uebersprungen.` : ''}`
+  } catch (error: any) {
+    importFeedback.value = error.message || 'Import-Eintraege konnten nicht uebernommen werden.'
+  } finally {
+    isApplyingImport.value = false
+  }
+}
+
 async function createBlockedEvent(summary: string, start: Date, end: Date, description: string | undefined, tz: string) {
   if (hasMatchingExistingEvent(summary, start, end)) {
     return 'skipped' as const
@@ -346,6 +516,40 @@ function hasMatchingExistingEvent(summary: string, start: Date, end: Date) {
 
     return sameDay && startDiff <= 15 * 60 * 1000 && endDiff <= 15 * 60 * 1000
   })
+}
+
+function hasMatchingRoutineTemplate(entry: ImportReviewEntry) {
+  const normalizedTitle = entry.title.trim().toLowerCase()
+
+  return form.routineTemplates.some(routine => {
+    const routineTitle = routine.title.trim().toLowerCase()
+    if (routineTitle !== normalizedTitle) return false
+    if ((routine.repeatMode || 'weekly') !== entry.repeatMode) return false
+    if ((routine.repeatMode || 'weekly') === 'weekly' && routine.day !== entry.day) return false
+    return routine.startHour === entry.startHour && routine.endHour === entry.endHour
+  })
+}
+
+function importEntryDuplicateHint(entry: ImportReviewEntry) {
+  if (!entry.title.trim()) return null
+
+  if (entry.type === 'routine') {
+    return hasMatchingRoutineTemplate(entry) ? 'Aehnliche Routine bereits vorhanden' : null
+  }
+
+  if (!entry.date) return null
+
+  const start = new Date(`${entry.date}T00:00:00`)
+  start.setHours(entry.startHour, 0, 0, 0)
+  const end = new Date(`${entry.date}T00:00:00`)
+  end.setHours(entry.endHour, 0, 0, 0)
+  if (entry.endHour <= entry.startHour) {
+    end.setDate(end.getDate() + 1)
+  }
+
+  return hasMatchingExistingEvent(entry.title.trim(), start, end)
+    ? 'Aehnlicher Termin bereits im Kalender'
+    : null
 }
 
 function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
@@ -950,6 +1154,219 @@ function handleReset() {
 
             <div v-if="routineFeedback" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
               {{ routineFeedback }}
+            </div>
+          </div>
+
+          <div class="space-y-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-medium text-sky-900">Bild-Import vorbereiten</h3>
+                <p class="mt-1 text-xs text-sky-800">
+                  Lade einen Stundenplan oder Screenshot hoch und uebernimm daraus feste Termine oder Routinen nach einer manuellen Review.
+                </p>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-sky-200 bg-white p-4">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">1. Bild hochladen</div>
+                  <div class="mt-1 text-xs text-gray-500">
+                    Das Bild dient hier bewusst als Referenz. Die App importiert noch nichts automatisch ohne deine Pruefung.
+                  </div>
+                </div>
+                <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-200 bg-sky-100 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-200">
+                  Bild auswaehlen
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="handleImportImageChange"
+                  >
+                </label>
+              </div>
+
+              <div v-if="importImagePreview" class="mt-4 space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-xs text-gray-500">
+                    Geladen: <span class="font-medium text-gray-700">{{ importImageName }}</span>
+                  </div>
+                  <button
+                    class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                    @click="clearImportImage"
+                  >
+                    Bild entfernen
+                  </button>
+                </div>
+                <img
+                  :src="importImagePreview"
+                  alt="Import-Vorschau"
+                  class="max-h-72 w-full rounded-xl border border-sky-100 object-contain"
+                >
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-sky-200 bg-white p-4">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">2. Eintraege reviewen</div>
+                  <div class="mt-1 text-xs text-gray-500">
+                    Lege darunter die Eintraege an, die du aus dem Bild uebernehmen willst. Alles bleibt vor dem Uebernehmen editierbar.
+                  </div>
+                </div>
+                <button
+                  class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+                  @click="addImportReviewEntry"
+                >
+                  Eintrag hinzufuegen
+                </button>
+              </div>
+
+              <div v-if="importReviewEntries.length === 0" class="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center text-xs text-gray-500">
+                Noch keine Import-Eintraege angelegt. Lade ein Bild hoch oder fuege den ersten Eintrag manuell hinzu.
+              </div>
+
+              <div v-else class="mt-4 space-y-3">
+                <div
+                  v-for="entry in importReviewEntries"
+                  :key="entry.id"
+                  class="rounded-xl border border-gray-200 bg-gray-50 p-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                      <input v-model="entry.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                      Uebernehmen
+                    </label>
+                    <button
+                      class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                      @click="removeImportReviewEntry(entry.id)"
+                    >
+                      Entfernen
+                    </button>
+                  </div>
+
+                  <div class="mt-3 grid gap-2 md:grid-cols-2">
+                    <input
+                      v-model="entry.title"
+                      type="text"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      placeholder="Titel aus dem Bild, z.B. Mathe, Team Call"
+                    >
+                    <select
+                      v-model="entry.type"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="routine">Als Routine</option>
+                      <option value="fixed-event">Als fester Termin</option>
+                    </select>
+                    <template v-if="entry.type === 'routine'">
+                      <select
+                        v-model="entry.repeatMode"
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="weekly">Woechentlich</option>
+                        <option value="workdays">An Arbeitstagen</option>
+                      </select>
+                      <select
+                        v-if="entry.repeatMode === 'weekly'"
+                        v-model.number="entry.day"
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option v-for="(name, index) in dayNames" :key="`${entry.id}-import-${name}`" :value="index">
+                          {{ name }}
+                        </option>
+                      </select>
+                      <div
+                        v-else
+                        class="flex items-center rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500"
+                      >
+                        Gilt an deinen aktiven Arbeitstagen
+                      </div>
+                    </template>
+                    <input
+                      v-else
+                      v-model="entry.date"
+                      type="date"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    >
+                    <label
+                      v-if="entry.type === 'routine'"
+                      class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
+                    >
+                      <input
+                        v-model="entry.alsoAddToCalendar"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      >
+                      Zusaetzlich in den Kalender eintragen
+                    </label>
+                    <div v-else class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
+                      Feste Termine werden direkt in den Kalender eingetragen.
+                    </div>
+                    <select
+                      v-model.number="entry.startHour"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option v-for="h in 24" :key="`${entry.id}-import-start-${h}`" :value="h - 1">
+                        Start {{ String(h - 1).padStart(2, '0') }}:00
+                      </option>
+                    </select>
+                    <select
+                      v-model.number="entry.endHour"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option v-for="h in 24" :key="`${entry.id}-import-end-${h}`" :value="h">
+                        Ende {{ String(h).padStart(2, '0') }}:00
+                      </option>
+                    </select>
+                  </div>
+
+                  <textarea
+                    v-model="entry.description"
+                    rows="2"
+                    class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    placeholder="Optionaler Hinweis, z.B. Raum, Link oder Notiz aus dem Bild"
+                  />
+
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <span
+                      class="rounded-full bg-white px-2 py-0.5 text-[11px]"
+                      :class="importEntryDuplicateHint(entry) ? 'text-amber-700' : 'text-emerald-700'"
+                    >
+                      {{ importEntryDuplicateHint(entry) || 'Sieht nach einem neuen Eintrag aus' }}
+                    </span>
+                    <span
+                      v-if="entry.startHour >= entry.endHour"
+                      class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                    >
+                      Ende muss nach dem Start liegen
+                    </span>
+                    <span
+                      v-if="entry.type === 'fixed-event' && !entry.date"
+                      class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                    >
+                      Fuer feste Termine fehlt noch ein Datum
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs text-sky-800">
+                3. Uebernimm nur die Eintraege, die du geprueft hast. Routinen beeinflussen danach direkt das Auto-Planen.
+              </p>
+              <button
+                class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                :disabled="isApplyingImport"
+                @click="applyImportEntries"
+              >
+                {{ isApplyingImport ? 'Uebernehme...' : 'Import-Eintraege uebernehmen' }}
+              </button>
+            </div>
+
+            <div v-if="importFeedback" class="rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs text-sky-800">
+              {{ importFeedback }}
             </div>
           </div>
 

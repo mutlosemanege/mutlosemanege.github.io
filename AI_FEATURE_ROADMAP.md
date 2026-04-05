@@ -79,9 +79,9 @@ Rahmen:
 ## Spaeter bauen
 
 ### 9. Bild-Import vorbereiten
-- [ ] Upload-UI fuer Stundenplan oder Screenshot
-- [ ] Review-Schritt vor dem Uebernehmen
-- [ ] Feste Termine daraus erzeugen
+- [x] Upload-UI fuer Stundenplan oder Screenshot
+- [x] Review-Schritt vor dem Uebernehmen
+- [x] Feste Termine daraus erzeugen
 
 ### 10. Test- und Sicherheitsnetz
 - [ ] Scheduler-Szenarien systematisch absichern
