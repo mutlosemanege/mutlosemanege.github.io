@@ -5,6 +5,13 @@ export default defineNuxtConfig({
   devServer: {
     host: '0.0.0.0',
   },
+  vite: {
+    server: {
+      hmr: {
+        host: 'localhost',
+      },
+    },
+  },
   devtools: { enabled: true },
   app: {
     baseURL: (() => {
