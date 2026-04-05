@@ -252,12 +252,19 @@ export function useScheduler() {
           earliestStart,
           prefs.taskBufferMinutes,
           prefs,
+          task.deadline ? new Date(task.deadline) : undefined,
           options.preferredStartByTaskId?.[task.id] ? new Date(options.preferredStartByTaskId[task.id]!) : undefined,
           options.rescheduleModeByTaskId?.[task.id],
         )
         if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
-        result.set(task.id, { blocks: allocation.blocks })
+        const normalizedBlocks = normalizePlannedBlocks(allocation.blocks)
+        if (!hasValidPlannedBlocks(normalizedBlocks)) {
+          console.warn(`Ungueltiger Plan fuer Task "${task.title}" wurde verworfen.`)
+          continue
+        }
+
+        result.set(task.id, { blocks: normalizedBlocks })
         freeSlots = allocation.remainingSlots
         madeProgress = true
       }
@@ -273,6 +280,7 @@ export function useScheduler() {
     earliestStart: Date,
     bufferMinutes: number,
     prefs: ReadonlyUserPreferences,
+    latestEnd?: Date,
     preferredStart?: Date,
     rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): {
@@ -297,6 +305,7 @@ export function useScheduler() {
         currentEarliest,
         prefs,
         needsDeepWork,
+        latestEnd,
         preferredStart,
         rescheduleMode,
       )
@@ -305,8 +314,19 @@ export function useScheduler() {
         if (remainingMs <= 0) break
         if (!slotFilter(slot)) continue
 
-        const effectiveStart = new Date(Math.max(slot.start.getTime(), currentEarliest.getTime()))
-        const availableMs = slot.end.getTime() - effectiveStart.getTime()
+        let effectiveStart = new Date(Math.max(slot.start.getTime(), currentEarliest.getTime()))
+        const effectiveSlotEnd = latestEnd
+          ? new Date(Math.min(slot.end.getTime(), latestEnd.getTime()))
+          : slot.end
+        if (
+          preferredStart &&
+          rescheduleMode === 'same-time' &&
+          preferredStart >= effectiveStart &&
+          preferredStart < effectiveSlotEnd
+        ) {
+          effectiveStart = new Date(preferredStart)
+        }
+        const availableMs = effectiveSlotEnd.getTime() - effectiveStart.getTime()
         if (availableMs < 15 * 60 * 1000) continue
 
         const bookedMs = Math.min(remainingMs, availableMs)
@@ -333,6 +353,7 @@ export function useScheduler() {
     earliestStart: Date,
     prefs: ReadonlyUserPreferences,
     needsDeepWork: boolean,
+    latestEnd?: Date,
     preferredStart?: Date,
     rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): TimeSlot[] {
@@ -356,9 +377,23 @@ export function useScheduler() {
         }
       }
 
+      if (preferredStart && rescheduleMode === 'same-time') {
+        const aDistance = Math.abs(aEffectiveStart - preferredStart.getTime())
+        const bDistance = Math.abs(bEffectiveStart - preferredStart.getTime())
+        if (aDistance !== bDistance) {
+          return aDistance - bDistance
+        }
+      }
+
       const aFits = aAvailable >= durationMs
       const bFits = bAvailable >= durationMs
       if (aFits !== bFits) return aFits ? -1 : 1
+
+      if (latestEnd) {
+        if (aEffectiveStart !== bEffectiveStart) {
+          return aEffectiveStart - bEffectiveStart
+        }
+      }
 
       if (rescheduleMode === 'redistribute') {
         if (aAvailable !== bAvailable) {
@@ -603,4 +638,26 @@ function routineAppliesOnDate(
 
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function normalizePlannedBlocks(blocks: ReadonlyArray<{ start: Date; end: Date }>) {
+  return [...blocks].sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+function hasValidPlannedBlocks(blocks: ReadonlyArray<{ start: Date; end: Date }>) {
+  if (blocks.length === 0) return false
+
+  for (let index = 0; index < blocks.length; index++) {
+    const current = blocks[index]
+    if (current.start >= current.end) {
+      return false
+    }
+
+    const previous = blocks[index - 1]
+    if (previous && current.start < previous.end) {
+      return false
+    }
+  }
+
+  return true
 }

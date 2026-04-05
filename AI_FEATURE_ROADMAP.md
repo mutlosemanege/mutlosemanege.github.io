@@ -84,10 +84,10 @@ Rahmen:
 - [x] Feste Termine daraus erzeugen
 
 ### 10. Test- und Sicherheitsnetz
-- [ ] Scheduler-Szenarien systematisch absichern
-- [ ] Parser-Faelle fuer den Planungs-Chat absichern
-- [ ] Rescheduling-Edge-Cases absichern
-- [ ] Regressionen bei Multi-Block-Scheduling verhindern
+- [x] Scheduler-Szenarien systematisch absichern
+- [x] Parser-Faelle fuer den Planungs-Chat absichern
+- [x] Rescheduling-Edge-Cases absichern
+- [x] Regressionen bei Multi-Block-Scheduling verhindern
 
 ## Reihenfolge fuer den naechsten grossen Sprint
 

@@ -2,6 +2,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { RoutineTemplate, Task } from '~/types/task'
+import { parsePlanningPrompt as parsePlanningPromptCore } from '~/utils/planningChatCore'
 
 type PlanningIntent = 'event' | 'task' | 'routine'
 type PreferredPeriod = 'morning' | 'afternoon' | 'evening' | 'any'
@@ -106,7 +107,7 @@ async function handlePlan() {
   previewAlternatives.value = []
 
   try {
-    const parsed = parsePlanningPrompt(prompt.value.trim(), durationMinutes.value)
+    const parsed = parsePlanningPromptCore(prompt.value.trim(), durationMinutes.value, intentMode.value)
     parsedDetails.value = parsed
 
     if (parsed.intent === 'routine') {
