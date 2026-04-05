@@ -171,17 +171,6 @@ const filteredTaskGroups = computed(() => {
     .filter(group => group.tasks.length > 0)
 })
 
-const completedProjectIds = computed(() => {
-  const result = new Set<string>()
-  for (const group of tasksByProject.value) {
-    if (group.id === 'inbox') continue
-    if (group.tasks.length > 0 && group.tasks.every(task => task.status === 'done')) {
-      result.add(group.id)
-    }
-  }
-  return result
-})
-
 function taskStatusLabel(task: Task) {
   if (task.status === 'done') return 'Erledigt'
   if (task.status === 'scheduled') return 'Eingeplant'
@@ -273,7 +262,7 @@ async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: re
 
 async function removeCompletedProject(groupId: string) {
   const projectGroup = tasksByProject.value.find(group => group.id === groupId)
-  if (!projectGroup || !completedProjectIds.value.has(groupId)) return
+  if (!projectGroup || groupId === 'inbox') return
 
   for (const task of projectGroup.tasks) {
     await deleteTask(task.id)
@@ -403,7 +392,7 @@ async function removeCompletedProject(groupId: string) {
               </div>
               <div class="flex items-center gap-2">
                 <button
-                  v-if="completedProjectIds.has(group.id)"
+                  v-if="group.id !== 'inbox'"
                   class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
                   @click.stop="removeCompletedProject(group.id)"
                 >
