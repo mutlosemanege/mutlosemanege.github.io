@@ -637,33 +637,43 @@ function handleReset() {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div v-if="show" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
+        <div class="absolute inset-0" @click="emit('close')" />
 
         <!-- Modal -->
-        <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-          <h2 class="text-lg font-semibold text-gray-900">Planung und Routinen</h2>
-          <p class="text-sm text-gray-500">
-            Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender übernehmen willst.
-          </p>
-          <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+        <div class="glass-card-elevated relative w-full max-h-[92vh] overflow-y-auto rounded-t-glass-xl p-6 space-y-5 sm:max-w-5xl sm:rounded-glass-lg">
+          <div class="flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Planung und Routinen</p>
+              <h2 class="mt-2 text-2xl font-semibold text-text-primary">Deine Planungsregeln</h2>
+              <p class="mt-2 text-sm leading-6 text-text-secondary">
+                Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender übernehmen willst.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary inline-flex h-10 w-10 items-center justify-center" @click="emit('close')">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3 text-xs text-accent-blue">
             Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender einträgst.
           </div>
 
-          <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          <div class="rounded-glass border border-priority-high/20 bg-priority-high/10 px-4 py-3 text-xs text-priority-high">
             Harte Blocker: Schlaf, Arbeitsweg, Routinen und bestehende Kalendereinträge.
             Weiche Blocker: Mittagspause und Puffer. Wenn es eng wird, zeigt die Planung dafür flexible Alternativen an.
           </div>
 
           <div
             v-if="syncStatus"
-            class="rounded-xl border px-4 py-3 text-xs"
+            class="rounded-glass border px-4 py-3 text-xs"
             :class="syncStatus.state === 'error'
-              ? 'border-red-200 bg-red-50 text-red-700'
+              ? 'border-priority-critical/30 bg-priority-critical/10 text-[#FFD3DC]'
               : syncStatus.state === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-slate-200 bg-slate-50 text-slate-700'"
+                ? 'border-accent-green/30 bg-accent-green/10 text-accent-green'
+                : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
           >
             Kalenderstatus: {{ syncStatus.message }}
           </div>
@@ -1436,22 +1446,22 @@ function handleReset() {
           </div>
 
           <!-- Actions -->
-          <div class="flex items-center justify-between pt-2">
+          <div class="flex items-center justify-between border-t border-border-subtle pt-5">
             <button
-              class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              class="rounded-xl px-3 py-2 text-sm text-text-muted transition hover:bg-white/[0.05] hover:text-text-primary"
               @click="handleReset"
             >
               Zurücksetzen
             </button>
             <div class="flex gap-2">
               <button
-                class="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                class="btn-secondary px-4 py-2 text-sm"
                 @click="emit('close')"
               >
                 Abbrechen
               </button>
               <button
-                class="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                class="btn-primary px-4 py-2 text-sm"
                 @click="handleSave"
               >
                 Speichern
@@ -1474,3 +1484,5 @@ function handleReset() {
   opacity: 0;
 }
 </style>
+
+

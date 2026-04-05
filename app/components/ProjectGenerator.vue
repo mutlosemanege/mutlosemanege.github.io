@@ -402,80 +402,256 @@ function addDays(date: Date, days: number) {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
+      <div v-if="show" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="absolute inset-0" @click="emit('close')" />
 
-        <div class="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 space-y-4 shadow-2xl sm:rounded-xl">
-
-          <!-- Step 1: Eingabe -->
+        <div class="glass-card-elevated relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-glass-xl p-6 sm:max-w-4xl sm:rounded-glass-lg">
           <template v-if="step === 'input'">
-            <h2 class="text-lg font-semibold text-gray-900">KI-Projekt generieren</h2>
-            <p class="text-sm text-gray-500">
-              Beschreibe dein Projekt und die KI erstellt automatisch alle Aufgaben mit Abhaengigkeiten.
-            </p>
-
-            <div class="space-y-3">
+            <div class="flex items-start justify-between gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Projekttyp</label>
-                <select
-                  v-model="projectType"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                >
-                  <option value="allgemein">Allgemein</option>
-                  <option value="programmierung">Programmierung</option>
-                  <option value="videoschnitt">Videoschnitt</option>
-                  <option value="content">Content</option>
-                  <option value="lernen">Lernen</option>
-                  <option value="privat">Privat</option>
-                  <option value="organisation">Organisation</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Projektbeschreibung</label>
-                <textarea
-                  v-model="description"
-                  rows="4"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
-                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Pruefung vorbereiten oder Website relaunchen..."
-                />
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Deadline (optional)</label>
-                <input
-                  v-model="deadline"
-                  type="date"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                >
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 animate-glow rounded-full bg-accent-purple shadow-glow-purple" />
+                  <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">KI Projektgenerator</p>
+                </div>
+                <h2 class="mt-2 text-2xl font-semibold text-text-primary">Projekt in Aufgaben zerlegen</h2>
+                <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
+                  Beschreibe dein Projekt und die KI erstellt daraus sinnvolle Aufgaben, Prioritäten und Abhängigkeiten.
+                </p>
               </div>
             </div>
 
-            <!-- AI Error -->
-            <div v-if="aiError" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div class="mt-6 grid gap-5 lg:grid-cols-[1.2fr,0.8fr]">
+              <section class="glass-card p-4">
+                <label class="block text-sm font-medium text-text-secondary">Projektbeschreibung</label>
+                <textarea
+                  v-model="description"
+                  rows="5"
+                  class="input-dark mt-3 w-full resize-none px-4 py-4"
+                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Prüfung vorbereiten oder Website relaunchen..."
+                />
+
+                <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-text-secondary">Projekttyp</label>
+                    <select v-model="projectType" class="input-dark w-full px-4 py-3">
+                      <option value="allgemein">Allgemein</option>
+                      <option value="programmierung">Programmierung</option>
+                      <option value="videoschnitt">Videoschnitt</option>
+                      <option value="content">Content</option>
+                      <option value="lernen">Lernen</option>
+                      <option value="privat">Privat</option>
+                      <option value="organisation">Organisation</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-text-secondary">Deadline</label>
+                    <input v-model="deadline" type="date" class="input-dark w-full px-4 py-3">
+                  </div>
+                </div>
+              </section>
+
+              <section class="glass-card p-4">
+                <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-accent-blue">Leitplanken</h3>
+                <div class="mt-4 space-y-3 text-sm text-text-secondary">
+                  <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
+                    Die vorhandene KI bleibt unverändert. Wir redesignen nur die Oberfläche und den Review-Fluss.
+                  </div>
+                  <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
+                    Der Generator ist bewusst allgemeiner gehalten und passt für private, kreative und produktive Projekte.
+                  </div>
+                  <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
+                    Nach dem Erstellen kann das Projekt auf Wunsch direkt automatisch eingeplant werden.
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div v-if="aiError" class="mt-5 rounded-glass border border-priority-critical/30 bg-priority-critical/10 px-4 py-3 text-sm text-[#FFD3DC]">
               {{ aiError }}
             </div>
 
-            <div class="flex justify-end gap-2 pt-2">
+            <div class="mt-6 flex justify-end gap-2">
+              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
               <button
-                class="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                @click="emit('close')"
-              >
-                Abbrechen
-              </button>
-              <button
-                class="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 inline-flex items-center gap-2"
+                type="button"
+                class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
                 :disabled="!description.trim() || isProcessing"
                 @click="handleGenerate"
               >
-                <svg v-if="isProcessing" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <svg v-if="isProcessing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
                 {{ isProcessing ? 'Generiere...' : 'Mit KI generieren' }}
               </button>
             </div>
           </template>
+
+          <template v-else-if="step === 'review'">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Review</p>
+                <h2 class="mt-2 text-2xl font-semibold text-text-primary">{{ projectName }}</h2>
+                <p class="mt-2 text-sm text-text-secondary">
+                  {{ previewTasks.filter(t => t.include).length }} Aufgaben, ca. {{ totalHours }} Stunden
+                </p>
+              </div>
+              <span class="rounded-full bg-white/[0.05] px-3 py-1 text-[11px] text-text-muted">
+                {{ tokenUsage.inputTokens + tokenUsage.outputTokens }} Tokens
+              </span>
+            </div>
+
+            <div v-if="projectScopeInsights.labels.length > 0" class="mt-5 rounded-glass border px-4 py-4"
+              :class="projectScopeInsights.severity === 'danger'
+                ? 'border-priority-critical/30 bg-priority-critical/10'
+                : 'border-priority-high/30 bg-priority-high/10'"
+            >
+              <div class="text-sm font-medium" :class="projectScopeInsights.severity === 'danger' ? 'text-priority-critical' : 'text-priority-high'">
+                Projekt-Check
+              </div>
+              <p class="mt-2 text-xs text-text-secondary">
+                Freie Zeit im aktuellen Horizont: ca. {{ projectScopeInsights.availableHours }} Stunden.
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <span
+                  v-for="label in projectScopeInsights.labels"
+                  :key="label"
+                  class="rounded-full bg-white/[0.08] px-2 py-0.5 text-[11px]"
+                  :class="projectScopeInsights.severity === 'danger' ? 'text-priority-critical' : 'text-priority-high'"
+                >
+                  {{ label }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="suggestedStartTasks.length > 0" class="mt-5 rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
+              <div class="text-sm font-medium text-accent-blue">Empfohlener Start</div>
+              <div class="mt-3 space-y-2">
+                <div
+                  v-for="task in suggestedStartTasks"
+                  :key="`start-${task.tempId}`"
+                  class="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-text-primary">{{ task.title }}</div>
+                      <div class="mt-1 text-xs text-text-secondary">
+                        {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abhängigkeiten' : '' }}
+                      </div>
+                    </div>
+                    <span class="rounded-full bg-accent-blue/15 px-2 py-0.5 text-[11px] text-accent-blue">zuerst</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="reviewWhy.length > 0 || reviewUncertainty || reviewAlternatives.length > 0" class="mt-5 rounded-glass border border-border-subtle bg-white/[0.03] p-4">
+              <div class="text-sm font-medium text-text-primary">Warum diese Entscheidung?</div>
+              <div v-if="reviewWhy.length > 0" class="mt-3 space-y-2">
+                <p v-for="reason in reviewWhy" :key="reason" class="text-sm leading-6 text-text-secondary">
+                  {{ reason }}
+                </p>
+              </div>
+              <p v-if="reviewUncertainty" class="mt-3 text-xs text-priority-high">Unsicherheit: {{ reviewUncertainty }}</p>
+              <div v-if="reviewAlternatives.length > 0" class="mt-4 space-y-2">
+                <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Alternativen</div>
+                <div
+                  v-for="alternative in reviewAlternatives"
+                  :key="alternative"
+                  class="rounded-xl border border-border-subtle bg-white/[0.04] px-3 py-2 text-xs text-text-secondary"
+                >
+                  {{ alternative }}
+                </div>
+              </div>
+            </div>
+
+            <label class="mt-5 flex items-center gap-3 rounded-glass border border-border-subtle bg-white/[0.03] px-4 py-3 text-sm text-text-secondary">
+              <input
+                v-model="autoScheduleAfterCreate"
+                type="checkbox"
+                class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
+              >
+              Nach dem Erstellen direkt automatisch einplanen
+            </label>
+
+            <div class="mt-5 space-y-3">
+              <div
+                v-for="task in orderedPreviewTasks"
+                :key="task.tempId"
+                class="rounded-glass border p-4 transition"
+                :class="task.include ? 'border-border-subtle bg-white/[0.04]' : 'border-border-subtle/60 bg-white/[0.02] opacity-50'"
+              >
+                <div class="flex items-start gap-3">
+                  <input
+                    v-model="task.include"
+                    type="checkbox"
+                    class="mt-1 rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
+                  >
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm font-medium text-text-primary">{{ task.title }}</span>
+                      <span
+                        class="rounded-full px-2 py-0.5 text-[11px]"
+                        :class="{
+                          'bg-priority-critical/15 text-priority-critical': task.suggestedPriority === 'critical',
+                          'bg-priority-high/15 text-priority-high': task.suggestedPriority === 'high',
+                          'bg-priority-medium/15 text-priority-medium': task.suggestedPriority === 'medium',
+                          'bg-priority-low/15 text-priority-low': task.suggestedPriority === 'low',
+                        }"
+                      >
+                        {{ task.suggestedPriority }}
+                      </span>
+                      <span v-if="task.isDeepWork" class="rounded-full bg-accent-purple/15 px-2 py-0.5 text-[11px] text-accent-purple">
+                        Deep Work
+                      </span>
+                    </div>
+                    <p class="mt-2 text-sm text-text-secondary">{{ task.description }}</p>
+                    <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-text-muted">
+                      <span>{{ task.estimatedMinutes }} Min.</span>
+                      <span v-if="task.dependsOn.length === 0" class="text-accent-blue">Startklar</span>
+                      <span v-if="task.dependsOn.length > 0">Abhängig von: {{ dependencyLabels(task) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 flex justify-between gap-2">
+              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zurück</button>
+              <div class="flex gap-2">
+                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
+                <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">Projekt erstellen</button>
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="step === 'done'">
+            <div class="py-8 text-center">
+              <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-green/15 text-accent-green shadow-glow-green">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 class="mt-5 text-2xl font-semibold text-text-primary">Projekt erstellt</h2>
+              <p class="mt-2 text-sm text-text-secondary">
+                {{ previewTasks.filter(t => t.include).length }} Aufgaben wurden angelegt.
+              </p>
+              <p v-if="creationSummary && autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
+                {{ creationSummary.scheduledCount }} Aufgaben wurden direkt eingeplant, {{ creationSummary.remainingCount }} bleiben vorerst offen.
+              </p>
+              <p v-else-if="creationSummary && !autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
+                Die Aufgaben wurden angelegt und können danach manuell oder per Auto-Planen eingeplant werden.
+              </p>
+              <div class="mt-6 flex justify-center gap-2">
+                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schließen</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+</template>
 
           <!-- Step 2: Review -->
           <template v-if="step === 'review'">
@@ -693,3 +869,4 @@ function addDays(date: Date, days: number) {
   opacity: 0;
 }
 </style>
+
