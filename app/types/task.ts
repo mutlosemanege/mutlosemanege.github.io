@@ -7,7 +7,7 @@ export interface Task {
   priority: TaskPriority
   aiSuggestedPriority?: TaskPriority
   priorityReason?: string
-  prioritySource?: 'ai' | 'manual'
+  prioritySource?: 'ai' | 'manual' | 'system'
   status: TaskStatus
   projectId?: string
   dependencies: readonly string[] // Task-IDs die vorher erledigt sein muessen

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Task } from '~/types/task'
+import type { Task, TaskPriority } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useScheduler'
 
@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
-const { scheduleTasks } = useScheduler()
+const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
 const { preferences } = usePreferences()
 
@@ -23,6 +23,7 @@ const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
 const collapsedGroups = ref<string[]>([])
 const planningFeedback = ref<string | null>(null)
+const priorityFeedback = ref<string | null>(null)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -51,20 +52,72 @@ const filterOptions = [
   { value: 'done' as const, label: 'Erledigt' },
 ]
 
+const priorityRank: Record<TaskPriority, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+}
+
+interface TaskPriorityInsight {
+  recommendedPriority?: TaskPriority
+  source: 'ai' | 'manual' | 'system'
+  headline: string
+  riskLabels: string[]
+}
+
 // KI-Priorisierung
 async function handlePrioritize() {
   const pending = getPendingTasks()
   if (pending.length === 0) return
+  priorityFeedback.value = null
 
-  const rankings = await prioritizeTasks(pending)
+  const autoPrioritizable = pending.filter(task => task.prioritySource !== 'manual')
+  const skippedManual = pending.length - autoPrioritizable.length
+  if (autoPrioritizable.length === 0) {
+    priorityFeedback.value = 'Alle offenen Aufgaben sind aktuell manuell fixiert.'
+    return
+  }
 
-  for (const ranking of rankings) {
-    await updateTask(ranking.taskId, {
-      priority: ranking.priority,
+  const rankings = await prioritizeTasks(autoPrioritizable)
+  const rankingMap = new Map(rankings.map(ranking => [ranking.taskId, ranking]))
+  let escalatedBySystem = 0
+  let appliedCount = 0
+
+  for (const task of autoPrioritizable) {
+    const ranking = rankingMap.get(task.id)
+    if (!ranking) continue
+
+    const insight = buildTaskPriorityInsight(task, ranking.priority, ranking.reason)
+    const finalPriority = insight.recommendedPriority && priorityRank[insight.recommendedPriority] > priorityRank[ranking.priority]
+      ? insight.recommendedPriority
+      : ranking.priority
+    const finalSource = finalPriority === ranking.priority ? 'ai' : 'system'
+    const combinedReason = finalSource === 'ai'
+      ? ranking.reason
+      : `${ranking.reason} Lokal hochgezogen: ${insight.headline}.`
+
+    await updateTask(task.id, {
+      priority: finalPriority,
       aiSuggestedPriority: ranking.priority,
-      priorityReason: ranking.reason,
-      prioritySource: 'ai',
+      priorityReason: combinedReason,
+      prioritySource: finalSource,
     })
+    appliedCount++
+    if (finalSource === 'system') {
+      escalatedBySystem++
+    }
+  }
+
+  if (appliedCount > 0) {
+    const parts = [`${appliedCount} Aufgaben aktualisiert`]
+    if (escalatedBySystem > 0) {
+      parts.push(`${escalatedBySystem} lokal hochgezogen`)
+    }
+    if (skippedManual > 0) {
+      parts.push(`${skippedManual} manuell geschuetzt`)
+    }
+    priorityFeedback.value = parts.join(', ') + '.'
   }
 }
 
@@ -195,6 +248,19 @@ async function changePriority(task: Task, priority: Task['priority']) {
   })
 }
 
+const priorityInsights = computed(() => {
+  const insights = new Map<string, TaskPriorityInsight>()
+
+  for (const task of tasks.value) {
+    insights.set(
+      task.id,
+      buildTaskPriorityInsight(task, task.aiSuggestedPriority || task.priority, task.priorityReason || ''),
+    )
+  }
+
+  return insights
+})
+
 const tasksByProject = computed(() => {
   const groups = projects.value.map(project => ({
     id: project.id,
@@ -238,6 +304,115 @@ function taskScheduleSummary(task: Task) {
 
   if (task.scheduleBlocks.length === 1) return label
   return `${label} + ${task.scheduleBlocks.length - 1} weitere Bloecke`
+}
+
+function getTaskInsight(task: Task) {
+  return priorityInsights.value.get(task.id)
+}
+
+function buildTaskPriorityInsight(task: Task, basePriority: TaskPriority, baseReason: string): TaskPriorityInsight {
+  const riskLabels: string[] = []
+  let recommendedPriority: TaskPriority | undefined
+  const explanationParts: string[] = []
+
+  const blocker = getBlockingDependency(task)
+  if (blocker) {
+    riskLabels.push(`Blockiert durch ${blocker.title}`)
+    explanationParts.push(`wartet auf ${blocker.title}`)
+  }
+
+  const projectLoad = getProjectLoad(task)
+  if (projectLoad >= 5) {
+    riskLabels.push('Projektlast hoch')
+    explanationParts.push(`${projectLoad} offene Projektaufgaben`)
+  }
+
+  const availableMinutes = getAvailableMinutesForTask(task)
+  if (task.deadline) {
+    const deadline = new Date(task.deadline)
+    const hoursUntilDeadline = Math.max((deadline.getTime() - Date.now()) / (60 * 60 * 1000), 0)
+
+    if (availableMinutes < task.estimatedMinutes) {
+      recommendedPriority = maxPriority(recommendedPriority, 'critical')
+      riskLabels.push('Deadline unrealistisch')
+      explanationParts.push('passt aktuell nicht mehr sauber vor Deadline')
+    } else if (hoursUntilDeadline <= 24) {
+      recommendedPriority = maxPriority(recommendedPriority, 'critical')
+      riskLabels.push('Deadline unter 24h')
+      explanationParts.push('Deadline in weniger als 24 Stunden')
+    } else if (hoursUntilDeadline <= 72 && basePriority !== 'critical') {
+      recommendedPriority = maxPriority(recommendedPriority, 'high')
+      riskLabels.push('Deadline naht')
+      explanationParts.push('Deadline in den naechsten 3 Tagen')
+    }
+  }
+
+  if (task.isDeepWork) {
+    const deepWorkMinutes = getAvailableMinutesForTask(task, true)
+    if (deepWorkMinutes < task.estimatedMinutes) {
+      recommendedPriority = maxPriority(recommendedPriority, 'high')
+      riskLabels.push('Zu wenig Fokuszeit')
+      explanationParts.push('zu wenig freie Deep-Work-Zeit')
+    } else {
+      riskLabels.push('Braucht Fokuszeit')
+    }
+  }
+
+  if (availableMinutes < task.estimatedMinutes * 2 && task.deadline) {
+    riskLabels.push('Kaum Puffer')
+    explanationParts.push('wenig Planungspuffer bis zur Deadline')
+  }
+
+  if (task.status === 'missed') {
+    riskLabels.push('Schon verschoben')
+    explanationParts.push('wurde bereits neu eingeplant')
+  }
+
+  const headline = explanationParts.length > 0
+    ? explanationParts.join(', ')
+    : (baseReason || 'KI-Vorschlag ohne zusaetzliche lokale Risiken')
+
+  return {
+    recommendedPriority,
+    source: recommendedPriority && priorityRank[recommendedPriority] > priorityRank[basePriority] ? 'system' : 'ai',
+    headline,
+    riskLabels,
+  }
+}
+
+function getBlockingDependency(task: Task) {
+  return task.dependencies
+    .map(depId => tasks.value.find(candidate => candidate.id === depId))
+    .find(candidate => candidate && candidate.status !== 'done')
+}
+
+function getProjectLoad(task: Task) {
+  if (!task.projectId) return 0
+  return tasks.value.filter(candidate =>
+    candidate.projectId === task.projectId &&
+    candidate.status !== 'done',
+  ).length
+}
+
+function getAvailableMinutesForTask(task: Task, deepWorkOnly = false) {
+  const from = new Date()
+  const to = task.deadline ? new Date(task.deadline) : addDays(from, 14)
+  const slots = findFreeSlots(from, to, props.events, preferences.value)
+
+  return slots
+    .filter(slot => !deepWorkOnly || slot.isDeepWork)
+    .reduce((sum, slot) => sum + ((slot.end.getTime() - slot.start.getTime()) / 60000), 0)
+}
+
+function maxPriority(current: TaskPriority | undefined, next: TaskPriority) {
+  if (!current) return next
+  return priorityRank[next] > priorityRank[current] ? next : current
+}
+
+function addDays(date: Date, days: number) {
+  const copy = new Date(date)
+  copy.setDate(copy.getDate() + days)
+  return copy
 }
 
 function matchesActiveFilter(task: Task) {
@@ -459,6 +634,12 @@ async function removeProject(groupId: string) {
         </div>
       </div>
 
+      <div v-if="priorityFeedback" class="px-4 py-2">
+        <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+          {{ priorityFeedback }}
+        </div>
+      </div>
+
       <div v-if="planningFeedback" class="px-4 py-2">
         <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
           {{ planningFeedback }}
@@ -532,7 +713,21 @@ async function removeProject(groupId: string) {
                       </span>
                       <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
                       <span v-if="task.prioritySource === 'ai'" class="text-indigo-500">KI-Vorschlag</span>
+                      <span v-else-if="task.prioritySource === 'system'" class="text-red-500">Deadline-Druck</span>
                       <span v-else-if="task.prioritySource === 'manual'" class="text-gray-500">Manuell</span>
+                    </div>
+
+                    <div
+                      v-if="getTaskInsight(task)?.riskLabels.length"
+                      class="mt-2 flex flex-wrap gap-1"
+                    >
+                      <span
+                        v-for="riskLabel in getTaskInsight(task)?.riskLabels"
+                        :key="`${task.id}-${riskLabel}`"
+                        class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                      >
+                        {{ riskLabel }}
+                      </span>
                     </div>
 
                     <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
@@ -541,6 +736,20 @@ async function removeProject(groupId: string) {
 
                     <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
                       Grund: {{ task.priorityReason }}
+                    </div>
+
+                    <div
+                      v-if="task.aiSuggestedPriority && task.aiSuggestedPriority !== task.priority"
+                      class="mt-1 text-xs text-gray-500"
+                    >
+                      KI wollte {{ task.aiSuggestedPriority }}, lokal jetzt {{ task.priority }}.
+                    </div>
+
+                    <div
+                      v-if="getTaskInsight(task)?.headline && getTaskInsight(task)?.headline !== task.priorityReason"
+                      class="mt-1 text-xs text-gray-500"
+                    >
+                      Kontext: {{ getTaskInsight(task)?.headline }}
                     </div>
 
                     <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
