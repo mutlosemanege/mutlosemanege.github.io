@@ -122,10 +122,10 @@ Rahmen:
 - [x] Klarere technische Fehlermeldungen und Sync-Status fuer Kalenderaktionen
 
 ### 16. Sprachqualitaet und UI-Konsistenz
-- [ ] Sichtbare UI systematisch auf echte Umlaute und sauberes Deutsch umstellen
-- [ ] Begriffe ueberall vereinheitlichen: `Aufgabe`, `Termin`, `Routine`, `Planung`, `Prioritaet`
+- [x] Sichtbare UI systematisch auf echte Umlaute und sauberes Deutsch umstellen
+- [x] Begriffe ueberall vereinheitlichen: `Aufgabe`, `Termin`, `Routine`, `Planung`, `Prioritaet`
 - [ ] Mobile Modals und Sidebars auf Scroll- und Bedienbarkeit pruefen und nachziehen
-- [ ] Leere Zustaende, Erfolgsmeldungen und Fehlermeldungen sprachlich hochwertiger machen
+- [x] Leere Zustaende, Erfolgsmeldungen und Fehlermeldungen sprachlich hochwertiger machen
 
 ## Reihenfolge fuer den naechsten grossen Sprint
 

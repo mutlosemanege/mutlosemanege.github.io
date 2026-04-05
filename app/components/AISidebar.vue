@@ -134,23 +134,23 @@ const rescheduleModeOptions: Array<{
 }> = [
   {
     value: 'same-time',
-    label: 'Aehnliche Uhrzeit',
-    description: 'Versucht moeglichst nah an der alten Zeit neu zu planen.',
+    label: 'Ähnliche Uhrzeit',
+    description: 'Versucht, möglichst nah an der alten Zeit neu zu planen.',
   },
   {
     value: 'today',
     label: 'Noch heute',
-    description: 'Sucht zuerst heute einen Slot und faellt sonst auf den naechsten sinnvollen aus.',
+    description: 'Sucht zuerst heute einen Slot und fällt sonst auf den nächsten sinnvollen aus.',
   },
   {
     value: 'next',
-    label: 'Naechster Slot',
-    description: 'Nimmt einfach den naechsten sinnvollen freien Termin.',
+    label: 'Nächster Slot',
+    description: 'Nimmt einfach den nächsten sinnvollen freien Termin.',
   },
   {
     value: 'redistribute',
     label: 'Rest verteilen',
-    description: 'Verteilt die Aufgabe moeglichst flexibel ueber groessere freie Bloecke.',
+    description: 'Verteilt die Aufgabe möglichst flexibel über größere freie Blöcke.',
   },
 ]
 
@@ -162,22 +162,22 @@ const planVariantOptions: Array<{
   {
     style: 'aggressiv',
     label: 'Kompakt',
-    description: 'Packt Aufgaben frueher und dichter in freie Slots.',
+    description: 'Packt Aufgaben früher und dichter in freie Slots.',
   },
   {
     style: 'deadline-first',
     label: 'Deadline-first',
-    description: 'Zieht deadlinenahen Aufwand bewusst weiter nach vorne.',
+    description: 'Zieht Aufgaben mit naher Deadline bewusst weiter nach vorne.',
   },
   {
     style: 'focus-first',
     label: 'Fokusfreundlich',
-    description: 'Bevorzugt starke Fokusbloecke fuer anspruchsvolle Aufgaben.',
+    description: 'Bevorzugt starke Fokusblöcke für anspruchsvolle Aufgaben.',
   },
   {
     style: 'entspannt',
     label: 'Entspannt',
-    description: 'Sucht luftigere Zeitraeume mit mehr Puffer.',
+    description: 'Sucht luftigere Zeiträume mit mehr Puffer.',
   },
 ]
 
@@ -194,7 +194,7 @@ async function handlePrioritize() {
     priorityFeedback.value = 'Alle offenen Aufgaben sind aktuell manuell fixiert.'
     decisionTransparency.value = {
       title: 'Warum diese Entscheidung?',
-      why: ['Alle offenen Aufgaben sind aktuell manuell fixiert und wurden deshalb nicht automatisch ueberschrieben.'],
+    why: ['Alle offenen Aufgaben sind aktuell manuell fixiert und wurden deshalb nicht automatisch überschrieben.'],
       uncertainty: null,
       alternatives: [
         'Manuelle Prioritaeten einzelner Aufgaben wieder freigeben.',
@@ -240,7 +240,7 @@ async function handlePrioritize() {
       parts.push(`${escalatedBySystem} lokal hochgezogen`)
     }
     if (skippedManual > 0) {
-      parts.push(`${skippedManual} manuell geschuetzt`)
+      parts.push(`${skippedManual} manuell geschützt`)
     }
     priorityFeedback.value = parts.join(', ') + '.'
     addActivityEntry({
@@ -523,7 +523,7 @@ function buildVariantHighlight(
     case 'entspannt':
       return 'Gut, wenn mehr Puffer wichtiger ist als maximale Auslastung.'
     default:
-      return 'Bietet eine alternative Planungslogik fuer die Restaufgaben.'
+      return 'Bietet eine alternative Planungslogik für die Restaufgaben.'
   }
 }
 
@@ -640,10 +640,10 @@ function suggestAlternativeSlots(task: Task, existingEvents: readonly CalendarEv
     end: slot.end.toISOString(),
     label: formatAlternativeSlotLabel(slot.start, slot.end),
     detail: deadline && slot.end > deadline
-      ? 'Wuerde erst nach der aktuellen Deadline stattfinden.'
+      ? 'Würde erst nach der aktuellen Deadline stattfinden.'
       : task.isDeepWork
         ? 'Passt in ein freies Fokusfenster.'
-        : 'Naechster freier Block ohne Kollision.',
+        : 'Nächster freier Block ohne Kollision.',
   }))
 }
 
@@ -727,7 +727,7 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
       },
     })
   } catch (error) {
-    console.error(`Fehler beim Anwenden eines Alternativ-Slots fuer "${task.title}":`, error)
+    console.error(`Fehler beim Anwenden eines Alternativ-Slots für "${task.title}":`, error)
     planningFeedback.value = `"${task.title}" konnte nicht auf den vorgeschlagenen Slot eingeplant werden.`
   } finally {
     applyingAlternativeTaskId.value = null
@@ -905,7 +905,7 @@ function buildTaskPriorityInsight(task: Task, basePriority: TaskPriority, baseRe
     } else if (hoursUntilDeadline <= 72 && basePriority !== 'critical') {
       recommendedPriority = maxPriority(recommendedPriority, 'high')
       riskLabels.push('Deadline naht')
-      explanationParts.push('Deadline in den naechsten 3 Tagen')
+      explanationParts.push('Deadline in den nächsten 3 Tagen')
     }
   }
 
@@ -970,7 +970,7 @@ function buildPriorityDecisionTransparency(input: {
   }
 
   if (blockerCount > 0) {
-    why.push(`${blockerCount} Aufgaben haben noch offene Abhaengigkeiten und wurden vorsichtiger einsortiert.`)
+    why.push(`${blockerCount} Aufgaben haben noch offene Abhängigkeiten und wurden vorsichtiger einsortiert.`)
   }
 
   const alternatives = [
@@ -979,14 +979,14 @@ function buildPriorityDecisionTransparency(input: {
   ]
 
   if (input.skippedManual > 0) {
-    alternatives.unshift(`${input.skippedManual} manuell geschuetzte Aufgaben gezielt wieder fuer die KI freigeben.`)
+    alternatives.unshift(`${input.skippedManual} manuell geschützte Aufgaben gezielt wieder für die KI freigeben.`)
   }
 
   let uncertainty: string | null = null
   if (input.skippedManual > 0) {
-    uncertainty = 'Manuell geschuetzte Aufgaben koennen die Gesamtpriorisierung verschieben, auch wenn die KI den Rest sauber bewertet hat.'
+    uncertainty = 'Manuell geschützte Aufgaben können die Gesamtpriorisierung verschieben, auch wenn die KI den Rest sauber bewertet hat.'
   } else if (deadlinePressureCount > 0 && blockerCount > 0) {
-    uncertainty = 'Deadline-Druck und Abhaengigkeiten wirken gleichzeitig. Einzelne Reihenfolgen bleiben deshalb eher heuristisch als absolut.'
+    uncertainty = 'Deadline-Druck und Abhängigkeiten wirken gleichzeitig. Einzelne Reihenfolgen bleiben deshalb eher heuristisch als absolut.'
   }
 
   return {
@@ -1002,7 +1002,7 @@ function buildSchedulingDecisionTransparency(
   remainingTasks: Task[],
   diagnostics: SchedulingDiagnosis[],
 ): DecisionTransparency {
-  const why = [`${schedule.size} Aufgaben wurden in freie Slots eingeplant, ohne bestehende Termine und Routinen zu stoeren.`]
+  const why = [`${schedule.size} Aufgaben wurden in freie Slots eingeplant, ohne bestehende Termine und Routinen zu stören.`]
   const topCodes = [...new Set(diagnostics.map(entry => entry.code))].slice(0, 3)
 
   if (remainingTasks.length > 0) {
@@ -1025,7 +1025,7 @@ function buildSchedulingDecisionTransparency(
   if (remainingTasks.length > 0) {
     uncertainty = 'Die offenen Aufgaben sind nicht unmoeglich, aber innerhalb der aktuellen Grenzen aus Deadline, Fokuszeit und Kalenderbelegung noch nicht sauber unterzubringen.'
   } else if (schedule.size > 0) {
-    uncertainty = 'Mehrere Slots koennten aehnlich gut gewesen sein. Die aktuelle Planung ist die beste verfuegbare Option im jetzigen Kalenderstand.'
+    uncertainty = 'Mehrere Slots könnten ähnlich gut gewesen sein. Die aktuelle Planung ist die beste verfügbare Option im jetzigen Kalenderstand.'
   }
 
   return {
@@ -1049,7 +1049,7 @@ function buildRescheduleDecisionTransparency(
   if (succeeded && previousStart && newStart) {
     why.push(describeRescheduleShift(previousStart, newStart))
   } else {
-    why.push('Im aktuellen Kalender wurde fuer diesen Modus noch kein passender Slot gefunden.')
+    why.push('Im aktuellen Kalender wurde für diesen Modus noch kein passender Slot gefunden.')
   }
 
   const alternatives = rescheduleModeOptions
@@ -1070,7 +1070,7 @@ function buildRescheduleDecisionTransparency(
 function buildDiagnosisAlternative(code: SchedulingDiagnosis['code']) {
   switch (code) {
     case 'dependency':
-      return 'Zuerst die blockierende Aufgabe abschliessen oder ohne diese Abhaengigkeit weiterplanen.'
+      return 'Zuerst die blockierende Aufgabe abschließen oder ohne diese Abhängigkeit weiterplanen.'
     case 'deadline':
       return 'Deadline verschieben, Umfang reduzieren oder die Aufgabe manuell hoch priorisieren.'
     case 'deep-work':
@@ -1078,7 +1078,7 @@ function buildDiagnosisAlternative(code: SchedulingDiagnosis['code']) {
     case 'work-window':
       return 'Arbeitsfenster erweitern oder Routine-, Schlaf- und Pufferzeiten pruefen.'
     case 'no-slot':
-      return 'Den naechsten freien Termin akzeptieren oder die Aufgabe in kleinere Bloecke teilen.'
+      return 'Den nächsten freien Termin akzeptieren oder die Aufgabe in kleinere Blöcke teilen.'
   }
 }
 
@@ -1186,7 +1186,7 @@ function diagnoseSchedulingIssue(task: Task, existingEvents: readonly CalendarEv
         code: 'deep-work',
         severity: 'medium',
         summary: 'Zu wenig Fokuszeit',
-        detail: `Es gibt genug freie Zeit, aber nicht genug Deep-Work-Fenster fuer ${task.estimatedMinutes} Minuten.`,
+        detail: `Es gibt genug freie Zeit, aber nicht genug Deep-Work-Fenster für ${task.estimatedMinutes} Minuten.`,
       }
     }
   }
@@ -1198,7 +1198,7 @@ function diagnoseSchedulingIssue(task: Task, existingEvents: readonly CalendarEv
       code: 'deadline',
       severity: 'high',
       summary: 'Deadline unrealistisch',
-      detail: `Bis zur Deadline fehlen freie ${task.isDeepWork ? 'Fokus-' : ''}Minuten fuer ${task.estimatedMinutes} Minuten Aufwand.`,
+      detail: `Bis zur Deadline fehlen freie ${task.isDeepWork ? 'Fokus-' : ''}Minuten für ${task.estimatedMinutes} Minuten Aufwand.`,
     }
   }
 
@@ -1208,7 +1208,7 @@ function diagnoseSchedulingIssue(task: Task, existingEvents: readonly CalendarEv
     code: 'no-slot',
     severity: 'low',
     summary: 'Kein passender Slot',
-    detail: 'Aktuell wurde kein passender freier Block fuer diese Aufgabe gefunden.',
+    detail: 'Aktuell wurde kein passender freier Block für diese Aufgabe gefunden.',
   }
 }
 
@@ -1260,7 +1260,7 @@ function describeRescheduleShift(previousStart?: string, nextStart?: Date) {
   }
 
   if (diffDays === 1) {
-    return diffMs > 0 ? 'Auf den naechsten Tag verschoben.' : 'Einen Tag frueher neu einsortiert.'
+    return diffMs > 0 ? 'Auf den nächsten Tag verschoben.' : 'Einen Tag früher neu einsortiert.'
   }
 
   return `${diffDays} Tage ${diffMs > 0 ? 'spaeter' : 'frueher'} neu eingeplant.`
@@ -1385,7 +1385,7 @@ async function removeProject(groupId: string) {
   const projectGroup = tasksByProject.value.find(group => group.id === groupId)
   if (!projectGroup || groupId === 'inbox') return
 
-  const confirmed = window.confirm(`Projekt "${projectGroup.name}" wirklich loeschen? Alle zugehoerigen Aufgaben und geplanten Kalendereintraege werden entfernt.`)
+  const confirmed = window.confirm(`Projekt "${projectGroup.name}" wirklich löschen? Alle zugehörigen Aufgaben und geplanten Kalendereinträge werden entfernt.`)
   if (!confirmed) return
 
   try {
@@ -1405,17 +1405,17 @@ async function removeProject(groupId: string) {
     try {
       await refreshCalendarEvents()
     } catch (refreshError) {
-      console.warn('Kalender konnte nach Projektloeschung nicht neu geladen werden:', refreshError)
+      console.warn('Kalender konnte nach Projektlöschung nicht neu geladen werden:', refreshError)
     }
 
-    planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
+    planningFeedback.value = `Projekt "${projectGroup.name}" wurde gelöscht.`
     addActivityEntry({
       title: 'Projekt gelöscht',
       detail: `"${projectGroup.name}" wurde endgültig gelöscht.`,
     })
   } catch (error) {
-    console.error(`Fehler beim Loeschen des Projekts "${projectGroup.name}":`, error)
-    planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht geloescht werden.`
+    console.error(`Fehler beim Löschen des Projekts "${projectGroup.name}":`, error)
+    planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht gelöscht werden.`
   }
 }
 
@@ -1673,7 +1673,7 @@ async function restoreArchivedProject(groupId: string) {
           <div class="flex items-center justify-between gap-2">
             <div>
               <h3 class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Planvarianten</h3>
-              <p class="mt-1 text-xs text-emerald-700">Probier direkt eine andere Strategie fuer die restlichen Aufgaben aus.</p>
+              <p class="mt-1 text-xs text-emerald-700">Probier direkt eine andere Strategie für die restlichen Aufgaben aus.</p>
             </div>
             <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-emerald-700">
               {{ planVariants.length }} Optionen
@@ -1715,7 +1715,7 @@ async function restoreArchivedProject(groupId: string) {
                   :disabled="applyingVariantStyle === variant.style"
                   @click="applyPlanVariant(variant.style)"
                 >
-                  {{ applyingVariantStyle === variant.style ? 'Prueft...' : 'Anwenden' }}
+                  {{ applyingVariantStyle === variant.style ? 'Prüft...' : 'Anwenden' }}
                 </button>
               </div>
             </div>
@@ -2037,7 +2037,7 @@ async function restoreArchivedProject(groupId: string) {
             <div>
               <h3 class="text-lg font-semibold text-gray-900">Neu einplanen</h3>
               <p class="mt-1 text-sm text-gray-500">
-                Waehle, wie <span class="font-medium text-gray-700">{{ rescheduleTask.title }}</span> neu geplant werden soll.
+                Wähle, wie <span class="font-medium text-gray-700">{{ rescheduleTask.title }}</span> neu geplant werden soll.
               </p>
               <p v-if="formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start)" class="mt-2 text-xs text-gray-400">
                 Bisher: {{ formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start) }}

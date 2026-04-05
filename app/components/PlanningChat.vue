@@ -610,7 +610,7 @@ function buildCleanTitle(text: string) {
 
 function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
   if (parsed.recurrenceDay === undefined) {
-    throw new Error('Fuer eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
+    throw new Error('Für eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
   }
 
   const baseStartMinutes = parsed.timePreference?.exactStartMinutes ??

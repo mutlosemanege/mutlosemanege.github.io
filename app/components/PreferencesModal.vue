@@ -76,9 +76,9 @@ const routineExceptionDrafts = ref<Record<string, string>>({})
 const planningStyleOptions: Array<{ value: PlanningStyle; label: string; description: string }> = [
   { value: 'entspannt', label: 'Entspannt', description: 'Plant spaeter und mit mehr Luft.' },
   { value: 'normal', label: 'Normal', description: 'Ausgewogener Standardstil.' },
-  { value: 'aggressiv', label: 'Aggressiv', description: 'Nimmt fruehe Slots schneller mit.' },
-  { value: 'deadline-first', label: 'Deadline-first', description: 'Zieht Aufgaben eher frueh vor.' },
-  { value: 'focus-first', label: 'Focus-first', description: 'Bevorzugt starke Fokuszeiten.' },
+  { value: 'aggressiv', label: 'Aggressiv', description: 'Nimmt frühe Slots schneller mit.' },
+  { value: 'deadline-first', label: 'Deadline-first', description: 'Zieht Aufgaben eher früh vor.' },
+  { value: 'focus-first', label: 'Fokus-first', description: 'Bevorzugt starke Fokuszeiten.' },
 ]
 const behaviorSummary = computed(() => {
   const signals = preferences.value.behaviorSignals
@@ -236,7 +236,7 @@ function handleImportImageChange(event: Event) {
   reader.onload = () => {
     importImagePreview.value = typeof reader.result === 'string' ? reader.result : null
     importImageName.value = file.name
-    importFeedback.value = 'Bild geladen. Pruefe jetzt die Eintraege darunter und uebernimm nur, was wirklich passt.'
+    importFeedback.value = 'Bild geladen. Prüfe jetzt die Einträge darunter und übernimm nur, was wirklich passt.'
     if (importReviewEntries.value.length === 0) {
       importReviewEntries.value = [createImportReviewEntry()]
     }
@@ -379,7 +379,7 @@ async function applyRoutineTemplates() {
             commuteEnd.setHours(form.workEndHour, 0, 0, 0)
             commuteEnd.setMinutes(commuteEnd.getMinutes() + form.commuteFromWorkMinutes)
 
-            const createdFromWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Rueckweg von der Arbeit', tz)
+            const createdFromWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Rückweg von der Arbeit', tz)
             if (createdFromWork === 'skipped') {
               skippedEvents++
             } else if (createdFromWork) {
@@ -393,7 +393,7 @@ async function applyRoutineTemplates() {
     const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
     await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
-    routineFeedback.value = `${createdEvents.length} Routinen wurden eingetragen.${skippedEvents > 0 ? ` ${skippedEvents} vorhandene Termine wurden uebersprungen.` : ''}`
+    routineFeedback.value = `${createdEvents.length} Routinen wurden eingetragen.${skippedEvents > 0 ? ` ${skippedEvents} vorhandene Termine wurden übersprungen.` : ''}`
   } catch (error: any) {
     routineFeedback.value = error.message || 'Routinen konnten nicht eingetragen werden.'
   } finally {
@@ -404,7 +404,7 @@ async function applyRoutineTemplates() {
 async function applyImportEntries() {
   const selectedEntries = importReviewEntries.value.filter(entry => entry.enabled && entry.title.trim() && entry.startHour < entry.endHour)
   if (selectedEntries.length === 0) {
-    importFeedback.value = 'Fuege zuerst mindestens einen gueltigen Import-Eintrag hinzu.'
+    importFeedback.value = 'Füge zuerst mindestens einen gültigen Import-Eintrag hinzu.'
     return
   }
 
@@ -486,9 +486,9 @@ async function applyImportEntries() {
       await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
     }
 
-    importFeedback.value = `${savedRoutines} Routinen gespeichert, ${createdEvents} feste Termine eingetragen.${skippedDuplicates > 0 ? ` ${skippedDuplicates} aehnliche Eintraege wurden uebersprungen.` : ''}`
+    importFeedback.value = `${savedRoutines} Routinen gespeichert, ${createdEvents} feste Termine eingetragen.${skippedDuplicates > 0 ? ` ${skippedDuplicates} ähnliche Einträge wurden übersprungen.` : ''}`
   } catch (error: any) {
-    importFeedback.value = error.message || 'Import-Eintraege konnten nicht uebernommen werden.'
+    importFeedback.value = error.message || 'Import-Einträge konnten nicht übernommen werden.'
   } finally {
     isApplyingImport.value = false
   }
@@ -530,7 +530,7 @@ function importEntryDuplicateHint(entry: ImportReviewEntry) {
   if (!entry.title.trim()) return null
 
   if (entry.type === 'routine') {
-    return hasMatchingRoutineTemplate(entry) ? 'Aehnliche Routine bereits vorhanden' : null
+    return hasMatchingRoutineTemplate(entry) ? 'Ähnliche Routine bereits vorhanden' : null
   }
 
   if (!entry.date) return null
@@ -544,7 +544,7 @@ function importEntryDuplicateHint(entry: ImportReviewEntry) {
   }
 
   return hasMatchingExistingEvent(entry.title.trim(), start, end)
-    ? 'Aehnlicher Termin bereits im Kalender'
+    ? 'Ähnlicher Termin bereits im Kalender'
     : null
 }
 
@@ -645,10 +645,10 @@ function handleReset() {
         <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
           <h2 class="text-lg font-semibold text-gray-900">Planung und Routinen</h2>
           <p class="text-sm text-gray-500">
-            Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender uebernehmen willst.
+            Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender übernehmen willst.
           </p>
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
-            Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender eintraegst.
+            Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender einträgst.
           </div>
 
           <div
@@ -694,7 +694,7 @@ function handleReset() {
           <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
             <h3 class="text-sm font-medium text-emerald-800">Gelernt aus deinem Verhalten</h3>
             <p class="mt-1 text-xs text-emerald-700">
-              Die App merkt sich lokal, wann Aufgaben eher geschafft oder verschoben werden, und nutzt das fuer bessere Slot-Vorschlaege.
+              Die App merkt sich lokal, wann Aufgaben eher geschafft oder verschoben werden, und nutzt das für bessere Slot-Vorschläge.
             </p>
             <div class="mt-3 grid grid-cols-3 gap-2 text-center">
               <div class="rounded-lg bg-white px-3 py-2">
@@ -840,7 +840,7 @@ function handleReset() {
               </div>
             </div>
             <p class="mt-2 text-xs text-gray-500">
-              Wenn aktiv, werden Schlafzeiten beim Planen respektiert und koennen zusaetzlich als Kalenderbloecke fuer die naechsten 4 Wochen eingetragen werden.
+              Wenn aktiv, werden Schlafzeiten beim Planen respektiert und können zusätzlich als Kalenderblöcke für die nächsten 4 Wochen eingetragen werden.
             </p>
           </div>
 
@@ -897,7 +897,7 @@ function handleReset() {
           <div>
             <h3 class="text-sm font-medium text-gray-700 mb-2">Deep-Work-Zeiten</h3>
             <p class="text-xs text-gray-500 mb-3">
-              Geschuetzte Fokuszeiten, in denen nur Deep-Work-Aufgaben eingeplant werden.
+              Geschützte Fokuszeiten, in denen nur Deep-Work-Aufgaben eingeplant werden.
             </p>
             <div class="space-y-2">
               <div
@@ -999,12 +999,12 @@ function handleReset() {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Rueckweg von der Arbeit</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Rückweg von der Arbeit</label>
               <select
                 v-model.number="form.commuteFromWorkMinutes"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               >
-                <option :value="0">Kein Rueckweg</option>
+                <option :value="0">Kein Rückweg</option>
                 <option :value="15">15 Min.</option>
                 <option :value="30">30 Min.</option>
                 <option :value="45">45 Min.</option>
@@ -1028,7 +1028,7 @@ function handleReset() {
               <div>
                 <h3 class="text-sm font-medium text-gray-700">Feste Routinen</h3>
                 <p class="text-xs text-gray-500 mt-1">
-                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an. Sie zaehlen sofort als Planungsregeln und koennen zusaetzlich gesammelt in den Kalender eingetragen werden.
+                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an. Sie zählen sofort als Planungsregeln und können zusätzlich gesammelt in den Kalender eingetragen werden.
                 </p>
               </div>
               <button
@@ -1036,7 +1036,7 @@ function handleReset() {
                 :disabled="isApplyingRoutines"
                 @click="applyRoutineTemplates"
               >
-                {{ isApplyingRoutines ? 'Trage ein...' : 'Naechste 4 Wochen eintragen' }}
+                {{ isApplyingRoutines ? 'Trage ein...' : 'Nächste 4 Wochen eintragen' }}
               </button>
             </div>
 
@@ -1098,7 +1098,7 @@ function handleReset() {
               class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-100"
               @click="addRoutine"
             >
-              Routine hinzufuegen
+              Routine hinzufügen
             </button>
 
             <div v-if="form.routineTemplates.length > 0" class="space-y-2">
@@ -1195,7 +1195,7 @@ function handleReset() {
                       class="rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm text-primary-700 transition hover:bg-primary-50"
                       @click="addRoutineException(routine.id)"
                     >
-                      Ausnahme hinzufuegen
+                      Ausnahme hinzufügen
                     </button>
                   </div>
                   <div v-if="(routine.skipDates || []).length > 0" class="mt-2 flex flex-wrap gap-2">
@@ -1222,7 +1222,7 @@ function handleReset() {
               <div>
                 <h3 class="text-sm font-medium text-sky-900">Bild-Import vorbereiten</h3>
                 <p class="mt-1 text-xs text-sky-800">
-                  Lade einen Stundenplan oder Screenshot hoch und uebernimm daraus feste Termine oder Routinen nach einer manuellen Review.
+                  Lade einen Stundenplan oder Screenshot hoch und übernimm daraus feste Termine oder Routinen nach einer manuellen Review.
                 </p>
               </div>
             </div>
@@ -1232,7 +1232,7 @@ function handleReset() {
                 <div>
                   <div class="text-sm font-medium text-gray-900">1. Bild hochladen</div>
                   <div class="mt-1 text-xs text-gray-500">
-                    Das Bild dient hier bewusst als Referenz. Die App importiert noch nichts automatisch ohne deine Pruefung.
+                    Das Bild dient hier bewusst als Referenz. Die App importiert noch nichts automatisch ohne deine Prüfung.
                   </div>
                 </div>
                 <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-200 bg-sky-100 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-200">
@@ -1271,19 +1271,19 @@ function handleReset() {
                 <div>
                   <div class="text-sm font-medium text-gray-900">2. Eintraege reviewen</div>
                   <div class="mt-1 text-xs text-gray-500">
-                    Lege darunter die Eintraege an, die du aus dem Bild uebernehmen willst. Alles bleibt vor dem Uebernehmen editierbar.
+                    Lege darunter die Einträge an, die du aus dem Bild übernehmen willst. Alles bleibt vor dem Übernehmen editierbar.
                   </div>
                 </div>
                 <button
                   class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
                   @click="addImportReviewEntry"
                 >
-                  Eintrag hinzufuegen
+                  Eintrag hinzufügen
                 </button>
               </div>
 
               <div v-if="importReviewEntries.length === 0" class="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center text-xs text-gray-500">
-                Noch keine Import-Eintraege angelegt. Lade ein Bild hoch oder fuege den ersten Eintrag manuell hinzu.
+                Noch keine Import-Einträge angelegt. Lade ein Bild hoch oder füge den ersten Eintrag manuell hinzu.
               </div>
 
               <div v-else class="mt-4 space-y-3">
@@ -1295,7 +1295,7 @@ function handleReset() {
                   <div class="flex items-start justify-between gap-3">
                     <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
                       <input v-model="entry.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
-                      Uebernehmen
+                      Übernehmen
                     </label>
                     <button
                       class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
@@ -1405,7 +1405,7 @@ function handleReset() {
                       v-if="entry.type === 'fixed-event' && !entry.date"
                       class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
                     >
-                      Fuer feste Termine fehlt noch ein Datum
+                      Für feste Termine fehlt noch ein Datum
                     </span>
                   </div>
                 </div>
@@ -1414,14 +1414,14 @@ function handleReset() {
 
             <div class="flex items-center justify-between gap-3">
               <p class="text-xs text-sky-800">
-                3. Uebernimm nur die Eintraege, die du geprueft hast. Routinen beeinflussen danach direkt das Auto-Planen.
+                3. Übernimm nur die Einträge, die du geprüft hast. Routinen beeinflussen danach direkt das Auto-Planen.
               </p>
               <button
                 class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
                 :disabled="isApplyingImport"
                 @click="applyImportEntries"
               >
-                {{ isApplyingImport ? 'Uebernehme...' : 'Import-Eintraege uebernehmen' }}
+                {{ isApplyingImport ? 'Übernehme...' : 'Import-Einträge übernehmen' }}
               </button>
             </div>
 
@@ -1436,7 +1436,7 @@ function handleReset() {
               class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               @click="handleReset"
             >
-              Zuruecksetzen
+              Zurücksetzen
             </button>
             <div class="flex gap-2">
               <button
