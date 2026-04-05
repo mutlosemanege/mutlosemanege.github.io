@@ -24,6 +24,7 @@ const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
 const collapsedGroups = ref<string[]>([])
 const planningFeedback = ref<string | null>(null)
 const priorityFeedback = ref<string | null>(null)
+const decisionTransparency = ref<DecisionTransparency | null>(null)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -77,6 +78,13 @@ interface SchedulingDiagnosis {
 
 type RescheduleMode = 'same-time' | 'today' | 'next' | 'redistribute'
 
+interface DecisionTransparency {
+  title: string
+  why: string[]
+  uncertainty?: string | null
+  alternatives: string[]
+}
+
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
 const rescheduleTask = ref<Task | null>(null)
 const selectedRescheduleMode = ref<RescheduleMode>('same-time')
@@ -120,11 +128,21 @@ async function handlePrioritize() {
   const pending = getPendingTasks()
   if (pending.length === 0) return
   priorityFeedback.value = null
+  decisionTransparency.value = null
 
   const autoPrioritizable = pending.filter(task => task.prioritySource !== 'manual')
   const skippedManual = pending.length - autoPrioritizable.length
   if (autoPrioritizable.length === 0) {
     priorityFeedback.value = 'Alle offenen Aufgaben sind aktuell manuell fixiert.'
+    decisionTransparency.value = {
+      title: 'Warum diese Entscheidung?',
+      why: ['Alle offenen Aufgaben sind aktuell manuell fixiert und wurden deshalb nicht automatisch ueberschrieben.'],
+      uncertainty: null,
+      alternatives: [
+        'Manuelle Prioritaeten einzelner Aufgaben wieder freigeben.',
+        'Nur neue oder offene Aufgaben ohne manuellen Schutz per KI priorisieren.',
+      ],
+    }
     return
   }
 
@@ -168,6 +186,14 @@ async function handlePrioritize() {
     }
     priorityFeedback.value = parts.join(', ') + '.'
   }
+
+  decisionTransparency.value = buildPriorityDecisionTransparency({
+    pendingCount: pending.length,
+    appliedCount,
+    escalatedBySystem,
+    skippedManual,
+    prioritizedTasks: autoPrioritizable,
+  })
 }
 
 // Auto-Scheduling
@@ -177,6 +203,7 @@ async function handleAutoSchedule() {
 
   planningFeedback.value = null
   planningDiagnostics.value = []
+  decisionTransparency.value = null
 
   const currentEvents = await refreshCalendarEvents()
   const schedule = await applyScheduleForTasks(unscheduled, currentEvents)
@@ -190,6 +217,7 @@ async function handleAutoSchedule() {
     .sort(sortSchedulingDiagnosis)
 
   planningDiagnostics.value = diagnostics
+  decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, remainingTasks, diagnostics)
 
   if (scheduledCount === 0) {
     const topReasons = diagnostics.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
@@ -253,6 +281,7 @@ async function confirmReschedule() {
 async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   const previousStart = task.scheduledStart
   recordTaskMiss(previousStart ? new Date(previousStart) : new Date())
+  decisionTransparency.value = null
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
 
   if (calendarIds.length > 0) {
@@ -296,8 +325,10 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
     const shiftLabel = describeRescheduleShift(previousStart, newStart)
     const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
     planningFeedback.value = `"${task.title}" wurde neu eingeplant (${modeLabel}). ${shiftLabel}`
+    decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, true, previousStart, newStart)
   } else {
     planningFeedback.value = `"${task.title}" konnte im Modus "${rescheduleModeOptions.find(option => option.value === mode)?.label || mode}" noch nicht automatisch neu eingeplant werden.`
+    decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, false, previousStart)
   }
 }
 
@@ -456,6 +487,141 @@ function buildTaskPriorityInsight(task: Task, basePriority: TaskPriority, baseRe
     source: recommendedPriority && priorityRank[recommendedPriority] > priorityRank[basePriority] ? 'system' : 'ai',
     headline,
     riskLabels,
+  }
+}
+
+function buildPriorityDecisionTransparency(input: {
+  pendingCount: number
+  appliedCount: number
+  escalatedBySystem: number
+  skippedManual: number
+  prioritizedTasks: Task[]
+}): DecisionTransparency {
+  const blockerCount = input.prioritizedTasks.filter(task => Boolean(getBlockingDependency(task))).length
+  const deadlinePressureCount = input.prioritizedTasks.filter(task => {
+    if (!task.deadline) return false
+    const hoursUntilDeadline = (new Date(task.deadline).getTime() - Date.now()) / (60 * 60 * 1000)
+    return hoursUntilDeadline <= 72
+  }).length
+
+  const why = [
+    `${input.appliedCount} von ${input.pendingCount} offenen Aufgaben wurden mit KI-Vorschlag und lokaler Kontextlogik bewertet.`,
+  ]
+
+  if (input.escalatedBySystem > 0) {
+    why.push(`${input.escalatedBySystem} Aufgaben wurden lokal wegen Deadline-Druck oder fehlender Planungsreserve nach oben gezogen.`)
+  }
+
+  if (blockerCount > 0) {
+    why.push(`${blockerCount} Aufgaben haben noch offene Abhaengigkeiten und wurden vorsichtiger einsortiert.`)
+  }
+
+  const alternatives = [
+    'Prioritaeten manuell anpassen, wenn deine echte Reihenfolge anders ist.',
+    'Danach direkt Auto-Planen starten, um die Reihenfolge gegen den Kalender zu pruefen.',
+  ]
+
+  if (input.skippedManual > 0) {
+    alternatives.unshift(`${input.skippedManual} manuell geschuetzte Aufgaben gezielt wieder fuer die KI freigeben.`)
+  }
+
+  let uncertainty: string | null = null
+  if (input.skippedManual > 0) {
+    uncertainty = 'Manuell geschuetzte Aufgaben koennen die Gesamtpriorisierung verschieben, auch wenn die KI den Rest sauber bewertet hat.'
+  } else if (deadlinePressureCount > 0 && blockerCount > 0) {
+    uncertainty = 'Deadline-Druck und Abhaengigkeiten wirken gleichzeitig. Einzelne Reihenfolgen bleiben deshalb eher heuristisch als absolut.'
+  }
+
+  return {
+    title: 'Warum diese Entscheidung?',
+    why,
+    uncertainty,
+    alternatives,
+  }
+}
+
+function buildSchedulingDecisionTransparency(
+  schedule: Map<string, ScheduledTaskPlan>,
+  remainingTasks: Task[],
+  diagnostics: SchedulingDiagnosis[],
+): DecisionTransparency {
+  const why = [`${schedule.size} Aufgaben wurden in freie Slots eingeplant, ohne bestehende Termine und Routinen zu stoeren.`]
+  const topCodes = [...new Set(diagnostics.map(entry => entry.code))].slice(0, 3)
+
+  if (remainingTasks.length > 0) {
+    why.push(`${remainingTasks.length} Aufgaben blieben offen, weil aktuell nicht genug passende Slots oder Voraussetzungen vorhanden sind.`)
+  }
+
+  if (topCodes.length > 0) {
+    why.push(`Die wichtigsten Hindernisse waren ${topCodes.map(code => diagnosisLabels[code]).join(', ')}.`)
+  }
+
+  const alternatives = topCodes
+    .map(buildDiagnosisAlternative)
+    .filter((value, index, array) => array.indexOf(value) === index)
+
+  if (alternatives.length === 0) {
+    alternatives.push('Planungsstil anpassen oder einzelne Aufgaben manuell verschieben.')
+  }
+
+  let uncertainty: string | null = null
+  if (remainingTasks.length > 0) {
+    uncertainty = 'Die offenen Aufgaben sind nicht unmoeglich, aber innerhalb der aktuellen Grenzen aus Deadline, Fokuszeit und Kalenderbelegung noch nicht sauber unterzubringen.'
+  } else if (schedule.size > 0) {
+    uncertainty = 'Mehrere Slots koennten aehnlich gut gewesen sein. Die aktuelle Planung ist die beste verfuegbare Option im jetzigen Kalenderstand.'
+  }
+
+  return {
+    title: remainingTasks.length > 0 ? 'Warum noch nicht alles eingeplant ist' : 'Warum diese Entscheidung?',
+    why,
+    uncertainty,
+    alternatives,
+  }
+}
+
+function buildRescheduleDecisionTransparency(
+  task: Task,
+  mode: RescheduleMode,
+  succeeded: boolean,
+  previousStart?: string,
+  newStart?: Date,
+): DecisionTransparency {
+  const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || mode
+  const why = [`"${task.title}" wurde mit dem Modus "${modeLabel}" neu bewertet.`]
+
+  if (succeeded && previousStart && newStart) {
+    why.push(describeRescheduleShift(previousStart, newStart))
+  } else {
+    why.push('Im aktuellen Kalender wurde fuer diesen Modus noch kein passender Slot gefunden.')
+  }
+
+  const alternatives = rescheduleModeOptions
+    .filter(option => option.value !== mode)
+    .slice(0, 3)
+    .map(option => `${option.label}: ${option.description}`)
+
+  return {
+    title: succeeded ? 'Warum diese Entscheidung?' : 'Warum noch nicht neu eingeplant',
+    why,
+    uncertainty: succeeded
+      ? 'Je nach spaeteren Kalenderaenderungen koennten noch bessere Alternativen frei werden.'
+      : 'Die aktuelle Zeitlage ist eng. Ein anderer Modus oder lockerere Rahmenbedingungen koennen noch helfen.',
+    alternatives,
+  }
+}
+
+function buildDiagnosisAlternative(code: SchedulingDiagnosis['code']) {
+  switch (code) {
+    case 'dependency':
+      return 'Zuerst die blockierende Aufgabe abschliessen oder ohne diese Abhaengigkeit weiterplanen.'
+    case 'deadline':
+      return 'Deadline verschieben, Umfang reduzieren oder die Aufgabe manuell hoch priorisieren.'
+    case 'deep-work':
+      return 'Mehr Fokuszeit freimachen oder den Planungsstil auf Focus-first stellen.'
+    case 'work-window':
+      return 'Arbeitsfenster erweitern oder Routine-, Schlaf- und Pufferzeiten pruefen.'
+    case 'no-slot':
+      return 'Den naechsten freien Termin akzeptieren oder die Aufgabe in kleinere Bloecke teilen.'
   }
 }
 
@@ -887,6 +1053,40 @@ async function removeProject(groupId: string) {
       <div v-if="planningFeedback" class="px-4 py-2">
         <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
           {{ planningFeedback }}
+        </div>
+      </div>
+
+      <div v-if="decisionTransparency" class="px-4 pb-2">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-700">{{ decisionTransparency.title }}</h3>
+
+          <div class="mt-2 space-y-2">
+            <div>
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Warum?</div>
+              <ul class="mt-1 space-y-1 text-xs text-slate-700">
+                <li v-for="reason in decisionTransparency.why" :key="reason">
+                  {{ reason }}
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="decisionTransparency.uncertainty" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Unsicherheit: {{ decisionTransparency.uncertainty }}
+            </div>
+
+            <div v-if="decisionTransparency.alternatives.length > 0">
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Alternativen</div>
+              <div class="mt-1 flex flex-wrap gap-1.5">
+                <span
+                  v-for="alternative in decisionTransparency.alternatives"
+                  :key="alternative"
+                  class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600"
+                >
+                  {{ alternative }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

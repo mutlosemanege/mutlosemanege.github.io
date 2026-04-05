@@ -72,9 +72,9 @@ Rahmen:
 - [x] Spater daraus bessere Slot-Auswahl und Priorisierungsdarstellung ableiten
 
 ### 8. Bessere Transparenz in der gesamten KI-UX
-- [ ] `Warum diese Entscheidung?` als Muster in Sidebar, Chat und Projektgenerator vereinheitlichen
-- [ ] Hinweise anzeigen, wenn die KI unsicher ist
-- [ ] Nicht nur Ergebnisse, sondern auch Alternativen sichtbar machen
+- [x] `Warum diese Entscheidung?` als Muster in Sidebar, Chat und Projektgenerator vereinheitlichen
+- [x] Hinweise anzeigen, wenn die KI unsicher ist
+- [x] Nicht nur Ergebnisse, sondern auch Alternativen sichtbar machen
 
 ## Spaeter bauen
 

@@ -33,6 +33,11 @@ interface SlotSuggestion {
   reason: string
 }
 
+interface SlotCandidate extends SlotSuggestion {
+  score: number
+  strategy: SlotStrategy
+}
+
 interface RoutinePreview {
   template: RoutineTemplate
   nextStart: Date
@@ -67,6 +72,8 @@ const previewRoutine = ref<RoutinePreview | null>(null)
 const parsedDetails = ref<ParsedPlanningRequest | null>(null)
 const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
 const previewReason = ref<string | null>(null)
+const previewUncertainty = ref<string | null>(null)
+const previewAlternatives = ref<Array<{ label: string; reason: string }>>([])
 
 watch(() => props.show, (show) => {
   if (!show) return
@@ -81,6 +88,8 @@ watch(() => props.show, (show) => {
   parsedDetails.value = null
   previewTaskSlot.value = null
   previewReason.value = null
+  previewUncertainty.value = null
+  previewAlternatives.value = []
 })
 
 async function handlePlan() {
@@ -93,6 +102,8 @@ async function handlePlan() {
   previewRoutine.value = null
   previewTaskSlot.value = null
   previewReason.value = null
+  previewUncertainty.value = null
+  previewAlternatives.value = []
 
   try {
     const parsed = parsePlanningPrompt(prompt.value.trim(), durationMinutes.value)
@@ -102,11 +113,14 @@ async function handlePlan() {
       const routine = buildRoutinePreview(parsed)
       previewRoutine.value = routine
       previewReason.value = routine.reason
+      previewUncertainty.value = buildPreviewUncertainty(parsed, true, routine.roundedToHour)
       return
     }
 
     const suggestion = findBestSlot(parsed)
     previewReason.value = suggestion?.reason || buildNoSlotReason(parsed)
+    previewAlternatives.value = buildAlternativePreview(parsed)
+    previewUncertainty.value = buildPreviewUncertainty(parsed, Boolean(suggestion))
 
     if (parsed.intent === 'task') {
       previewTaskSlot.value = suggestion ? { start: suggestion.start, end: suggestion.end } : null
@@ -568,29 +582,7 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
 }
 
 function findBestSlot(parsed: ParsedPlanningRequest): SlotSuggestion | null {
-  const slots = findFreeSlots(parsed.dateFrom, parsed.dateTo, props.events, preferences.value)
-  const strategies = buildSlotStrategies(parsed)
-
-  for (const strategy of strategies) {
-    const matches = slots
-      .map(slot => buildSlotCandidate(slot, parsed, strategy))
-      .filter((candidate): candidate is { start: Date; end: Date; score: number; strategy: SlotStrategy } => candidate !== null)
-      .sort((a, b) => {
-        if (a.score !== b.score) return a.score - b.score
-        return a.start.getTime() - b.start.getTime()
-      })
-
-    if (matches.length > 0) {
-      const best = matches[0]
-      return {
-        start: best.start,
-        end: best.end,
-        reason: buildSlotReason(parsed, best.start, best.strategy),
-      }
-    }
-  }
-
-  return null
+  return collectSlotCandidates(parsed)[0] || null
 }
 
 function buildSlotStrategies(parsed: ParsedPlanningRequest): SlotStrategy[] {
@@ -632,9 +624,46 @@ function buildSlotCandidate(slot: { start: Date; end: Date }, parsed: ParsedPlan
   return {
     start,
     end,
+    reason: buildSlotReason(parsed, start, strategy),
     score,
     strategy,
   }
+}
+
+function collectSlotCandidates(parsed: ParsedPlanningRequest): SlotSuggestion[] {
+  const slots = findFreeSlots(parsed.dateFrom, parsed.dateTo, props.events, preferences.value)
+  const candidates: SlotCandidate[] = []
+
+  for (const strategy of buildSlotStrategies(parsed)) {
+    candidates.push(
+      ...slots
+        .map(slot => buildSlotCandidate(slot, parsed, strategy))
+        .filter((candidate): candidate is SlotCandidate => candidate !== null),
+    )
+  }
+
+  const seen = new Set<string>()
+
+  return candidates
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score
+      return a.start.getTime() - b.start.getTime()
+    })
+    .filter(candidate => {
+      const key = `${candidate.start.toISOString()}-${candidate.end.toISOString()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function buildAlternativePreview(parsed: ParsedPlanningRequest) {
+  return collectSlotCandidates(parsed)
+    .slice(1, 3)
+    .map(option => ({
+      label: `${formatPreview(option.start.toISOString())} bis ${formatPreview(option.end.toISOString())}`,
+      reason: option.reason,
+    }))
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
@@ -736,6 +765,30 @@ function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roun
   }
 
   return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und fuer die naechsten 4 Wochen in den Kalender eingetragen.`
+}
+
+function buildPreviewUncertainty(
+  parsed: ParsedPlanningRequest,
+  hasSuggestion: boolean,
+  roundedRoutine = false,
+) {
+  if (roundedRoutine) {
+    return 'Die Routine wurde auf volle Stunden gerundet, weil Routinen aktuell keine Minutenwerte speichern.'
+  }
+
+  if (!hasSuggestion) {
+    return 'Es gibt aktuell keinen sicheren passenden Slot im gewuenschten Fenster.'
+  }
+
+  if (intentMode.value === 'auto') {
+    return `Der Typ wurde automatisch als ${intentLabel(parsed.intent).toLowerCase()} erkannt. Wenn das nicht passt, kannst du ihn oben manuell umstellen.`
+  }
+
+  if (!parsed.hasExplicitDate && !parsed.timePreference && parsed.preferredPeriod === 'any') {
+    return 'Es wurde kein fester Zeitpunkt erkannt, deshalb nutze ich den fruehesten sinnvollen freien Slot.'
+  }
+
+  return null
 }
 
 function hasMatchingExistingEvent(
@@ -987,6 +1040,30 @@ function intentLabel(intent: PlanningIntent) {
                   </span>
                 </div>
 
+                <div
+                  v-if="previewReason || previewUncertainty || previewAlternatives.length > 0"
+                  class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div class="text-xs font-semibold uppercase tracking-wide text-slate-700">Warum diese Entscheidung?</div>
+                  <p v-if="previewReason" class="mt-2 text-xs text-slate-600">
+                    {{ previewReason }}
+                  </p>
+                  <p v-if="previewUncertainty" class="mt-2 text-xs text-amber-700">
+                    Unsicherheit: {{ previewUncertainty }}
+                  </p>
+                  <div v-if="previewAlternatives.length > 0" class="mt-3 space-y-2">
+                    <div class="text-[11px] font-medium text-slate-700">Alternativen</div>
+                    <div
+                      v-for="alternative in previewAlternatives"
+                      :key="alternative.label"
+                      class="rounded-lg bg-white px-3 py-2"
+                    >
+                      <div class="text-xs font-medium text-gray-900">{{ alternative.label }}</div>
+                      <div class="mt-1 text-[11px] text-gray-500">{{ alternative.reason }}</div>
+                    </div>
+                  </div>
+                </div>
+
                 <div v-if="previewEvent && parsedDetails" class="mt-3 space-y-3">
                   <div class="rounded-xl bg-white p-3 shadow-sm">
                     <p class="text-sm font-medium text-gray-900">{{ parsedDetails.title }}</p>
@@ -996,9 +1073,6 @@ function intentLabel(intent: PlanningIntent) {
                     <p class="mt-2 text-sm text-primary-700">
                       {{ formatPreview(previewEvent.start.dateTime) }} bis
                       {{ formatPreview(previewEvent.end.dateTime) }}
-                    </p>
-                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
-                      {{ previewReason }}
                     </p>
                   </div>
 
@@ -1027,9 +1101,6 @@ function intentLabel(intent: PlanningIntent) {
                     <p class="mt-1 text-xs text-gray-500">
                       Deadline: {{ previewTask.deadline ? new Date(previewTask.deadline).toLocaleDateString('de-DE') : 'keine' }}
                     </p>
-                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
-                      {{ previewReason }}
-                    </p>
                   </div>
 
                   <button
@@ -1053,9 +1124,6 @@ function intentLabel(intent: PlanningIntent) {
                     </p>
                     <p class="mt-1 text-xs text-gray-500">
                       Naechste Ausfuehrung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
-                    </p>
-                    <p v-if="previewReason" class="mt-2 text-xs text-gray-500">
-                      {{ previewReason }}
                     </p>
                   </div>
 

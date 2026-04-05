@@ -255,6 +255,61 @@ const projectScopeInsights = computed(() => {
   }
 })
 
+const reviewWhy = computed(() => {
+  const reasons: string[] = []
+
+  if (suggestedStartTasks.value.length > 0) {
+    reasons.push(`${suggestedStartTasks.value.length} Aufgaben koennen sofort starten, weil sie keine offenen Abhaengigkeiten haben.`)
+  }
+
+  const deepWorkCount = includedPreviewTasks.value.filter(task => task.isDeepWork).length
+  if (deepWorkCount > 0) {
+    reasons.push(`${deepWorkCount} Aufgaben wurden als Deep Work markiert und sollten in ruhigere Bloecke.`)
+  }
+
+  if (projectScopeInsights.value.availableHours > 0) {
+    reasons.push(`Die Plausibilitaet wird mit ca. ${projectScopeInsights.value.availableHours} freien Stunden im aktuellen Horizont abgeglichen.`)
+  }
+
+  return reasons
+})
+
+const reviewUncertainty = computed(() => {
+  if (projectScopeInsights.value.severity === 'danger') {
+    return 'Der Umfang wirkt aktuell kritisch. Deadline oder Umfang koennten fuer den verfuegbaren Kalender zu eng sein.'
+  }
+
+  if (!deadline.value) {
+    return 'Ohne Deadline ist die Reihenfolge plausibel, aber die Dringlichkeit der spaeteren Schritte bleibt unschaerfer.'
+  }
+
+  if (includedPreviewTasks.value.some(task => task.dependsOn.length >= 2)) {
+    return 'Mehrere vernetzte Abhaengigkeiten koennen spaeter noch Feintuning brauchen.'
+  }
+
+  return null
+})
+
+const reviewAlternatives = computed(() => {
+  const alternatives: string[] = []
+
+  if (projectScopeInsights.value.severity !== 'normal') {
+    alternatives.push('Nur die Startaufgaben uebernehmen und den Rest spaeter nachziehen.')
+  }
+
+  if (autoScheduleAfterCreate.value) {
+    alternatives.push('Projekt erst nur anlegen und Auto-Planen spaeter manuell starten.')
+  } else {
+    alternatives.push('Direkt nach dem Erstellen automatisch einplanen lassen.')
+  }
+
+  if (includedPreviewTasks.value.some(task => task.dependsOn.length > 0)) {
+    alternatives.push('Blockierte Aufgaben vorerst abwaehlen und nur den ersten Abschnitt uebernehmen.')
+  }
+
+  return alternatives
+})
+
 function dependencyLabels(task: PreviewTask) {
   return task.dependsOn
     .map(depTempId => previewTasks.value.find(candidate => candidate.tempId === depTempId)?.title || depTempId)
@@ -486,6 +541,35 @@ function addDays(date: Date, days: number) {
                   >
                     zuerst
                   </span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="reviewWhy.length > 0 || reviewUncertainty || reviewAlternatives.length > 0"
+              class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+            >
+              <div class="text-sm font-medium text-slate-800">Warum diese Entscheidung?</div>
+              <div v-if="reviewWhy.length > 0" class="mt-2 space-y-1">
+                <p
+                  v-for="reason in reviewWhy"
+                  :key="reason"
+                  class="text-xs text-slate-600"
+                >
+                  {{ reason }}
+                </p>
+              </div>
+              <p v-if="reviewUncertainty" class="mt-2 text-xs text-amber-700">
+                Unsicherheit: {{ reviewUncertainty }}
+              </p>
+              <div v-if="reviewAlternatives.length > 0" class="mt-3 space-y-2">
+                <div class="text-[11px] font-medium text-slate-700">Alternativen</div>
+                <div
+                  v-for="alternative in reviewAlternatives"
+                  :key="alternative"
+                  class="rounded-lg bg-white px-3 py-2 text-xs text-gray-600"
+                >
+                  {{ alternative }}
                 </div>
               </div>
             </div>
