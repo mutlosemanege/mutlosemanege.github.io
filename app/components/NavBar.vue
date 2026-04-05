@@ -9,6 +9,7 @@ const emit = defineEmits<{
   'update:currentView': [value: 'month' | 'week']
   'open-settings': []
   'open-task': []
+  'open-planner': []
   'toggle-sidebar': []
 }>()
 </script>
@@ -71,6 +72,17 @@ const emit = defineEmits<{
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             <span class="hidden sm:inline">Aufgabe</span>
+          </button>
+
+          <button
+            v-if="isLoggedIn"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            @click="emit('open-planner')"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16h6M4 6h16M5 20h14a1 1 0 001-1V8a2 2 0 00-2-2H6a2 2 0 00-2 2v11a1 1 0 001 1z" />
+            </svg>
+            <span class="hidden sm:inline">Planungs-Chat</span>
           </button>
 
           <!-- Planung -->

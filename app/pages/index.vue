@@ -12,6 +12,7 @@ const showModal = ref(false)
 const showTaskModal = ref(false)
 const showPreferences = ref(false)
 const showSidebar = ref(false)
+const showPlanningChat = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
 const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
@@ -137,6 +138,7 @@ async function onDeleteTask(taskId: string) {
       @update:current-view="currentView = $event"
       @open-settings="showPreferences = true"
       @open-task="onOpenTask"
+      @open-planner="showPlanningChat = true"
       @toggle-sidebar="showSidebar = !showSidebar"
     />
 
@@ -251,6 +253,13 @@ async function onDeleteTask(taskId: string) {
       :events="events"
       @close="showSidebar = false"
       @edit-task="(task) => { selectedTask = task; showTaskModal = true }"
+    />
+
+    <PlanningChat
+      :show="showPlanningChat"
+      :events="events"
+      @close="showPlanningChat = false"
+      @created="fetchEvents(timeRange.timeMin, timeRange.timeMax)"
     />
   </div>
 </template>
