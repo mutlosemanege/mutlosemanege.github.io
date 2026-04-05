@@ -1,6 +1,7 @@
 # Kalender-AI Premium Redesign — Codex Execution Prompt
 
-> Verknüpft mit: [[_INDEX]] · [[CLAUDE]] · [[AI_FEATURE_ROADMAP]]
+> ⬆ [[Planung & Design]] · [[_INDEX]]
+> Geschwister: [[AI_FEATURE_ROADMAP]] · Verknüpft: [[CLAUDE]] · [[skills/Glassmorphism-Redesign]]
 
 ## Context: What exists right now
 

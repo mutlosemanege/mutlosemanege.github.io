@@ -1,6 +1,7 @@
 # Skill: IndexedDB mit Vue 3 (via idb-keyval)
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]]
 > Verwandte Skills: [[Google-OAuth2-Browser]] · [[Greedy-Scheduler]]
 
 ---

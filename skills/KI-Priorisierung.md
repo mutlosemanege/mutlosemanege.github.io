@@ -1,6 +1,7 @@
 # Skill: KI-Priorisierung mit Claude
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
 > Verwandte Skills: [[Greedy-Scheduler]] · [[Nuxt-Serverless-KI]]
 
 ---

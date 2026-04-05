@@ -1,6 +1,7 @@
 # Skill: Glassmorphism Dark-Mode Design (Premium Redesign)
 
-> Verknüpft mit: [[../_INDEX]] · [[../REDESIGN-PROMPT]] · [[../AI_FEATURE_ROADMAP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../REDESIGN-PROMPT]] · [[../Planung & Design]]
 > Verwandte Skills: [[Tailwind-Design-System]]
 
 ---

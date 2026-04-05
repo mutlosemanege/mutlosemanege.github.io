@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { DeepWorkWindow, RoutineTemplate } from '~/types/task'
+import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode } from '~/types/task'
 
 const props = defineProps<{
   show: boolean
@@ -44,6 +44,7 @@ const form = reactive({
 
 const routineDraft = reactive({
   title: '',
+  repeatMode: 'weekly' as RoutineRepeatMode,
   day: 1,
   startHour: 9,
   endHour: 10,
@@ -51,6 +52,7 @@ const routineDraft = reactive({
 })
 const isApplyingRoutines = ref(false)
 const routineFeedback = ref<string | null>(null)
+const routineExceptionDrafts = ref<Record<string, string>>({})
 
 watch(() => props.show, (val) => {
   if (!val) return
@@ -70,7 +72,12 @@ watch(() => props.show, (val) => {
   form.deadlineWarningDays = p.deadlineWarningDays
   form.workDays = [...p.workDays]
   form.deepWorkWindows = p.deepWorkWindows.map(w => ({ ...w }))
-  form.routineTemplates = p.routineTemplates.map(r => ({ ...r }))
+  form.routineTemplates = p.routineTemplates.map(r => ({
+    ...r,
+    repeatMode: r.repeatMode || 'weekly',
+    skipDates: [...(r.skipDates || [])],
+  }))
+  routineExceptionDrafts.value = {}
   routineFeedback.value = null
 })
 
@@ -112,13 +119,16 @@ function addRoutine() {
   form.routineTemplates.push({
     id: uuidv4(),
     title: routineDraft.title.trim(),
-    day: routineDraft.day,
+    repeatMode: routineDraft.repeatMode,
+    day: routineDraft.repeatMode === 'weekly' ? routineDraft.day : undefined,
     startHour: routineDraft.startHour,
     endHour: routineDraft.endHour,
     description: routineDraft.description.trim() || undefined,
+    skipDates: [],
   })
 
   routineDraft.title = ''
+  routineDraft.repeatMode = 'weekly'
   routineDraft.day = 1
   routineDraft.startHour = form.workStartHour
   routineDraft.endHour = Math.min(form.workStartHour + 1, form.workEndHour)
@@ -139,6 +149,41 @@ function updateRoutineDay(id: string, value: number) {
   }
 }
 
+function updateRoutineRepeatMode(id: string, value: RoutineRepeatMode) {
+  const routine = form.routineTemplates.find(entry => entry.id === id)
+  if (!routine) return
+
+  routine.repeatMode = value
+  if (value === 'workdays') {
+    routine.day = undefined
+  } else if (typeof routine.day !== 'number') {
+    routine.day = form.workDays[0] ?? 1
+  }
+}
+
+function addRoutineException(id: string) {
+  const nextDate = routineExceptionDrafts.value[id]
+  if (!nextDate) return
+
+  const routine = form.routineTemplates.find(entry => entry.id === id)
+  if (!routine) return
+
+  const existing = new Set(routine.skipDates || [])
+  existing.add(nextDate)
+  routine.skipDates = [...existing].sort()
+  routineExceptionDrafts.value = {
+    ...routineExceptionDrafts.value,
+    [id]: '',
+  }
+}
+
+function removeRoutineException(id: string, date: string) {
+  const routine = form.routineTemplates.find(entry => entry.id === id)
+  if (!routine) return
+
+  routine.skipDates = (routine.skipDates || []).filter(entry => entry !== date)
+}
+
 async function applyRoutineTemplates() {
   isApplyingRoutines.value = true
   routineFeedback.value = null
@@ -150,8 +195,7 @@ async function applyRoutineTemplates() {
     const now = new Date()
 
     for (const routine of form.routineTemplates) {
-      for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
-        const date = nextDateForWeekday(routine.day, weekOffset, now)
+      for (const date of collectRoutineDates(routine, now, 28)) {
         const start = new Date(date)
         start.setHours(routine.startHour, 0, 0, 0)
         const end = new Date(date)
@@ -291,6 +335,46 @@ function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
   return base
 }
 
+function collectRoutineDates(routine: RoutineTemplate, from: Date, durationDays: number) {
+  const dates: Date[] = []
+  const cursor = new Date(from)
+  cursor.setHours(0, 0, 0, 0)
+
+  for (let offset = 0; offset < durationDays; offset++) {
+    const date = new Date(cursor)
+    date.setDate(cursor.getDate() + offset)
+
+    const isWorkdayRoutine = (routine.repeatMode || 'weekly') === 'workdays'
+    const applies = isWorkdayRoutine
+      ? form.workDays.includes(date.getDay())
+      : routine.day === date.getDay()
+
+    if (!applies) continue
+    if ((routine.skipDates || []).includes(toDateKey(date))) continue
+    dates.push(date)
+  }
+
+  return dates
+}
+
+function routineRepeatLabel(routine: RoutineTemplate) {
+  if ((routine.repeatMode || 'weekly') === 'workdays') {
+    return 'An Arbeitstagen'
+  }
+
+  return dayNames[routine.day ?? 1]
+}
+
+function upcomingRoutineLabels(routine: RoutineTemplate) {
+  return collectRoutineDates(routine, new Date(), 21)
+    .slice(0, 3)
+    .map(date => `${date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}`)
+}
+
+function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function handleSave() {
   updatePreferences({
     workStartHour: form.workStartHour,
@@ -308,7 +392,11 @@ function handleSave() {
     deadlineWarningDays: form.deadlineWarningDays,
     workDays: [...form.workDays],
     deepWorkWindows: form.deepWorkWindows.map(w => ({ ...w })),
-    routineTemplates: form.routineTemplates.map(r => ({ ...r })),
+    routineTemplates: form.routineTemplates.map(r => ({
+      ...r,
+      repeatMode: r.repeatMode || 'weekly',
+      skipDates: [...(r.skipDates || [])],
+    })),
   })
   emit('close')
 }
@@ -332,6 +420,9 @@ function handleReset() {
           <p class="text-sm text-gray-500">
             Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender uebernehmen willst.
           </p>
+          <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+            Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender eintraegst.
+          </div>
 
           <!-- Arbeitszeiten -->
           <div>
@@ -397,7 +488,7 @@ function handleReset() {
               </div>
             </div>
             <p class="mt-2 text-xs text-gray-500">
-              Wird beim Eintragen als wiederkehrender Kalenderblock fuer die naechsten 4 Wochen angelegt.
+              Wenn aktiv, werden Schlafzeiten beim Planen respektiert und koennen zusaetzlich als Kalenderbloecke fuer die naechsten 4 Wochen eingetragen werden.
             </p>
           </div>
 
@@ -585,7 +676,7 @@ function handleReset() {
               <div>
                 <h3 class="text-sm font-medium text-gray-700">Feste Routinen</h3>
                 <p class="text-xs text-gray-500 mt-1">
-                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an und trage sie gesammelt in den Kalender ein.
+                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an. Sie zaehlen sofort als Planungsregeln und koennen zusaetzlich gesammelt in den Kalender eingetragen werden.
                 </p>
               </div>
               <button
@@ -605,6 +696,14 @@ function handleReset() {
                 placeholder="z.B. Vorlesung, Gym, Team Call"
               >
               <select
+                v-model="routineDraft.repeatMode"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="weekly">Woechentlich</option>
+                <option value="workdays">An Arbeitstagen</option>
+              </select>
+              <select
+                v-if="routineDraft.repeatMode === 'weekly'"
                 v-model.number="routineDraft.day"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
               >
@@ -612,6 +711,12 @@ function handleReset() {
                   {{ name }}
                 </option>
               </select>
+              <div
+                v-else
+                class="flex items-center rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500"
+              >
+                Gilt an deinen aktiven Arbeitstagen
+              </div>
               <select
                 v-model.number="routineDraft.startHour"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
@@ -654,7 +759,16 @@ function handleReset() {
                   <div class="min-w-0 flex-1">
                     <div class="text-sm font-medium text-gray-900">{{ routine.title }}</div>
                     <div class="mt-1 text-xs text-gray-500">
-                      {{ dayNames[routine.day] }}
+                      {{ routineRepeatLabel(routine) }}
+                    </div>
+                    <div v-if="upcomingRoutineLabels(routine).length > 0" class="mt-1 flex flex-wrap gap-1">
+                      <span
+                        v-for="label in upcomingRoutineLabels(routine)"
+                        :key="`${routine.id}-${label}`"
+                        class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600"
+                      >
+                        {{ label }}
+                      </span>
                     </div>
                     <div v-if="routine.description" class="mt-1 text-xs text-gray-400">
                       {{ routine.description }}
@@ -669,15 +783,30 @@ function handleReset() {
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
                   <select
-                    :value="routine.day"
+                    :value="routine.repeatMode || 'weekly'"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
-                    @change="updateRoutineDay(routine.id, Number(($event.target as HTMLSelectElement).value))"
+                    @change="updateRoutineRepeatMode(routine.id, ($event.target as HTMLSelectElement).value as RoutineRepeatMode)"
                   >
-                    <option v-for="(name, index) in dayNames" :key="`${routine.id}-day-${name}`" :value="index">
-                      {{ name }}
-                    </option>
+                    <option value="weekly">Woechentlich</option>
+                    <option value="workdays">An Arbeitstagen</option>
                   </select>
-                  <div />
+                  <template v-if="(routine.repeatMode || 'weekly') === 'weekly'">
+                    <select
+                      :value="routine.day"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      @change="updateRoutineDay(routine.id, Number(($event.target as HTMLSelectElement).value))"
+                    >
+                      <option v-for="(name, index) in dayNames" :key="`${routine.id}-day-${name}`" :value="index">
+                        {{ name }}
+                      </option>
+                    </select>
+                  </template>
+                  <div
+                    v-else
+                    class="flex items-center rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500"
+                  >
+                    Aktiv an Arbeitstagen
+                  </div>
                 </div>
                 <div class="mt-2 grid grid-cols-2 gap-2">
                   <select
@@ -698,6 +827,35 @@ function handleReset() {
                       Ende {{ String(h).padStart(2, '0') }}:00
                     </option>
                   </select>
+                </div>
+                <div class="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div class="text-xs font-medium text-gray-700">Ausnahmen</div>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Einzelne Tage, an denen diese Routine die Planung nicht blockieren soll.
+                  </p>
+                  <div class="mt-2 flex gap-2">
+                    <input
+                      v-model="routineExceptionDrafts[routine.id]"
+                      type="date"
+                      class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    >
+                    <button
+                      class="rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm text-primary-700 transition hover:bg-primary-50"
+                      @click="addRoutineException(routine.id)"
+                    >
+                      Ausnahme hinzufuegen
+                    </button>
+                  </div>
+                  <div v-if="(routine.skipDates || []).length > 0" class="mt-2 flex flex-wrap gap-2">
+                    <button
+                      v-for="skipDate in routine.skipDates"
+                      :key="`${routine.id}-${skipDate}`"
+                      class="rounded-full bg-white px-2 py-0.5 text-[11px] text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+                      @click="removeRoutineException(routine.id, skipDate)"
+                    >
+                      {{ new Date(`${skipDate}T00:00:00`).toLocaleDateString('de-DE') }} entfernen
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

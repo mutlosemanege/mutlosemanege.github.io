@@ -1,6 +1,7 @@
 # AI Feature Roadmap
 
-> Verknüpft mit: [[_INDEX]] · [[CLAUDE]] · [[REDESIGN-PROMPT]]
+> ⬆ [[Planung & Design]] · [[_INDEX]]
+> Geschwister: [[REDESIGN-PROMPT]] · Verknüpft: [[CLAUDE]]
 
 Diese Liste ist unsere gemeinsame Arbeitsgrundlage fuer die naechsten KI- und Planungsverbesserungen.
 
@@ -60,10 +61,10 @@ Rahmen:
 ## Danach bauen
 
 ### 6. Routinen zu echteren Planungsregeln ausbauen
-- [ ] Routinen staerker als feste Lebensrhythmen darstellen
-- [ ] Ausnahmen fuer einzelne Wochen oder Tage ermoeglichen
-- [ ] Besser mit Schlaf, Arbeitsweg und Arbeitstagen zusammendenken
-- [ ] Wiederkehrende Muster ueber die aktuellen Vorlagen hinaus erweitern
+- [x] Routinen staerker als feste Lebensrhythmen darstellen
+- [x] Ausnahmen fuer einzelne Wochen oder Tage ermoeglichen
+- [x] Besser mit Schlaf, Arbeitsweg und Arbeitstagen zusammendenken
+- [x] Wiederkehrende Muster ueber die aktuellen Vorlagen hinaus erweitern
 
 ### 7. Personalisierung vorbereiten
 - [ ] Lokale Signale sammeln: oft verschoben, oft erledigt, bevorzugte Tageszeiten

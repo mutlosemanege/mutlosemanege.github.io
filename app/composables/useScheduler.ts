@@ -1,5 +1,5 @@
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { Task, UserPreferences, DeepWorkWindow } from '~/types/task'
+import type { Task, UserPreferences, DeepWorkWindow, RoutineTemplate } from '~/types/task'
 
 type ReadonlyUserPreferences = Readonly<UserPreferences>
 
@@ -32,6 +32,10 @@ export function useScheduler() {
     prefs: ReadonlyUserPreferences = preferences.value,
   ): TimeSlot[] {
     const slots: TimeSlot[] = []
+    const planningConstraintEvents = [
+      ...existingEvents,
+      ...buildPreferenceBlockers(from, to, prefs),
+    ]
     const current = new Date(from)
     current.setHours(0, 0, 0, 0)
 
@@ -44,7 +48,7 @@ export function useScheduler() {
 
       // Nur an Arbeitstagen
       if (prefs.workDays.includes(dayOfWeek)) {
-        const daySlots = getDaySlotsWithGaps(current, existingEvents, prefs)
+        const daySlots = getDaySlotsWithGaps(current, planningConstraintEvents, prefs)
         slots.push(...daySlots)
       }
 
@@ -429,6 +433,71 @@ export function useScheduler() {
 
 // --- Hilfsfunktionen ---
 
+function buildPreferenceBlockers(
+  from: Date,
+  to: Date,
+  prefs: ReadonlyUserPreferences,
+): CalendarEvent[] {
+  const blockers: CalendarEvent[] = []
+  const cursor = new Date(from)
+  cursor.setHours(0, 0, 0, 0)
+  const endDate = new Date(to)
+  endDate.setHours(23, 59, 59, 999)
+
+  while (cursor <= endDate) {
+    if (prefs.syncSleepSchedule) {
+      const sleepStart = new Date(cursor)
+      sleepStart.setHours(prefs.sleepStartHour, 0, 0, 0)
+      const sleepEnd = new Date(cursor)
+      sleepEnd.setHours(prefs.sleepEndHour, 0, 0, 0)
+      if (prefs.sleepEndHour <= prefs.sleepStartHour) {
+        sleepEnd.setDate(sleepEnd.getDate() + 1)
+      }
+
+      blockers.push(createSyntheticEvent('Schlaf', sleepStart, sleepEnd))
+    }
+
+    if (prefs.syncCommuteSchedule && prefs.workDays.includes(cursor.getDay())) {
+      if (prefs.commuteToWorkMinutes > 0) {
+        const commuteStart = new Date(cursor)
+        commuteStart.setHours(prefs.workStartHour, 0, 0, 0)
+        commuteStart.setMinutes(commuteStart.getMinutes() - prefs.commuteToWorkMinutes)
+        const commuteEnd = new Date(cursor)
+        commuteEnd.setHours(prefs.workStartHour, 0, 0, 0)
+        blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
+      }
+
+      if (prefs.commuteFromWorkMinutes > 0) {
+        const commuteStart = new Date(cursor)
+        commuteStart.setHours(prefs.workEndHour, 0, 0, 0)
+        const commuteEnd = new Date(cursor)
+        commuteEnd.setHours(prefs.workEndHour, 0, 0, 0)
+        commuteEnd.setMinutes(commuteEnd.getMinutes() + prefs.commuteFromWorkMinutes)
+        blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
+      }
+    }
+
+    for (const routine of prefs.routineTemplates) {
+      if (!routineAppliesOnDate(routine, cursor, prefs.workDays)) continue
+      if (routine.skipDates?.includes(toDateKey(cursor))) continue
+
+      const start = new Date(cursor)
+      start.setHours(routine.startHour, 0, 0, 0)
+      const end = new Date(cursor)
+      end.setHours(routine.endHour, 0, 0, 0)
+      if (routine.endHour <= routine.startHour) {
+        end.setDate(end.getDate() + 1)
+      }
+
+      blockers.push(createSyntheticEvent(routine.title, start, end))
+    }
+
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  return blockers
+}
+
 function getEventStart(event: CalendarEvent): Date | null {
   if (event.start.dateTime) return new Date(event.start.dateTime)
   if (event.start.date) return new Date(event.start.date)
@@ -445,4 +514,29 @@ function isSameCalendarDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
+}
+
+function createSyntheticEvent(summary: string, start: Date, end: Date): CalendarEvent {
+  return {
+    summary,
+    description: '[KALENDER-AI-RULE]',
+    start: { dateTime: start.toISOString() },
+    end: { dateTime: end.toISOString() },
+  }
+}
+
+function routineAppliesOnDate(
+  routine: RoutineTemplate,
+  date: Date,
+  workDays: readonly number[],
+) {
+  if ((routine.repeatMode || 'weekly') === 'workdays') {
+    return workDays.includes(date.getDay())
+  }
+
+  return routine.day === date.getDay()
+}
+
+function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }

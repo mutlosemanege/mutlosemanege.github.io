@@ -1,6 +1,7 @@
 # Skill: Greedy Scheduler (Auto-Planen)
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
 > Verwandte Skills: [[Multi-Block-Scheduling]] · [[Rescheduling-Modi]] · [[KI-Priorisierung]]
 
 ---

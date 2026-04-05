@@ -1,8 +1,8 @@
 # Kalender Web App — Ursprünglicher Build-Prompt (Archiv)
 
-> **Historisches Dokument.** Dies ist der Subagent-Prompt, mit dem das Projekt ursprünglich erstellt wurde.
-> Er spiegelt nicht den aktuellen Projektzustand wider.
-> Aktueller Stand: [[CLAUDE]] · Deployment: [[NETLIFY_SETUP]] · Features: [[AI_FEATURE_ROADMAP]]
+> ⬆ [[Archiv]] · [[_INDEX]]
+> **Historisches Dokument.** Spiegelt nicht den aktuellen Projektzustand wider.
+> Aktueller Stand: [[CLAUDE]] · [[Setup & Deployment]] · [[AI_FEATURE_ROADMAP]]
 
 ---
 

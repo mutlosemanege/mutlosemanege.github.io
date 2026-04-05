@@ -1,6 +1,7 @@
 # Skill: Google OAuth2 im Browser (ohne Backend)
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]] · [[../GOOGLE_SETUP]] · [[../NETLIFY_SETUP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]] · [[../GOOGLE_SETUP]] · [[../NETLIFY_SETUP]]
 > Verwandte Skills: [[Nuxt-Serverless-KI]] · [[IndexedDB-Vue3]]
 
 ---

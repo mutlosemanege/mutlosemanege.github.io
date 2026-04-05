@@ -8,12 +8,12 @@
 
 | Was | Wo |
 |-----|-----|
-| Architektur & Dev-Guide | [[CLAUDE]] |
+| Einrichten & Deployen | [[Setup & Deployment]] |
+| Architektur verstehen | [[Architektur & Entwicklung]] |
+| Features planen | [[Planung & Design]] |
+| Techniken nachschlagen | [[skills/00 Skills Übersicht]] |
+| Slash Commands | [[Claude Commands]] |
 | App starten | `npm run dev` → localhost:3000 |
-| Google Auth einrichten | [[GOOGLE_SETUP]] |
-| Netlify deployen | [[NETLIFY_SETUP]] |
-| Feature-Planung | [[AI_FEATURE_ROADMAP]] |
-| Frontend-Redesign (Codex) | [[REDESIGN-PROMPT]] |
 
 ---
 
@@ -38,20 +38,40 @@ server/
 
 ## Dokumenten-Karte
 
-### Setup & Deployment
-- [[GOOGLE_SETUP]] — Google Cloud Projekt, Calendar API, OAuth2 einrichten
-- [[NETLIFY_SETUP]] — Netlify Deployment, Anthropic API-Key, Serverless Functions
-- [[README]] — Übersicht, lokale Entwicklung, GitHub Secrets
-
-### Entwicklung & Architektur
-- [[CLAUDE]] — Vollständige Codebase-Dokumentation für Claude Code (Architektur, Patterns, Komponenten, Composables, Limitations)
-
-### Planung & Design
-- [[AI_FEATURE_ROADMAP]] — KI-Feature-Roadmap mit Status (✓ erledigt / ◻ offen)
-- [[REDESIGN-PROMPT]] — Premium Dark-Mode Redesign Prompt für Codex (vollständig, ausführbar)
-
-### Archiv
-- [[Prompt]] — Ursprünglicher Subagent-Prompt aus dem ersten Build (historisch)
+```
+_INDEX  (dieser Hub)
+│
+├── [[Setup & Deployment]]          Einrichten, deployen, Env-Variablen
+│     ├── [[README]]                Projektübersicht & lokale Entwicklung
+│     ├── [[GOOGLE_SETUP]]          Google Cloud, Calendar API, OAuth2
+│     └── [[NETLIFY_SETUP]]         Netlify, Anthropic API-Key, Serverless
+│
+├── [[Architektur & Entwicklung]]   Technische Dokumentation & Patterns
+│     └── [[CLAUDE]]                Vollständige Codebase-Dokumentation
+│
+├── [[Planung & Design]]            Features, Roadmap, Redesign
+│     ├── [[AI_FEATURE_ROADMAP]]    KI-Feature-Roadmap (✓ erledigt / ◻ offen)
+│     └── [[REDESIGN-PROMPT]]       Premium Redesign Prompt für Codex
+│
+├── [[skills/00 Skills Übersicht]]  Techniken aus der Entwicklung
+│     ├── [[skills/Greedy-Scheduler]]
+│     ├── [[skills/KI-Priorisierung]]
+│     ├── [[skills/Multi-Block-Scheduling]]
+│     ├── [[skills/Rescheduling-Modi]]
+│     ├── [[skills/Planungs-Chat-NLP]]
+│     ├── [[skills/Google-OAuth2-Browser]]
+│     ├── [[skills/IndexedDB-Vue3]]
+│     ├── [[skills/Nuxt-Serverless-KI]]
+│     ├── [[skills/Glassmorphism-Redesign]]
+│     ├── [[skills/Tailwind-Design-System]]
+│     └── [[skills/Deadline-Watcher]]
+│
+├── [[Claude Commands]]             Slash Commands für Claude Code
+│     /status · /roadmap · /redesign · /feature
+│
+└── [[Archiv]]                      Historische Dokumente
+      └── [[Prompt]]                Ursprünglicher Build-Prompt
+```
 
 ---
 
@@ -63,6 +83,8 @@ server/
 - Scheduler: Slot-Auswahl für kleine und große Tasks verbessert
 - Projektordner löschbar
 - KI-Priorisierung mit Begründungstext (`priorityReason`, `prioritySource`)
+- Rescheduling-Modi implementiert (gleiche Uhrzeit, noch heute, nächster Slot, Rest verteilen)
+- Planungs-Chat: Wochentage, Wiederholungen und Slot-Begründungen
 
 ### Branch: `frontend-redesign`
 Offene Änderungen:
@@ -71,9 +93,9 @@ Offene Änderungen:
 - `task.ts` — (unstaged) Änderungen
 
 ### Nächste Schritte (aus [[AI_FEATURE_ROADMAP]])
-- [ ] Mehrere Rescheduling-Modi (`gleiche Uhrzeit`, `noch heute`, `naechster Slot`)
-- [ ] Planungs-Chat: Wochentage und Wiederholungen besser erkennen
-- [ ] Projektgenerator direkt mit Terminierung koppeln
+- [ ] Projektgenerator direkt mit erster Terminierung koppeln
+- [ ] Zu große Projekte markieren wenn Umfang unplausibel
+- [ ] Frontend-Redesign ausführen ([[REDESIGN-PROMPT]] → Codex)
 
 ---
 

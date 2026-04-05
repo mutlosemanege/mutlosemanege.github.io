@@ -1,6 +1,7 @@
 # Skill: Multi-Block-Scheduling
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]] · [[../AI_FEATURE_ROADMAP]]
 > Verwandte Skills: [[Greedy-Scheduler]] · [[Rescheduling-Modi]]
 
 ---

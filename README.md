@@ -1,6 +1,7 @@
 # Kalender-AI
 
-> Verknüpft mit: [[_INDEX]] · [[GOOGLE_SETUP]] · [[NETLIFY_SETUP]] · [[AI_FEATURE_ROADMAP]]
+> ⬆ [[Setup & Deployment]] · [[_INDEX]]
+> Geschwister: [[GOOGLE_SETUP]] · [[NETLIFY_SETUP]]
 
 KI-gestützte Google Kalender Web-App. Plane, priorisiere und manage Aufgaben mit Claude-Unterstützung — direkt mit deinem Google Kalender verknüpft.
 

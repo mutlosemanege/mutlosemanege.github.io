@@ -1,6 +1,7 @@
 # Netlify Deployment Einrichtung fuer kalender-ai
 
-> Verknüpft mit: [[_INDEX]] · [[README]] · [[GOOGLE_SETUP]]
+> ⬆ [[Setup & Deployment]] · [[_INDEX]]
+> Geschwister: [[README]] · [[GOOGLE_SETUP]]
 
 Diese Anleitung beschreibt Schritt fuer Schritt, wie du die App von GitHub Pages auf Netlify umstellst. Netlify wird benoetigt, weil die KI-Features Server Routes (Serverless Functions) verwenden, die auf GitHub Pages nicht laufen.
 

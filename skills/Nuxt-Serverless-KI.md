@@ -1,6 +1,7 @@
 # Skill: Claude API via Nuxt Server Routes (Netlify Functions)
 
-> Verknüpft mit: [[../_INDEX]] · [[../CLAUDE]] · [[../NETLIFY_SETUP]]
+> ⬆ [[00 Skills Übersicht]] · [[../_INDEX]]
+> Verknüpft: [[../CLAUDE]] · [[../NETLIFY_SETUP]]
 > Verwandte Skills: [[KI-Priorisierung]] · [[Planungs-Chat-NLP]]
 
 ---

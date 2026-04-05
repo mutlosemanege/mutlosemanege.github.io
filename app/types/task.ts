@@ -45,13 +45,17 @@ export interface DeepWorkWindow {
   endHour: number
 }
 
+export type RoutineRepeatMode = 'weekly' | 'workdays'
+
 export interface RoutineTemplate {
   id: string
   title: string
-  day: number
+  day?: number
+  repeatMode?: RoutineRepeatMode
   startHour: number
   endHour: number
   description?: string
+  skipDates?: readonly string[]
 }
 
 export interface UserPreferences {
