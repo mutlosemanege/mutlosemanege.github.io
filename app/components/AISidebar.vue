@@ -218,38 +218,50 @@ async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: re
   )
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  let successCount = 0
+  let failCount = 0
 
   for (const [taskId, plan] of schedule) {
     const task = tasks.value.find(t => t.id === taskId) || tasksToSchedule.find(t => t.id === taskId)
     if (!task) continue
 
-    const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
+    try {
+      const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
 
-    for (const [index, block] of plan.blocks.entries()) {
-      const calEvent = await createEvent({
-        summary: plan.blocks.length > 1 ? `${task.title} (${index + 1}/${plan.blocks.length})` : task.title,
-        description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
-        start: { dateTime: block.start.toISOString(), timeZone: tz },
-        end: { dateTime: block.end.toISOString(), timeZone: tz },
-        colorId: task.isDeepWork ? '3' : '9',
-      })
+      for (const [index, block] of plan.blocks.entries()) {
+        const calEvent = await createEvent({
+          summary: plan.blocks.length > 1 ? `${task.title} (${index + 1}/${plan.blocks.length})` : task.title,
+          description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
+          start: { dateTime: block.start.toISOString(), timeZone: tz },
+          end: { dateTime: block.end.toISOString(), timeZone: tz },
+          colorId: task.isDeepWork ? '3' : '9',
+        })
 
-      createdBlocks.push({
-        start: block.start.toISOString(),
-        end: block.end.toISOString(),
-        calendarEventId: calEvent?.id,
-      })
+        createdBlocks.push({
+          start: block.start.toISOString(),
+          end: block.end.toISOString(),
+          calendarEventId: calEvent?.id,
+        })
+      }
+
+      if (createdBlocks.length > 0) {
+        await updateTask(taskId, {
+          status: 'scheduled',
+          scheduleBlocks: createdBlocks,
+          scheduledStart: createdBlocks[0].start,
+          scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
+          calendarEventId: createdBlocks[0].calendarEventId,
+        })
+        successCount++
+      }
+    } catch (err) {
+      console.error(`Fehler beim Einplanen von Task "${task.title}":`, err)
+      failCount++
     }
+  }
 
-    if (createdBlocks.length > 0) {
-      await updateTask(taskId, {
-        status: 'scheduled',
-        scheduleBlocks: createdBlocks,
-        scheduledStart: createdBlocks[0].start,
-        scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
-        calendarEventId: createdBlocks[0].calendarEventId,
-      })
-    }
+  if (failCount > 0) {
+    planningFeedback.value = `${successCount} Aufgaben eingeplant, ${failCount} fehlgeschlagen.`
   }
 
   const now = new Date()

@@ -5,9 +5,21 @@ import type { Task, Project } from '~/types/task'
 const tasks = ref<Task[]>([])
 const projects = ref<Project[]>([])
 const isLoading = ref(false)
+let isMutating = false
 
 const TASK_PREFIX = 'task:'
 const PROJECT_PREFIX = 'project:'
+
+async function acquireMutex() {
+  while (isMutating) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  isMutating = true
+}
+
+function releaseMutex() {
+  isMutating = false
+}
 
 export function useTasks() {
   async function attachTaskToProject(projectId: string | undefined, taskId: string) {
@@ -56,59 +68,78 @@ export function useTasks() {
   }
 
   async function createTask(data: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<Task> {
-    const now = new Date().toISOString()
-    const task: Task = {
-      ...data,
-      id: uuidv4(),
-      createdAt: now,
-      updatedAt: now,
+    await acquireMutex()
+    try {
+      const now = new Date().toISOString()
+      const task: Task = {
+        ...data,
+        id: uuidv4(),
+        createdAt: now,
+        updatedAt: now,
+      }
+      await set(`${TASK_PREFIX}${task.id}`, task)
+      await attachTaskToProject(task.projectId, task.id)
+      await loadProjects()
+      await loadTasks()
+      return task
+    } finally {
+      releaseMutex()
     }
-    await set(`${TASK_PREFIX}${task.id}`, task)
-    await attachTaskToProject(task.projectId, task.id)
-    await loadProjects()
-    await loadTasks()
-    return task
   }
 
   async function updateTask(id: string, updates: Partial<Task>): Promise<Task | null> {
-    const existing = await get<Task>(`${TASK_PREFIX}${id}`)
-    if (!existing) return null
-    const updated: Task = {
-      ...existing,
-      ...updates,
-      id, // ID darf nicht ueberschrieben werden
-      updatedAt: new Date().toISOString(),
+    await acquireMutex()
+    try {
+      const existing = await get<Task>(`${TASK_PREFIX}${id}`)
+      if (!existing) return null
+      const updated: Task = {
+        ...existing,
+        ...updates,
+        id, // ID darf nicht ueberschrieben werden
+        updatedAt: new Date().toISOString(),
+      }
+      await set(`${TASK_PREFIX}${id}`, updated)
+      if (existing.projectId !== updated.projectId) {
+        await detachTaskFromProject(existing.projectId, id)
+        await attachTaskToProject(updated.projectId, id)
+        await loadProjects()
+      }
+      await loadTasks()
+      return updated
+    } finally {
+      releaseMutex()
     }
-    await set(`${TASK_PREFIX}${id}`, updated)
-    if (existing.projectId !== updated.projectId) {
-      await detachTaskFromProject(existing.projectId, id)
-      await attachTaskToProject(updated.projectId, id)
-      await loadProjects()
-    }
-    await loadTasks()
-    return updated
   }
 
   async function deleteTask(id: string): Promise<boolean> {
-    await del(`${TASK_PREFIX}${id}`)
-    // Aus allen Projekten entfernen
-    for (const project of projects.value) {
-      if (project.taskIds.includes(id)) {
-        await updateProject(project.id, {
-          taskIds: project.taskIds.filter(tid => tid !== id),
-        })
+    await acquireMutex()
+    try {
+      await del(`${TASK_PREFIX}${id}`)
+      // Aus allen Projekten entfernen
+      for (const project of projects.value) {
+        if (project.taskIds.includes(id)) {
+          await updateProject(project.id, {
+            taskIds: project.taskIds.filter(tid => tid !== id),
+          })
+        }
       }
-    }
-    // Aus Dependencies anderer Tasks entfernen
-    for (const task of tasks.value) {
-      if (task.dependencies.includes(id)) {
-        await updateTask(task.id, {
-          dependencies: [...task.dependencies].filter(dep => dep !== id),
-        })
+      // Aus Dependencies anderer Tasks entfernen
+      // Hinweis: updateTask ruft acquireMutex() auf, daher direkt in DB schreiben
+      for (const task of tasks.value) {
+        if (task.dependencies.includes(id)) {
+          const updatedDeps = task.dependencies.filter(dep => dep !== id)
+          await set(`${TASK_PREFIX}${task.id}`, {
+            ...task,
+            dependencies: updatedDeps,
+            updatedAt: new Date().toISOString(),
+          })
+        }
       }
+      await loadTasks()
+      return true
+    } finally {
+      releaseMutex()
     }
-    await loadTasks()
-    return true
   }
 
   function getTask(id: string): Task | undefined {

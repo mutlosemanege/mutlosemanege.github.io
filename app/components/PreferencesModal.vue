@@ -183,9 +183,21 @@ function hasMatchingExistingEvent(routine: RoutineTemplate, start: Date, end: Da
   return (props.events || []).some(event => {
     if (!event.start.dateTime || !event.end.dateTime) return false
 
-    return event.summary?.trim().toLowerCase() === routine.title.trim().toLowerCase() &&
-      new Date(event.start.dateTime).getTime() === start.getTime() &&
-      new Date(event.end.dateTime).getTime() === end.getTime()
+    if (event.summary?.trim().toLowerCase() !== routine.title.trim().toLowerCase()) return false
+
+    const eventStart = new Date(event.start.dateTime)
+    const eventEnd = new Date(event.end.dateTime)
+
+    return eventStart.getFullYear() === start.getFullYear() &&
+      eventStart.getMonth() === start.getMonth() &&
+      eventStart.getDate() === start.getDate() &&
+      eventStart.getHours() === start.getHours() &&
+      eventStart.getMinutes() === start.getMinutes() &&
+      eventEnd.getFullYear() === end.getFullYear() &&
+      eventEnd.getMonth() === end.getMonth() &&
+      eventEnd.getDate() === end.getDate() &&
+      eventEnd.getHours() === end.getHours() &&
+      eventEnd.getMinutes() === end.getMinutes()
   })
 }
 

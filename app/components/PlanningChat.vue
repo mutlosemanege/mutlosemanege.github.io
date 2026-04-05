@@ -209,8 +209,11 @@ function detectIntent(text: string): 'event' | 'task' {
   const taskHints = ['lernen', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'planen', 'review', 'recherche']
   const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'date', 'party']
 
-  if (eventHints.some(hint => normalized.includes(hint))) return 'event'
-  if (taskHints.some(hint => normalized.includes(hint))) return 'task'
+  const taskMatches = taskHints.filter(hint => normalized.includes(hint)).length
+  const eventMatches = eventHints.filter(hint => normalized.includes(hint)).length
+
+  if (taskMatches === 0 && eventMatches === 0) return 'event'
+  if (taskMatches > eventMatches) return 'task'
   return 'event'
 }
 
