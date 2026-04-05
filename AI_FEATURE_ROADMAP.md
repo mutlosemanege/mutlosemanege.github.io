@@ -110,8 +110,8 @@ Rahmen:
 - [ ] Projektgenerator spaeter mit Review nach einigen Tagen koppeln: `Plan war realistisch / zu gross / zu klein`
 
 ### 14. Konfliktaufloesung und Planvarianten
-- [ ] Bei Kollisionen nicht nur `geht nicht`, sondern konkrete Umplan-Optionen anbieten
-- [ ] Planvarianten vergleichen: `entspannt`, `deadline-first`, `kompakt`, `fokusfreundlich`
+- [x] Bei Kollisionen nicht nur `geht nicht`, sondern konkrete Umplan-Optionen anbieten
+- [x] Planvarianten vergleichen: `entspannt`, `deadline-first`, `kompakt`, `fokusfreundlich`
 - [ ] Niedrig priorisierte Slots bei Bedarf aktiv verdrengen koennen
 - [ ] Vor einer groesseren Umplanung eine Vorschau `was sich aendert` anzeigen
 

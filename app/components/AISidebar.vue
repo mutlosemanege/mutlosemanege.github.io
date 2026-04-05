@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Task, TaskPriority } from '~/types/task'
+import type { PlanningStyle, Task, TaskPriority, UserPreferences } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useScheduler'
 
@@ -86,7 +86,18 @@ interface DecisionTransparency {
   alternatives: string[]
 }
 
+interface PlanVariantPreview {
+  style: PlanningStyle
+  label: string
+  description: string
+  scheduledCount: number
+  remainingCount: number
+  highlight: string
+}
+
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
+const planVariants = ref<PlanVariantPreview[]>([])
+const applyingVariantStyle = ref<PlanningStyle | null>(null)
 const rescheduleTask = ref<Task | null>(null)
 const selectedRescheduleMode = ref<RescheduleMode>('same-time')
 const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
@@ -121,6 +132,33 @@ const rescheduleModeOptions: Array<{
     value: 'redistribute',
     label: 'Rest verteilen',
     description: 'Verteilt die Aufgabe moeglichst flexibel ueber groessere freie Bloecke.',
+  },
+]
+
+const planVariantOptions: Array<{
+  style: PlanningStyle
+  label: string
+  description: string
+}> = [
+  {
+    style: 'aggressiv',
+    label: 'Kompakt',
+    description: 'Packt Aufgaben frueher und dichter in freie Slots.',
+  },
+  {
+    style: 'deadline-first',
+    label: 'Deadline-first',
+    description: 'Zieht deadlinenahen Aufwand bewusst weiter nach vorne.',
+  },
+  {
+    style: 'focus-first',
+    label: 'Fokusfreundlich',
+    description: 'Bevorzugt starke Fokusbloecke fuer anspruchsvolle Aufgaben.',
+  },
+  {
+    style: 'entspannt',
+    label: 'Entspannt',
+    description: 'Sucht luftigere Zeitraeume mit mehr Puffer.',
   },
 ]
 
@@ -204,6 +242,7 @@ async function handleAutoSchedule() {
 
   planningFeedback.value = null
   planningDiagnostics.value = []
+  planVariants.value = []
   decisionTransparency.value = null
 
   const currentEvents = await refreshCalendarEvents()
@@ -219,6 +258,7 @@ async function handleAutoSchedule() {
 
   planningDiagnostics.value = diagnostics
   decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, remainingTasks, diagnostics)
+  await evaluatePlanVariants(remainingTasks, [...currentEvents, ...scheduleEvents])
 
   if (scheduledCount === 0) {
     const topReasons = diagnostics.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
@@ -283,6 +323,7 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   const previousStart = task.scheduledStart
   recordTaskMiss(previousStart ? new Date(previousStart) : new Date())
   decisionTransparency.value = null
+  planVariants.value = []
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
 
   if (calendarIds.length > 0) {
@@ -340,6 +381,120 @@ async function changePriority(task: Task, priority: Task['priority']) {
     prioritySource: 'manual',
     priorityReason: 'Manuell angepasst',
   })
+}
+
+async function evaluatePlanVariants(
+  remainingTasks: readonly Task[],
+  occupiedEvents: readonly CalendarEvent[],
+) {
+  if (remainingTasks.length === 0) {
+    planVariants.value = []
+    return
+  }
+
+  const previews = planVariantOptions.map(option => {
+    const variantPrefs = buildPreferencesForStyle(option.style)
+    const simulated = scheduleTasks(remainingTasks, occupiedEvents, variantPrefs)
+    const scheduledCount = simulated.size
+    const remainingCount = remainingTasks.length - scheduledCount
+
+    return {
+      style: option.style,
+      label: option.label,
+      description: option.description,
+      scheduledCount,
+      remainingCount,
+      highlight: buildVariantHighlight(option.style, scheduledCount, remainingTasks.length),
+    } satisfies PlanVariantPreview
+  })
+
+  planVariants.value = previews.sort((a, b) => {
+    if (a.scheduledCount !== b.scheduledCount) {
+      return b.scheduledCount - a.scheduledCount
+    }
+
+    const styleOrder = planVariantOptions.map(option => option.style)
+    return styleOrder.indexOf(a.style) - styleOrder.indexOf(b.style)
+  })
+}
+
+function buildPreferencesForStyle(style: PlanningStyle): UserPreferences {
+  return {
+    ...preferences.value,
+    planningStyle: style,
+  }
+}
+
+function buildVariantHighlight(
+  style: PlanningStyle,
+  scheduledCount: number,
+  totalTasks: number,
+) {
+  if (scheduledCount === 0) {
+    return 'Loest die aktuellen Engpaesse voraussichtlich nicht.'
+  }
+
+  if (scheduledCount === totalTasks) {
+    return 'Kann die restlichen Aufgaben komplett unterbringen.'
+  }
+
+  switch (style) {
+    case 'aggressiv':
+      return 'Nutzen wir, wenn wir freie Luecken dichter ausreizen wollen.'
+    case 'deadline-first':
+      return 'Hilft besonders bei knappen Deadlines und Zeitdruck.'
+    case 'focus-first':
+      return 'Sinnvoll, wenn Deep-Work-Aufgaben aktuell blockieren.'
+    case 'entspannt':
+      return 'Gut, wenn mehr Puffer wichtiger ist als maximale Auslastung.'
+    default:
+      return 'Bietet eine alternative Planungslogik fuer die Restaufgaben.'
+  }
+}
+
+async function applyPlanVariant(style: PlanningStyle) {
+  const unscheduled = getUnscheduledTasks()
+  if (unscheduled.length === 0) return
+
+  applyingVariantStyle.value = style
+  planningFeedback.value = null
+  planningDiagnostics.value = []
+  decisionTransparency.value = null
+
+  try {
+    const variant = planVariantOptions.find(option => option.style === style)
+    const currentEvents = await refreshCalendarEvents()
+    const schedule = await applyScheduleForTasks(unscheduled, currentEvents, {}, buildPreferencesForStyle(style))
+    const scheduledCount = schedule.size
+    const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
+    const scheduleEvents = buildScheduleEvents(schedule, unscheduled)
+    const diagnostics = remainingTasks
+      .map(task => diagnoseSchedulingIssue(task, [...currentEvents, ...scheduleEvents]))
+      .sort(sortSchedulingDiagnosis)
+
+    planningDiagnostics.value = diagnostics
+    decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, remainingTasks, diagnostics)
+    await evaluatePlanVariants(remainingTasks, [...currentEvents, ...scheduleEvents])
+
+    if (scheduledCount === 0) {
+      planningFeedback.value = `${variant?.label || style} konnte aktuell keine weiteren Aufgaben einplanen.`
+      return
+    }
+
+    if (remainingTasks.length > 0) {
+      planningFeedback.value = `${variant?.label || style} hat ${scheduledCount} weitere Aufgaben eingeplant, ${remainingTasks.length} bleiben noch offen.`
+      return
+    }
+
+    planningFeedback.value = `${variant?.label || style} konnte alle restlichen Aufgaben einplanen.`
+  } finally {
+    applyingVariantStyle.value = null
+  }
+}
+
+function isRecommendedPlanVariant(style: PlanningStyle) {
+  const best = planVariants.value[0]
+  return best?.style === style && best.scheduledCount > 0
 }
 
 const priorityInsights = computed(() => {
@@ -906,11 +1061,12 @@ async function applyScheduleForTasks(
   tasksToSchedule: Task[],
   existingEvents: readonly CalendarEvent[],
   options: ScheduleTaskOptions = {},
+  prefsOverride: UserPreferences = preferences.value,
 ) {
   const plannedSchedule = scheduleTasks(
     tasksToSchedule,
     existingEvents,
-    preferences.value,
+    prefsOverride,
     options,
   )
 
@@ -1215,6 +1371,61 @@ async function restoreArchivedProject(groupId: string) {
                 </span>
               </div>
               <p class="mt-1 text-xs text-gray-500">{{ entry.detail }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="planVariants.length > 0" class="px-4 pb-2">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Planvarianten</h3>
+              <p class="mt-1 text-xs text-emerald-700">Probier direkt eine andere Strategie fuer die restlichen Aufgaben aus.</p>
+            </div>
+            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-emerald-700">
+              {{ planVariants.length }} Optionen
+            </span>
+          </div>
+
+          <div class="mt-3 space-y-2">
+            <div
+              v-for="variant in planVariants"
+              :key="variant.style"
+              class="rounded-lg border border-emerald-100 bg-white px-3 py-3"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-medium text-gray-900">{{ variant.label }}</span>
+                    <span
+                      v-if="isRecommendedPlanVariant(variant.style)"
+                      class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800"
+                    >
+                      Empfohlen
+                    </span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500">{{ variant.description }}</p>
+                  <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                      +{{ variant.scheduledCount }} weitere Aufgaben
+                    </span>
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                      {{ variant.remainingCount }} offen
+                    </span>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-600">{{ variant.highlight }}</p>
+                </div>
+
+                <button
+                  type="button"
+                  class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="applyingVariantStyle === variant.style"
+                  @click="applyPlanVariant(variant.style)"
+                >
+                  {{ applyingVariantStyle === variant.style ? 'Prueft...' : 'Anwenden' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
