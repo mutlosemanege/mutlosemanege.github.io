@@ -75,7 +75,11 @@ interface SchedulingDiagnosis {
   detail: string
 }
 
+type RescheduleMode = 'same-time' | 'today' | 'next' | 'redistribute'
+
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
+const rescheduleTask = ref<Task | null>(null)
+const selectedRescheduleMode = ref<RescheduleMode>('same-time')
 const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
   dependency: 'Dependency blockiert',
   deadline: 'Deadline unrealistisch',
@@ -83,6 +87,33 @@ const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
   'work-window': 'Arbeitsfenster zu eng',
   'no-slot': 'Kein passender Slot',
 }
+
+const rescheduleModeOptions: Array<{
+  value: RescheduleMode
+  label: string
+  description: string
+}> = [
+  {
+    value: 'same-time',
+    label: 'Aehnliche Uhrzeit',
+    description: 'Versucht moeglichst nah an der alten Zeit neu zu planen.',
+  },
+  {
+    value: 'today',
+    label: 'Noch heute',
+    description: 'Sucht zuerst heute einen Slot und faellt sonst auf den naechsten sinnvollen aus.',
+  },
+  {
+    value: 'next',
+    label: 'Naechster Slot',
+    description: 'Nimmt einfach den naechsten sinnvollen freien Termin.',
+  },
+  {
+    value: 'redistribute',
+    label: 'Rest verteilen',
+    description: 'Verteilt die Aufgabe moeglichst flexibel ueber groessere freie Bloecke.',
+  },
+]
 
 // KI-Priorisierung
 async function handlePrioritize() {
@@ -200,7 +231,24 @@ async function markDone(task: Task) {
   await refreshCalendarEvents()
 }
 
-async function markMissed(task: Task) {
+function openRescheduleDialog(task: Task) {
+  rescheduleTask.value = task
+  selectedRescheduleMode.value = 'same-time'
+}
+
+function closeRescheduleDialog() {
+  rescheduleTask.value = null
+  selectedRescheduleMode.value = 'same-time'
+}
+
+async function confirmReschedule() {
+  if (!rescheduleTask.value) return
+  await markMissed(rescheduleTask.value, selectedRescheduleMode.value)
+  closeRescheduleDialog()
+}
+
+async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
+  const previousStart = task.scheduledStart
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
 
   if (calendarIds.length > 0) {
@@ -232,14 +280,20 @@ async function markMissed(task: Task) {
     calendarEventId: undefined,
   }], refreshedEvents, {
     preferredStartByTaskId: {
-      [task.id]: task.scheduledStart,
+      [task.id]: mode === 'same-time' ? previousStart : mode === 'today' ? new Date().toISOString() : undefined,
+    },
+    rescheduleModeByTaskId: {
+      [task.id]: mode,
     },
   })
 
   if (schedule.has(task.id)) {
-    planningFeedback.value = `"${task.title}" wurde automatisch neu eingeplant.`
+    const newStart = schedule.get(task.id)?.blocks[0]?.start
+    const shiftLabel = describeRescheduleShift(previousStart, newStart)
+    const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
+    planningFeedback.value = `"${task.title}" wurde neu eingeplant (${modeLabel}). ${shiftLabel}`
   } else {
-    planningFeedback.value = `"${task.title}" konnte noch nicht automatisch neu eingeplant werden.`
+    planningFeedback.value = `"${task.title}" konnte im Modus "${rescheduleModeOptions.find(option => option.value === mode)?.label || mode}" noch nicht automatisch neu eingeplant werden.`
   }
 }
 
@@ -308,6 +362,18 @@ function taskScheduleSummary(task: Task) {
 
   if (task.scheduleBlocks.length === 1) return label
   return `${label} + ${task.scheduleBlocks.length - 1} weitere Bloecke`
+}
+
+function formatTaskDateTime(value?: string) {
+  if (!value) return null
+
+  return new Date(value).toLocaleString('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function getTaskInsight(task: Task) {
@@ -542,6 +608,36 @@ function sortSchedulingDiagnosis(a: SchedulingDiagnosis, b: SchedulingDiagnosis)
   const aDeadline = aTask?.deadline ? new Date(aTask.deadline).getTime() : Infinity
   const bDeadline = bTask?.deadline ? new Date(bTask.deadline).getTime() : Infinity
   return aDeadline - bDeadline
+}
+
+function describeRescheduleShift(previousStart?: string, nextStart?: Date) {
+  if (!previousStart || !nextStart) return 'Neuer Termin gesetzt.'
+
+  const oldDate = new Date(previousStart)
+  const diffMs = nextStart.getTime() - oldDate.getTime()
+  const diffHours = Math.round(Math.abs(diffMs) / (60 * 60 * 1000))
+  const diffDays = Math.floor(Math.abs(diffMs) / (24 * 60 * 60 * 1000))
+
+  if (isSameCalendarDay(oldDate, nextStart)) {
+    if (diffHours === 0) return 'Fast gleiche Uhrzeit wie vorher.'
+    return `Am selben Tag um ca. ${diffHours}h verschoben.`
+  }
+
+  if (diffDays === 0) {
+    return 'Auf einen spaeteren freien Slot heute verschoben.'
+  }
+
+  if (diffDays === 1) {
+    return diffMs > 0 ? 'Auf den naechsten Tag verschoben.' : 'Einen Tag frueher neu einsortiert.'
+  }
+
+  return `${diffDays} Tage ${diffMs > 0 ? 'spaeter' : 'frueher'} neu eingeplant.`
+}
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
 }
 
 function matchesActiveFilter(task: Task) {
@@ -952,7 +1048,7 @@ async function removeProject(groupId: string) {
                       v-if="task.status === 'scheduled'"
                       class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
                       title="Nicht geschafft, neu einplanen"
-                      @click="markMissed(task)"
+                      @click="openRescheduleDialog(task)"
                     >
                       Nicht geschafft
                     </button>
@@ -985,6 +1081,78 @@ async function removeProject(groupId: string) {
     @close="showProjectGenerator = false"
     @created="showProjectGenerator = false"
   />
+
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="rescheduleTask" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="closeRescheduleDialog" />
+
+        <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">Neu einplanen</h3>
+              <p class="mt-1 text-sm text-gray-500">
+                Waehle, wie <span class="font-medium text-gray-700">{{ rescheduleTask.title }}</span> neu geplant werden soll.
+              </p>
+              <p v-if="formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start)" class="mt-2 text-xs text-gray-400">
+                Bisher: {{ formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start) }}
+              </p>
+            </div>
+            <button class="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600" @click="closeRescheduleDialog">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mt-4 space-y-2">
+            <label
+              v-for="option in rescheduleModeOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors"
+              :class="selectedRescheduleMode === option.value
+                ? 'border-primary-300 bg-primary-50'
+                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'"
+            >
+              <input
+                v-model="selectedRescheduleMode"
+                type="radio"
+                class="mt-1 border-gray-300 text-primary-600 focus:ring-primary-500"
+                :value="option.value"
+              >
+              <div>
+                <div class="flex items-center gap-2 text-sm font-medium text-gray-900">
+                  <span>{{ option.label }}</span>
+                  <span
+                    v-if="option.value === 'same-time'"
+                    class="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700"
+                  >
+                    empfohlen
+                  </span>
+                </div>
+                <div class="mt-1 text-xs text-gray-500">{{ option.description }}</div>
+              </div>
+            </label>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              class="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+              @click="closeRescheduleDialog"
+            >
+              Abbrechen
+            </button>
+            <button
+              class="rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              @click="confirmReschedule"
+            >
+              Neu einplanen
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -995,5 +1163,15 @@ async function removeProject(groupId: string) {
 .sidebar-enter-from,
 .sidebar-leave-to {
   transform: translateX(100%);
+}
+
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
 }
 </style>

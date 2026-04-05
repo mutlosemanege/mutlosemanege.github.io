@@ -1,5 +1,7 @@
 # Google Cloud Einrichtung fuer kalender-ai
 
+> Verknüpft mit: [[_INDEX]] · [[README]] · [[NETLIFY_SETUP]]
+
 Diese Anleitung beschreibt Schritt fuer Schritt, wie du Google Cloud konfigurierst, damit die Kalender-App auf die Google Calendar API zugreifen kann.
 
 ---

@@ -1,94 +1,148 @@
-# Kalender
+# Kalender-AI
 
-Eine statische Web-App zur Verwaltung von Google Kalender Terminen. Gebaut mit Nuxt, Tailwind CSS und der Google Calendar API. Laeuft komplett im Browser ohne Backend.
+KI-gestützte Google Kalender Web-App. Plane, priorisiere und manage Aufgaben mit Claude-Unterstützung — direkt mit deinem Google Kalender verknüpft.
+
+**Stack:** Nuxt 4 (SPA) · Tailwind CSS · Google Calendar API · Anthropic Claude API · Netlify
+
+---
 
 ## Voraussetzungen
 
-- Node.js 20 oder hoeher
-- Ein Google Cloud Projekt mit aktivierter Calendar API und OAuth2 Client ID (siehe [GOOGLE_SETUP.md](GOOGLE_SETUP.md))
+- Node.js 20 oder höher
+- Google Cloud Projekt mit Calendar API und OAuth2 Client ID → [GOOGLE_SETUP.md](GOOGLE_SETUP.md)
+- Anthropic API-Key (für KI-Features) → [NETLIFY_SETUP.md](NETLIFY_SETUP.md)
+
+---
 
 ## Lokale Entwicklung
 
-1. Repository klonen und Abhaengigkeiten installieren:
-
-   ```bash
-   git clone <REPO_URL>
-   cd kalender-ai
-   npm install
-   ```
-
-2. Umgebungsvariablen einrichten:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Trage in der `.env`-Datei deine Google Client ID ein:
-
-   ```
-   NUXT_PUBLIC_GOOGLE_CLIENT_ID=deine-client-id-hier
-   NUXT_PUBLIC_GOOGLE_CALENDAR_ID=primary
-   NUXT_PUBLIC_BASE_URL=
-   ```
-
-3. Entwicklungsserver starten:
-
-   ```bash
-   npm run dev
-   ```
-
-   Die App ist unter `http://localhost:3000` erreichbar.
-
-## Statische Generierung
-
 ```bash
-npm run generate
+# 1. Abhängigkeiten installieren
+npm install
+
+# 2. Umgebungsvariablen einrichten
+cp .env.example .env
+# .env ausfüllen (Google Client ID + Anthropic API Key)
+
+# 3. Entwicklungsserver starten
+npm run dev
+# → http://localhost:3000
 ```
 
-Die statischen Dateien werden in `.output/public/` erzeugt.
+**Benötigte `.env`-Variablen:**
 
-## Deployment auf GitHub Pages
+```env
+NUXT_PUBLIC_GOOGLE_CLIENT_ID=deine-client-id
+NUXT_PUBLIC_GOOGLE_CALENDAR_ID=primary
+NUXT_PUBLIC_BASE_URL=http://localhost:3000
+NUXT_PUBLIC_AI_ENABLED=true
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
 
-### GitHub Secrets konfigurieren
+---
 
-Navigiere in deinem Repository zu **Settings > Secrets and variables > Actions** und erstelle folgende Secrets:
+## Deployment (Netlify)
 
-| Secret                            | Beschreibung                                                  |
-| --------------------------------- | ------------------------------------------------------------- |
-| `NUXT_PUBLIC_GOOGLE_CLIENT_ID`    | Deine Google OAuth2 Client ID                                 |
-| `NUXT_PUBLIC_GOOGLE_CALENDAR_ID`  | Kalender-ID (optional, Standard: `primary`)                   |
-| `NUXT_PUBLIC_BASE_URL`            | Die GitHub Pages URL, z.B. `https://user.github.io/repo-name` |
+Die App wird auf Netlify deployed (Serverless Functions für KI-Features erforderlich).
 
-### Erstes Deployment
+Vollständige Anleitung: [NETLIFY_SETUP.md](NETLIFY_SETUP.md)
 
-1. Pushe deinen Code auf den `main`-Branch. Die GitHub Action baut die App automatisch und deployed sie auf den Branch `gh-pages`.
+```bash
+# Produktions-Build (Netlify-Preset)
+npm run build
 
-2. Aktiviere GitHub Pages in den Repository-Einstellungen:
-   - Gehe zu **Settings > Pages**
-   - Unter **Source** waehle den Branch `gh-pages` und den Ordner `/ (root)`
-   - Klicke auf **Save**
+# Statische Generierung (ohne Serverless Functions — ohne KI)
+npm run generate
 
-3. Nach wenigen Minuten ist die App unter `https://<USERNAME>.github.io/<REPO_NAME>/` erreichbar.
+# Build lokal testen
+npm run preview
+```
 
-### Wichtig
+---
 
-Stelle sicher, dass die GitHub Pages URL in der Google Cloud Console als autorisierte JavaScript-Quelle und Weiterleitungs-URI eingetragen ist (siehe [GOOGLE_SETUP.md](GOOGLE_SETUP.md)).
+## KI-Features
+
+Alle KI-Features laufen **serverseitig** via Netlify Serverless Functions:
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **KI-Priorisierung** | Claude rankt Aufgaben nach Dringlichkeit und gibt Begründungen |
+| **Auto-Planen** | Greedy-Algorithmus plant Tasks in freie Kalenderslots (respektiert Arbeitszeiten, Deep-Work-Fenster, Deadlines) |
+| **Projekt-Generator** | Claude generiert 3–12 Aufgaben mit Dependencies aus einer Projektbeschreibung |
+| **Planungs-Chat** | Natürliche Sprache → Termin oder Aufgabe ("Meeting morgen 14 Uhr") |
+| **Deadline-Watcher** | Automatische Warnungen bei nahenden oder überfälligen Deadlines |
+
+---
 
 ## Projektstruktur
 
 ```
 app/
-  components/    - Vue-Komponenten (NavBar, CalendarGrid, WeekView, EventModal, EventItem)
-  composables/   - Composables (useGoogleAuth, useCalendar)
-  pages/         - Seiten (index.vue)
-  app.vue        - Root-Komponente
-nuxt.config.ts   - Nuxt-Konfiguration
-tailwind.config.ts - Tailwind CSS Konfiguration
+  components/        Vue-Komponenten (13 Stück)
+    NavBar.vue        Navigation, Auth, Quick-Actions
+    AISidebar.vue     Aufgaben-Panel mit allen KI-Aktionen (611 Zeilen)
+    CalendarGrid.vue  Monatsansicht
+    WeekView.vue      Wochenansicht mit Zeitachse
+    PlanningChat.vue  KI-Planungsassistent (557 Zeilen)
+    TaskModal.vue     Aufgabe erstellen/bearbeiten
+    EventModal.vue    Kalendertermin erstellen/bearbeiten
+    PreferencesModal.vue  Einstellungen & Routinen
+    ProjectGenerator.vue  KI-Projekt-Wizard
+    DeadlineWarning.vue   Deadline-Warnungen
+    EventItem.vue     Event-Badge in Kalenderansichten
+
+  composables/       Zustandslogik & API-Anbindungen
+    useGoogleAuth.ts   Google OAuth2, Access Token
+    useCalendar.ts     Google Calendar CRUD
+    useTasks.ts        Aufgaben & Projekte (IndexedDB)
+    useScheduler.ts    Planungs-Engine + findFreeSlots
+    useAI.ts           Anthropic API Integration
+    usePreferences.ts  Nutzereinstellungen (localStorage)
+    useDeadlineWatcher.ts  Deadline-Überwachung
+
+  pages/
+    index.vue         Einzige Seite (SPA)
+
+  types/
+    task.ts           Task, Project, UserPreferences, etc.
+
+server/
+  api/ai/
+    prioritize.post.ts       Claude Haiku — Task-Priorisierung
+    generate-project.post.ts Claude Haiku — Projekt-Generierung
 ```
 
-## Technologien
+---
 
-- [Nuxt](https://nuxt.com) (SPA-Modus, statisch generiert)
-- [Tailwind CSS](https://tailwindcss.com)
-- [Google Identity Services](https://developers.google.com/identity/gsi/web) (OAuth2)
-- [Google Calendar API](https://developers.google.com/calendar)
+## Datenspeicherung
+
+| Daten | Speicherort |
+|-------|------------|
+| Kalender-Events | Google Calendar (via REST API) |
+| Aufgaben & Projekte | IndexedDB (lokal im Browser, via `idb-keyval`) |
+| Nutzereinstellungen | localStorage |
+| Auth-Token | Nur im Memory (kein localStorage) |
+
+---
+
+## Bekannte Einschränkungen
+
+- Kein automatisches Google OAuth Token Refresh (läuft nach ~1h ab)
+- Kein Sync zwischen Google Calendar und lokaler IndexedDB
+- Kein Undo nach Auto-Scheduling
+- Planungs-Chat: kein Support für Wochentagnamen oder spezifische Daten ("am 15.")
+- Keine Browser-Benachrichtigungen für Deadlines
+
+Ausführliche Feature-Planung: [AI_FEATURE_ROADMAP.md](AI_FEATURE_ROADMAP.md)
+
+---
+
+## Dokumentation
+
+| Datei | Inhalt |
+|-------|--------|
+| [GOOGLE_SETUP.md](GOOGLE_SETUP.md) | Google Cloud Projekt, Calendar API, OAuth2 einrichten |
+| [NETLIFY_SETUP.md](NETLIFY_SETUP.md) | Netlify Deployment, Anthropic API-Key konfigurieren |
+| [CLAUDE.md](CLAUDE.md) | Vollständige Architektur-Dokumentation (für KI-Assistenten) |
+| [AI_FEATURE_ROADMAP.md](AI_FEATURE_ROADMAP.md) | KI-Feature-Roadmap mit Prioritäten und Status |
+| [REDESIGN-PROMPT.md](REDESIGN-PROMPT.md) | Premium Dark-Mode Redesign Prompt (für Codex) |

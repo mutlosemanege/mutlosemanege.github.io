@@ -15,6 +15,7 @@ export interface ScheduledTaskPlan {
 
 export interface ScheduleTaskOptions {
   preferredStartByTaskId?: Record<string, string | undefined>
+  rescheduleModeByTaskId?: Record<string, 'same-time' | 'today' | 'next' | 'redistribute' | undefined>
 }
 
 export function useScheduler() {
@@ -247,6 +248,7 @@ export function useScheduler() {
           earliestStart,
           prefs.taskBufferMinutes,
           options.preferredStartByTaskId?.[task.id] ? new Date(options.preferredStartByTaskId[task.id]!) : undefined,
+          options.rescheduleModeByTaskId?.[task.id],
         )
         if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
@@ -266,6 +268,7 @@ export function useScheduler() {
     earliestStart: Date,
     bufferMinutes: number,
     preferredStart?: Date,
+    rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): {
     blocks: Array<{ start: Date; end: Date }>
     remainingSlots: TimeSlot[]
@@ -282,7 +285,7 @@ export function useScheduler() {
     ]
 
     for (const slotFilter of passes) {
-      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest, preferredStart)
+      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest, preferredStart, rescheduleMode)
 
       for (const slot of orderedSlots) {
         if (remainingMs <= 0) break
@@ -315,6 +318,7 @@ export function useScheduler() {
     durationMs: number,
     earliestStart: Date,
     preferredStart?: Date,
+    rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): TimeSlot[] {
     const oneHourMs = 60 * 60 * 1000
     const isShortTask = durationMs <= oneHourMs
@@ -325,10 +329,26 @@ export function useScheduler() {
       const bEffectiveStart = Math.max(b.start.getTime(), earliestStart.getTime())
       const aAvailable = a.end.getTime() - aEffectiveStart
       const bAvailable = b.end.getTime() - bEffectiveStart
+      const todayKey = new Date()
+      todayKey.setHours(0, 0, 0, 0)
+
+      if (rescheduleMode === 'today') {
+        const aIsToday = isSameCalendarDay(new Date(aEffectiveStart), todayKey)
+        const bIsToday = isSameCalendarDay(new Date(bEffectiveStart), todayKey)
+        if (aIsToday !== bIsToday) {
+          return aIsToday ? -1 : 1
+        }
+      }
 
       const aFits = aAvailable >= durationMs
       const bFits = bAvailable >= durationMs
       if (aFits !== bFits) return aFits ? -1 : 1
+
+      if (rescheduleMode === 'redistribute') {
+        if (aAvailable !== bAvailable) {
+          return bAvailable - aAvailable
+        }
+      }
 
       if (isShortTask) {
         if (aFits && bFits && aAvailable !== bAvailable) {
@@ -419,4 +439,10 @@ function getEventEnd(event: CalendarEvent): Date | null {
   if (event.end.dateTime) return new Date(event.end.dateTime)
   if (event.end.date) return new Date(event.end.date)
   return null
+}
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
 }

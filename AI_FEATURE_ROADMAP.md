@@ -1,5 +1,7 @@
 # AI Feature Roadmap
 
+> Verknüpft mit: [[_INDEX]] · [[CLAUDE]] · [[REDESIGN-PROMPT]]
+
 Diese Liste ist unsere gemeinsame Arbeitsgrundlage fuer die naechsten KI- und Planungsverbesserungen.
 
 Rahmen:
@@ -35,12 +37,12 @@ Rahmen:
 - [x] Feedback nach Auto-Planen in der Sidebar besser strukturieren
 
 ### 3. Rescheduling weiter verbessern
-- [ ] Mehrere Rescheduling-Modi einfuehren
-- [ ] `moeglichst gleiche Uhrzeit`
-- [ ] `noch heute wenn moeglich`
-- [ ] `naechster sinnvoller Slot`
-- [ ] `Rest neu verteilen` fuer laengere Aufgaben
-- [ ] In der UI anzeigen, wie stark sich der neue Termin vom alten unterscheidet
+- [x] Mehrere Rescheduling-Modi einfuehren
+- [x] `moeglichst gleiche Uhrzeit`
+- [x] `noch heute wenn moeglich`
+- [x] `naechster sinnvoller Slot`
+- [x] `Rest neu verteilen` fuer laengere Aufgaben
+- [x] In der UI anzeigen, wie stark sich der neue Termin vom alten unterscheidet
 
 ### 4. Planungs-Chat smarter machen
 - [ ] Wiederholungen wie `jeden Mittwoch` besser erkennen

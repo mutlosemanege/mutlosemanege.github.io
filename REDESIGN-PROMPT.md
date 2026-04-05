@@ -1,5 +1,7 @@
 # Kalender-AI Premium Redesign — Codex Execution Prompt
 
+> Verknüpft mit: [[_INDEX]] · [[CLAUDE]] · [[AI_FEATURE_ROADMAP]]
+
 ## Context: What exists right now
 
 This is a **Nuxt 4 SPA** (ssr: false) with Tailwind CSS 3, Vue 3 Composition API, no Pinia/Vuex. All styling is Tailwind utility classes — no global CSS, no design tokens, no custom components layer. Currently light-mode with `bg-gray-50` base, `bg-white` cards, standard gray borders.
