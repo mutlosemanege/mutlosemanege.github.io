@@ -12,7 +12,7 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks } = useScheduler()
 const { createEvent, fetchEvents, deleteEvent } = useCalendar()
@@ -69,53 +69,7 @@ async function handleAutoSchedule() {
 
   planningFeedback.value = null
 
-  const schedule = scheduleTasks(
-    unscheduled,
-    props.events,
-    preferences.value,
-  )
-
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-
-  // Tasks in Google Calendar eintragen
-  for (const [taskId, plan] of schedule) {
-    const task = tasks.value.find(t => t.id === taskId)
-    if (!task) continue
-
-    const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
-
-    for (const [index, block] of plan.blocks.entries()) {
-      const calEvent = await createEvent({
-        summary: plan.blocks.length > 1 ? `${task.title} (${index + 1}/${plan.blocks.length})` : task.title,
-        description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
-        start: { dateTime: block.start.toISOString(), timeZone: tz },
-        end: { dateTime: block.end.toISOString(), timeZone: tz },
-        colorId: task.isDeepWork ? '3' : '9',
-      })
-
-      createdBlocks.push({
-        start: block.start.toISOString(),
-        end: block.end.toISOString(),
-        calendarEventId: calEvent?.id,
-      })
-    }
-
-    if (createdBlocks.length > 0) {
-      await updateTask(taskId, {
-        status: 'scheduled',
-        scheduleBlocks: createdBlocks,
-        scheduledStart: createdBlocks[0].start,
-        scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
-        calendarEventId: createdBlocks[0].calendarEventId,
-      })
-    }
-  }
-
-  // Kalender neu laden
-  const now = new Date()
-  const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
-  await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+  const schedule = await applyScheduleForTasks(unscheduled, props.events)
 
   const scheduledCount = schedule.size
   const unscheduledCount = unscheduled.length - scheduledCount
@@ -145,6 +99,9 @@ async function markDone(task: Task) {
 
 async function markMissed(task: Task) {
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+  const remainingEvents = props.events.filter(event =>
+    !calendarIds.includes(event.id)
+  )
 
   if (calendarIds.length > 0) {
     for (const calendarId of calendarIds) {
@@ -161,6 +118,24 @@ async function markMissed(task: Task) {
     scheduledEnd: undefined,
     calendarEventId: undefined,
   })
+
+  const refreshedTask = tasks.value.find(entry => entry.id === task.id)
+  if (!refreshedTask) return
+
+  const schedule = await applyScheduleForTasks([{
+    ...refreshedTask,
+    status: 'todo',
+    scheduleBlocks: undefined,
+    scheduledStart: undefined,
+    scheduledEnd: undefined,
+    calendarEventId: undefined,
+  }], remainingEvents)
+
+  if (schedule.has(task.id)) {
+    planningFeedback.value = `"${task.title}" wurde automatisch neu eingeplant.`
+  } else {
+    planningFeedback.value = `"${task.title}" konnte noch nicht automatisch neu eingeplant werden.`
+  }
 }
 
 async function changePriority(task: Task, priority: Task['priority']) {
@@ -194,6 +169,17 @@ const filteredTaskGroups = computed(() => {
       tasks: group.tasks.filter(matchesActiveFilter),
     }))
     .filter(group => group.tasks.length > 0)
+})
+
+const completedProjectIds = computed(() => {
+  const result = new Set<string>()
+  for (const group of tasksByProject.value) {
+    if (group.id === 'inbox') continue
+    if (group.tasks.length > 0 && group.tasks.every(task => task.status === 'done')) {
+      result.add(group.id)
+    }
+  }
+  return result
 })
 
 function taskStatusLabel(task: Task) {
@@ -233,6 +219,68 @@ function toggleGroup(groupId: string) {
 
 function isGroupCollapsed(groupId: string) {
   return collapsedGroups.value.includes(groupId)
+}
+
+async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: readonly CalendarEvent[]) {
+  const schedule = scheduleTasks(
+    tasksToSchedule,
+    existingEvents,
+    preferences.value,
+  )
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  for (const [taskId, plan] of schedule) {
+    const task = tasks.value.find(t => t.id === taskId) || tasksToSchedule.find(t => t.id === taskId)
+    if (!task) continue
+
+    const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
+
+    for (const [index, block] of plan.blocks.entries()) {
+      const calEvent = await createEvent({
+        summary: plan.blocks.length > 1 ? `${task.title} (${index + 1}/${plan.blocks.length})` : task.title,
+        description: `[KALENDER-AI-TASK:${taskId}]\n${task.description || ''}`,
+        start: { dateTime: block.start.toISOString(), timeZone: tz },
+        end: { dateTime: block.end.toISOString(), timeZone: tz },
+        colorId: task.isDeepWork ? '3' : '9',
+      })
+
+      createdBlocks.push({
+        start: block.start.toISOString(),
+        end: block.end.toISOString(),
+        calendarEventId: calEvent?.id,
+      })
+    }
+
+    if (createdBlocks.length > 0) {
+      await updateTask(taskId, {
+        status: 'scheduled',
+        scheduleBlocks: createdBlocks,
+        scheduledStart: createdBlocks[0].start,
+        scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
+        calendarEventId: createdBlocks[0].calendarEventId,
+      })
+    }
+  }
+
+  const now = new Date()
+  const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
+  await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+
+  return schedule
+}
+
+async function removeCompletedProject(groupId: string) {
+  const projectGroup = tasksByProject.value.find(group => group.id === groupId)
+  if (!projectGroup || !completedProjectIds.value.has(groupId)) return
+
+  for (const task of projectGroup.tasks) {
+    await deleteTask(task.id)
+  }
+
+  await deleteProject(groupId)
+  planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
 }
 </script>
 
@@ -353,7 +401,16 @@ function isGroupCollapsed(groupId: string) {
                 </svg>
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
               </div>
-              <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="completedProjectIds.has(group.id)"
+                  class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
+                  @click.stop="removeCompletedProject(group.id)"
+                >
+                  Projekt loeschen
+                </button>
+                <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
+              </div>
             </button>
 
             <div v-if="!isGroupCollapsed(group.id)" class="space-y-2">
