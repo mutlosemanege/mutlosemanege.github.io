@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
+import type { CalendarEvent } from '~/composables/useCalendar'
 import type { DeepWorkWindow, RoutineTemplate } from '~/types/task'
 
 const props = defineProps<{
   show: boolean
+  events?: readonly CalendarEvent[]
 }>()
 
 const emit = defineEmits<{
@@ -116,6 +118,13 @@ function updateRoutineHour(id: string, field: 'startHour' | 'endHour', value: nu
   }
 }
 
+function updateRoutineDay(id: string, value: number) {
+  const routine = form.routineTemplates.find(entry => entry.id === id)
+  if (routine) {
+    routine.day = value
+  }
+}
+
 async function applyRoutineTemplates() {
   if (form.routineTemplates.length === 0) {
     routineFeedback.value = 'Lege zuerst mindestens eine Routine an.'
@@ -128,6 +137,7 @@ async function applyRoutineTemplates() {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const createdEvents: string[] = []
+    let skippedEvents = 0
     const now = new Date()
 
     for (const routine of form.routineTemplates) {
@@ -137,6 +147,11 @@ async function applyRoutineTemplates() {
         start.setHours(routine.startHour, 0, 0, 0)
         const end = new Date(date)
         end.setHours(routine.endHour, 0, 0, 0)
+
+        if (hasMatchingExistingEvent(routine, start, end)) {
+          skippedEvents++
+          continue
+        }
 
         const created = await createEvent({
           summary: routine.title,
@@ -154,12 +169,22 @@ async function applyRoutineTemplates() {
     const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
     await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
-    routineFeedback.value = `${createdEvents.length} Routinen wurden in den Kalender eingetragen.`
+    routineFeedback.value = `${createdEvents.length} Routinen wurden eingetragen.${skippedEvents > 0 ? ` ${skippedEvents} vorhandene Termine wurden uebersprungen.` : ''}`
   } catch (error: any) {
     routineFeedback.value = error.message || 'Routinen konnten nicht eingetragen werden.'
   } finally {
     isApplyingRoutines.value = false
   }
+}
+
+function hasMatchingExistingEvent(routine: RoutineTemplate, start: Date, end: Date) {
+  return (props.events || []).some(event => {
+    if (!event.start.dateTime || !event.end.dateTime) return false
+
+    return event.summary?.trim().toLowerCase() === routine.title.trim().toLowerCase() &&
+      new Date(event.start.dateTime).getTime() === start.getTime() &&
+      new Date(event.end.dateTime).getTime() === end.getTime()
+  })
 }
 
 function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
@@ -448,6 +473,18 @@ function handleReset() {
                   </button>
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
+                  <select
+                    :value="routine.day"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    @change="updateRoutineDay(routine.id, Number(($event.target as HTMLSelectElement).value))"
+                  >
+                    <option v-for="(name, index) in dayNames" :key="`${routine.id}-day-${name}`" :value="index">
+                      {{ name }}
+                    </option>
+                  </select>
+                  <div />
+                </div>
+                <div class="mt-2 grid grid-cols-2 gap-2">
                   <select
                     :value="routine.startHour"
                     class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"

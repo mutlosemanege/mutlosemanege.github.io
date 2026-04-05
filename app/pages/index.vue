@@ -244,6 +244,7 @@ async function onDeleteTask(taskId: string) {
     <!-- Preferences Modal -->
     <PreferencesModal
       :show="showPreferences"
+      :events="events"
       @close="showPreferences = false"
     />
 
