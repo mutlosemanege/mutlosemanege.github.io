@@ -169,7 +169,9 @@ export function useScheduler() {
       // Danach fruehere Deadline zuerst
       const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
       const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
-      return aDeadline - bDeadline
+      if (aDeadline !== bDeadline) return aDeadline - bDeadline
+
+      return b.estimatedMinutes - a.estimatedMinutes
     })
 
     // Planungszeitraum: ab jetzt, bis zur spaetesten Deadline oder max. 180 Tage
@@ -199,7 +201,14 @@ export function useScheduler() {
       for (const task of sorted) {
         if (result.has(task.id) || task.status === 'done') continue
 
-        const allDepsScheduled = task.dependencies.every(depId => result.has(depId))
+        const allDepsScheduled = task.dependencies.every(depId => {
+          const dependencyTask = tasksToSchedule.find(candidate => candidate.id === depId)
+          if (!dependencyTask) return true
+
+          return dependencyTask.status === 'done' ||
+            dependencyTask.status === 'scheduled' ||
+            result.has(depId)
+        })
         if (!allDepsScheduled) continue
 
         const durationMs = task.estimatedMinutes * 60 * 1000
@@ -210,6 +219,19 @@ export function useScheduler() {
           const depEnd = depPlan?.blocks[depPlan.blocks.length - 1]?.end
           if (depEnd && depEnd > earliestStart) {
             earliestStart = depEnd
+            continue
+          }
+
+          const dependencyTask = tasksToSchedule.find(candidate => candidate.id === depId)
+          if (!dependencyTask) continue
+
+          const persistedDependencyEnd = dependencyTask.scheduleBlocks?.[dependencyTask.scheduleBlocks.length - 1]?.end ||
+            dependencyTask.scheduledEnd
+          if (persistedDependencyEnd) {
+            const scheduledEnd = new Date(persistedDependencyEnd)
+            if (scheduledEnd > earliestStart) {
+              earliestStart = scheduledEnd
+            }
           }
         }
 
@@ -223,51 +245,6 @@ export function useScheduler() {
     }
 
     return result
-  }
-
-  /**
-   * Findet den ersten passenden Slot fuer einen Task.
-   */
-  function findSlotForTask(
-    slots: TimeSlot[],
-    durationMs: number,
-    needsDeepWork: boolean,
-    earliestStart: Date,
-  ): { slot: TimeSlot; start: Date; end: Date } | null {
-    for (const slot of slots) {
-      // Slot muss nach earliestStart beginnen
-      const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
-      const availableMs = slot.end.getTime() - effectiveStart.getTime()
-
-      if (availableMs < durationMs) continue
-
-      // Deep-Work-Tasks nur in Deep-Work-Slots
-      if (needsDeepWork && !slot.isDeepWork) continue
-
-      // Nicht-Deep-Work-Tasks NICHT in Deep-Work-Slots (schuetzt Fokuszeit)
-      if (!needsDeepWork && slot.isDeepWork) continue
-
-      return {
-        slot,
-        start: effectiveStart,
-        end: new Date(effectiveStart.getTime() + durationMs),
-      }
-    }
-
-    // Fallback: Wenn kein passender Slot, auch "falsche" Slots akzeptieren
-    for (const slot of slots) {
-      const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
-      const availableMs = slot.end.getTime() - effectiveStart.getTime()
-      if (availableMs >= durationMs) {
-        return {
-          slot,
-          start: effectiveStart,
-          end: new Date(effectiveStart.getTime() + durationMs),
-        }
-      }
-    }
-
-    return null
   }
 
   function allocateTaskAcrossSlots(
@@ -292,7 +269,7 @@ export function useScheduler() {
     ]
 
     for (const slotFilter of passes) {
-      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, earliestStart)
+      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest)
 
       for (const slot of orderedSlots) {
         if (remainingMs <= 0) break

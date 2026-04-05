@@ -183,21 +183,24 @@ function hasMatchingExistingEvent(routine: RoutineTemplate, start: Date, end: Da
   return (props.events || []).some(event => {
     if (!event.start.dateTime || !event.end.dateTime) return false
 
-    if (event.summary?.trim().toLowerCase() !== routine.title.trim().toLowerCase()) return false
+    const normalizedSummary = event.summary?.trim().toLowerCase() || ''
+    const normalizedRoutineTitle = routine.title.trim().toLowerCase()
+    const titlesMatch = normalizedSummary === normalizedRoutineTitle ||
+      normalizedSummary.includes(normalizedRoutineTitle) ||
+      normalizedRoutineTitle.includes(normalizedSummary)
+    if (!titlesMatch) return false
 
     const eventStart = new Date(event.start.dateTime)
     const eventEnd = new Date(event.end.dateTime)
 
-    return eventStart.getFullYear() === start.getFullYear() &&
+    const sameDay = eventStart.getFullYear() === start.getFullYear() &&
       eventStart.getMonth() === start.getMonth() &&
-      eventStart.getDate() === start.getDate() &&
-      eventStart.getHours() === start.getHours() &&
-      eventStart.getMinutes() === start.getMinutes() &&
-      eventEnd.getFullYear() === end.getFullYear() &&
-      eventEnd.getMonth() === end.getMonth() &&
-      eventEnd.getDate() === end.getDate() &&
-      eventEnd.getHours() === end.getHours() &&
-      eventEnd.getMinutes() === end.getMinutes()
+      eventStart.getDate() === start.getDate()
+
+    const startDiff = Math.abs(eventStart.getTime() - start.getTime())
+    const endDiff = Math.abs(eventEnd.getTime() - end.getTime())
+
+    return sameDay && startDiff <= 15 * 60 * 1000 && endDiff <= 15 * 60 * 1000
   })
 }
 
@@ -244,7 +247,7 @@ function handleReset() {
         <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
           <h2 class="text-lg font-semibold text-gray-900">Planung und Routinen</h2>
           <p class="text-sm text-gray-500">
-            Lege hier fest, wann du normalerweise arbeitest und welche Zeiten der Planer frei halten soll.
+            Lege hier fest, wann du normalerweise arbeitest und welche Routinen du als Vorlagen schnell in den Kalender uebernehmen willst.
           </p>
 
           <!-- Arbeitszeiten -->
@@ -422,7 +425,7 @@ function handleReset() {
               <div>
                 <h3 class="text-sm font-medium text-gray-700">Feste Routinen</h3>
                 <p class="text-xs text-gray-500 mt-1">
-                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlage an und trage sie gesammelt ein.
+                  Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an und trage sie gesammelt in den Kalender ein.
                 </p>
               </div>
               <button

@@ -23,7 +23,10 @@ const emit = defineEmits<{
           <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <h1 class="text-xl font-bold text-gray-900">Kalender</h1>
+          <div>
+            <h1 class="text-xl font-bold text-gray-900">Kalender AI</h1>
+            <p class="hidden text-xs text-gray-400 sm:block">Planen, priorisieren, umsetzen</p>
+          </div>
         </div>
 
         <!-- View Toggle -->

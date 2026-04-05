@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const { generateProject, isProcessing, aiError } = useAI()
-const { createProject, createTask } = useTasks()
+const { createProject, createTask, updateTask } = useTasks()
 
 const description = ref('')
 const deadline = ref('')
@@ -78,26 +78,36 @@ async function handleConfirm() {
   // TempId → echte ID Mapping
   const idMap = new Map<string, string>()
 
-  // Tasks erstellen (in Reihenfolge wegen Abhaengigkeiten)
+  // Tasks zuerst erstellen
   const createdIds: string[] = []
   for (const pt of includedTasks) {
-    const realDeps = pt.dependsOn
-      .map(depTempId => idMap.get(depTempId))
-      .filter((id): id is string => id !== undefined)
-
     const task = await createTask({
       title: pt.title,
       description: pt.description,
       estimatedMinutes: pt.estimatedMinutes,
       priority: pt.suggestedPriority,
+      aiSuggestedPriority: pt.suggestedPriority,
+      priorityReason: 'Von KI bei der Projektgenerierung vorgeschlagen',
+      prioritySource: 'ai',
       status: 'todo',
       projectId: project.id,
-      dependencies: realDeps,
+      dependencies: [],
       isDeepWork: pt.isDeepWork,
     })
 
     idMap.set(pt.tempId, task.id)
     createdIds.push(task.id)
+  }
+
+  for (const pt of includedTasks) {
+    const taskId = idMap.get(pt.tempId)
+    if (!taskId) continue
+
+    const realDeps = pt.dependsOn
+      .map(depTempId => idMap.get(depTempId))
+      .filter((id): id is string => id !== undefined)
+
+    await updateTask(taskId, { dependencies: realDeps })
   }
 
   // Projekt mit Task-IDs aktualisieren
@@ -115,6 +125,12 @@ const totalMinutes = computed(() =>
 )
 
 const totalHours = computed(() => Math.round(totalMinutes.value / 60 * 10) / 10)
+
+function dependencyLabels(task: PreviewTask) {
+  return task.dependsOn
+    .map(depTempId => previewTasks.value.find(candidate => candidate.tempId === depTempId)?.title || depTempId)
+    .join(', ')
+}
 </script>
 
 <template>
@@ -241,7 +257,7 @@ const totalHours = computed(() => Math.round(totalMinutes.value / 60 * 10) / 10)
                   <div class="flex items-center gap-3 mt-1 text-xs text-gray-400">
                     <span>{{ task.estimatedMinutes }} Min.</span>
                     <span v-if="task.dependsOn.length > 0">
-                      Abhaengig von: {{ task.dependsOn.join(', ') }}
+                      Abhaengig von: {{ dependencyLabels(task) }}
                     </span>
                   </div>
                 </div>

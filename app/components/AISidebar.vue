@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Task } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
+import type { ScheduledTaskPlan } from '~/composables/useScheduler'
 
 const props = defineProps<{
   show: boolean
@@ -15,7 +16,7 @@ const emit = defineEmits<{
 const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks } = useScheduler()
-const { createEvent, fetchEvents, deleteEvent } = useCalendar()
+const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
 const { preferences } = usePreferences()
 
 const showProjectGenerator = ref(false)
@@ -58,7 +59,12 @@ async function handlePrioritize() {
   const rankings = await prioritizeTasks(pending)
 
   for (const ranking of rankings) {
-    await updateTask(ranking.taskId, { priority: ranking.priority })
+    await updateTask(ranking.taskId, {
+      priority: ranking.priority,
+      aiSuggestedPriority: ranking.priority,
+      priorityReason: ranking.reason,
+      prioritySource: 'ai',
+    })
   }
 }
 
@@ -69,7 +75,8 @@ async function handleAutoSchedule() {
 
   planningFeedback.value = null
 
-  const schedule = await applyScheduleForTasks(unscheduled, props.events)
+  const currentEvents = await refreshCalendarEvents()
+  const schedule = await applyScheduleForTasks(unscheduled, currentEvents)
 
   const scheduledCount = schedule.size
   const unscheduledCount = unscheduled.length - scheduledCount
@@ -83,7 +90,7 @@ async function handleAutoSchedule() {
     const remainingTitles = unscheduled
       .filter(task => !schedule.has(task.id))
       .slice(0, 3)
-      .map(task => task.title)
+      .map(task => `${task.title} (${explainUnscheduledTask(task)})`)
       .join(', ')
 
     planningFeedback.value = `${scheduledCount} Aufgaben eingeplant, ${unscheduledCount} noch offen. ${remainingTitles ? `Noch offen: ${remainingTitles}` : ''}`
@@ -93,15 +100,51 @@ async function handleAutoSchedule() {
   planningFeedback.value = `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`
 }
 
+function explainUnscheduledTask(task: Task) {
+  if (task.dependencies.length > 0) {
+    const blockingDependency = task.dependencies
+      .map(depId => tasks.value.find(candidate => candidate.id === depId))
+      .find(candidate => candidate && candidate.status !== 'done' && candidate.status !== 'scheduled')
+
+    if (blockingDependency) {
+      return `wartet auf ${blockingDependency.title}`
+    }
+  }
+
+  if (task.isDeepWork) {
+    return 'braucht Fokuszeit'
+  }
+
+  if (task.deadline) {
+    return 'vor Deadline kein passender Slot'
+  }
+
+  return 'aktuell kein passender Slot'
+}
+
 async function markDone(task: Task) {
-  await updateTask(task.id, { status: 'done' })
+  const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+  if (calendarIds.length > 0) {
+    for (const calendarId of calendarIds) {
+      await deleteEvent(calendarId!)
+    }
+  } else if (task.calendarEventId) {
+    await deleteEvent(task.calendarEventId)
+  }
+
+  await updateTask(task.id, {
+    status: 'done',
+    scheduleBlocks: undefined,
+    scheduledStart: undefined,
+    scheduledEnd: undefined,
+    calendarEventId: undefined,
+  })
+
+  await refreshCalendarEvents()
 }
 
 async function markMissed(task: Task) {
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
-  const remainingEvents = props.events.filter(event =>
-    !calendarIds.includes(event.id)
-  )
 
   if (calendarIds.length > 0) {
     for (const calendarId of calendarIds) {
@@ -119,6 +162,7 @@ async function markMissed(task: Task) {
     calendarEventId: undefined,
   })
 
+  const refreshedEvents = await refreshCalendarEvents()
   const refreshedTask = tasks.value.find(entry => entry.id === task.id)
   if (!refreshedTask) return
 
@@ -129,7 +173,7 @@ async function markMissed(task: Task) {
     scheduledStart: undefined,
     scheduledEnd: undefined,
     calendarEventId: undefined,
-  }], remainingEvents)
+  }], refreshedEvents)
 
   if (schedule.has(task.id)) {
     planningFeedback.value = `"${task.title}" wurde automatisch neu eingeplant.`
@@ -140,7 +184,11 @@ async function markMissed(task: Task) {
 
 async function changePriority(task: Task, priority: Task['priority']) {
   if (task.priority === priority) return
-  await updateTask(task.id, { priority })
+  await updateTask(task.id, {
+    priority,
+    prioritySource: 'manual',
+    priorityReason: 'Manuell angepasst',
+  })
 }
 
 const tasksByProject = computed(() => {
@@ -211,20 +259,22 @@ function isGroupCollapsed(groupId: string) {
 }
 
 async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: readonly CalendarEvent[]) {
-  const schedule = scheduleTasks(
+  const plannedSchedule = scheduleTasks(
     tasksToSchedule,
     existingEvents,
     preferences.value,
   )
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const successfulSchedule = new Map<string, ScheduledTaskPlan>()
   let successCount = 0
   let failCount = 0
 
-  for (const [taskId, plan] of schedule) {
+  for (const [taskId, plan] of plannedSchedule) {
     const task = tasks.value.find(t => t.id === taskId) || tasksToSchedule.find(t => t.id === taskId)
     if (!task) continue
 
+    const createdCalendarIds: string[] = []
     try {
       const createdBlocks: Array<{ start: string; end: string; calendarEventId?: string }> = []
 
@@ -237,10 +287,15 @@ async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: re
           colorId: task.isDeepWork ? '3' : '9',
         })
 
+        if (!calEvent?.id) {
+          throw new Error('Kalendereintrag konnte nicht erstellt werden.')
+        }
+
+        createdCalendarIds.push(calEvent.id)
         createdBlocks.push({
           start: block.start.toISOString(),
           end: block.end.toISOString(),
-          calendarEventId: calEvent?.id,
+          calendarEventId: calEvent.id,
         })
       }
 
@@ -252,9 +307,13 @@ async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: re
           scheduledEnd: createdBlocks[createdBlocks.length - 1].end,
           calendarEventId: createdBlocks[0].calendarEventId,
         })
+        successfulSchedule.set(taskId, plan)
         successCount++
       }
     } catch (err) {
+      for (const calendarId of createdCalendarIds) {
+        await deleteEvent(calendarId!)
+      }
       console.error(`Fehler beim Einplanen von Task "${task.title}":`, err)
       failCount++
     }
@@ -269,18 +328,38 @@ async function applyScheduleForTasks(tasksToSchedule: Task[], existingEvents: re
   const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
   await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
 
-  return schedule
+  return successfulSchedule
 }
 
-async function removeCompletedProject(groupId: string) {
+async function refreshCalendarEvents() {
+  const now = new Date()
+  const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
+  await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+  return [...calendarEvents.value]
+}
+
+async function removeProject(groupId: string) {
   const projectGroup = tasksByProject.value.find(group => group.id === groupId)
   if (!projectGroup || groupId === 'inbox') return
 
+  const confirmed = window.confirm(`Projekt "${projectGroup.name}" wirklich loeschen? Alle zugehoerigen Aufgaben und geplanten Kalendereintraege werden entfernt.`)
+  if (!confirmed) return
+
   for (const task of projectGroup.tasks) {
+    const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+    if (calendarIds.length > 0) {
+      for (const calendarId of calendarIds) {
+        await deleteEvent(calendarId!)
+      }
+    } else if (task.calendarEventId) {
+      await deleteEvent(task.calendarEventId)
+    }
     await deleteTask(task.id)
   }
 
   await deleteProject(groupId)
+  await refreshCalendarEvents()
   planningFeedback.value = `Projekt "${projectGroup.name}" wurde geloescht.`
 }
 </script>
@@ -406,7 +485,7 @@ async function removeCompletedProject(groupId: string) {
                 <button
                   v-if="group.id !== 'inbox'"
                   class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
-                  @click.stop="removeCompletedProject(group.id)"
+                  @click.stop="removeProject(group.id)"
                 >
                   Projekt loeschen
                 </button>
@@ -443,10 +522,16 @@ async function removeCompletedProject(groupId: string) {
                         Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
                       </span>
                       <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
+                      <span v-if="task.prioritySource === 'ai'" class="text-indigo-500">KI-Vorschlag</span>
+                      <span v-else-if="task.prioritySource === 'manual'" class="text-gray-500">Manuell</span>
                     </div>
 
                     <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
                       Geplant: {{ taskScheduleSummary(task) }}
+                    </div>
+
+                    <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
+                      Grund: {{ task.priorityReason }}
                     </div>
 
                     <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>

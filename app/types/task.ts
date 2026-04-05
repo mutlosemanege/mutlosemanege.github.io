@@ -5,6 +5,9 @@ export interface Task {
   estimatedMinutes: number
   deadline?: string // ISO 8601
   priority: TaskPriority
+  aiSuggestedPriority?: TaskPriority
+  priorityReason?: string
+  prioritySource?: 'ai' | 'manual'
   status: TaskStatus
   projectId?: string
   dependencies: readonly string[] // Task-IDs die vorher erledigt sein muessen

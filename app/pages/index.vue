@@ -158,9 +158,9 @@ async function onDeleteTask(taskId: string) {
         <svg class="mx-auto w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <h2 class="text-2xl font-semibold text-gray-700">Willkommen bei Kalender</h2>
+        <h2 class="text-2xl font-semibold text-gray-700">Willkommen bei Kalender AI</h2>
         <p class="text-gray-500 max-w-md mx-auto">
-          Melde dich mit deinem Google-Konto an, um deine Termine zu sehen und zu verwalten.
+          Melde dich mit deinem Google-Konto an, um Termine, Aufgaben und KI-Planung in einem Workspace zu steuern.
         </p>
       </div>
     </div>

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { Task } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 
@@ -7,6 +7,7 @@ interface ParsedPlanningRequest {
   durationMinutes: number
   dateFrom: Date
   dateTo: Date
+  hasExplicitDate: boolean
   preferredPeriod: 'morning' | 'afternoon' | 'evening' | 'any'
   intent: 'event' | 'task'
 }
@@ -24,7 +25,7 @@ const emit = defineEmits<{
 const { preferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { createEvent } = useCalendar()
-const { createTask } = useTasks()
+const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
 const durationMinutes = ref(60)
@@ -34,6 +35,7 @@ const error = ref<string | null>(null)
 const previewEvent = ref<Omit<CalendarEvent, 'id'> | null>(null)
 const previewTask = ref<Omit<Task, 'id' | 'createdAt' | 'updatedAt'> | null>(null)
 const parsedDetails = ref<ParsedPlanningRequest | null>(null)
+const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
 
 watch(() => props.show, (show) => {
   if (!show) return
@@ -45,6 +47,7 @@ watch(() => props.show, (show) => {
   previewEvent.value = null
   previewTask.value = null
   parsedDetails.value = null
+  previewTaskSlot.value = null
 })
 
 async function handlePlan() {
@@ -58,18 +61,25 @@ async function handlePlan() {
     parsedDetails.value = parsed
 
     if (parsed.intent === 'task') {
+      const slot = findBestSlot(parsed)
+      previewTaskSlot.value = slot
       previewTask.value = {
         title: parsed.title,
         description: `Erstellt aus Chat-Eingabe: "${prompt.value.trim()}"`,
         estimatedMinutes: parsed.durationMinutes,
         deadline: buildTaskDeadline(parsed),
         priority: inferTaskPriority(prompt.value.trim()),
-        status: 'todo',
+        aiSuggestedPriority: undefined,
+        priorityReason: slot
+          ? 'Erstellt aus Planungs-Chat und direkt terminiert'
+          : 'Erstellt aus Planungs-Chat',
+        prioritySource: 'manual',
+        status: slot ? 'scheduled' : 'todo',
         projectId: undefined,
         dependencies: [],
-        scheduleBlocks: undefined,
-        scheduledStart: undefined,
-        scheduledEnd: undefined,
+        scheduleBlocks: slot ? [{ start: slot.start.toISOString(), end: slot.end.toISOString() }] : undefined,
+        scheduledStart: slot?.start.toISOString(),
+        scheduledEnd: slot?.end.toISOString(),
         calendarEventId: undefined,
         isDeepWork: parsed.durationMinutes >= preferences.value.minDeepWorkBlockMinutes,
       }
@@ -77,6 +87,7 @@ async function handlePlan() {
       return
     }
 
+    previewTaskSlot.value = null
     const slot = findBestSlot(parsed)
 
     if (!slot) {
@@ -137,7 +148,41 @@ async function handleCreateTask() {
   error.value = null
 
   try {
-    await createTask(previewTask.value)
+    const task = await createTask(previewTask.value)
+
+    if (previewTaskSlot.value) {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const createdEvent = await createEvent({
+        summary: task.title,
+        description: `[KALENDER-AI-TASK:${task.id}]\n${task.description || ''}`,
+        start: {
+          dateTime: previewTaskSlot.value.start.toISOString(),
+          timeZone: tz,
+        },
+        end: {
+          dateTime: previewTaskSlot.value.end.toISOString(),
+          timeZone: tz,
+        },
+        colorId: task.isDeepWork ? '3' : '9',
+      })
+
+      if (!createdEvent?.id) {
+        throw new Error('Aufgabe wurde erstellt, aber der Kalendereintrag konnte nicht angelegt werden.')
+      }
+
+      await updateTask(task.id, {
+        status: 'scheduled',
+        scheduleBlocks: [{
+          start: previewTaskSlot.value.start.toISOString(),
+          end: previewTaskSlot.value.end.toISOString(),
+          calendarEventId: createdEvent.id,
+        }],
+        scheduledStart: previewTaskSlot.value.start.toISOString(),
+        scheduledEnd: previewTaskSlot.value.end.toISOString(),
+        calendarEventId: createdEvent.id,
+      })
+    }
+
     emit('created')
     emit('close')
   } catch (err: any) {
@@ -153,40 +198,58 @@ function parsePlanningPrompt(text: string, fallbackDuration: number): ParsedPlan
   const dateFrom = new Date(now)
   const dateTo = new Date(now)
   dateTo.setDate(dateTo.getDate() + 7)
+  let hasExplicitDate = false
 
   let preferredPeriod: ParsedPlanningRequest['preferredPeriod'] = 'any'
-  if (normalized.includes('morgens') || normalized.includes('vormittag')) preferredPeriod = 'morning'
-  if (normalized.includes('nachmittag')) preferredPeriod = 'afternoon'
+  if (normalized.includes('morgens') || normalized.includes('vormittag') || normalized.includes('vormittags')) preferredPeriod = 'morning'
+  if (normalized.includes('nachmittag') || normalized.includes('nachmittags')) preferredPeriod = 'afternoon'
   if (normalized.includes('abend') || normalized.includes('abends')) preferredPeriod = 'evening'
 
-  if (normalized.includes('heute')) {
-    dateTo.setDate(dateFrom.getDate())
-  } else if (normalized.includes('morgen')) {
-    dateFrom.setDate(dateFrom.getDate() + 1)
-    dateTo.setTime(dateFrom.getTime())
-  } else if (normalized.includes('uebermorgen') || normalized.includes('übermorgen')) {
+  if (normalized.includes('uebermorgen')) {
+    hasExplicitDate = true
     dateFrom.setDate(dateFrom.getDate() + 2)
     dateTo.setTime(dateFrom.getTime())
-  } else if (normalized.includes('naechste woche') || normalized.includes('nächste woche')) {
+  } else if (normalized.includes('heute')) {
+    hasExplicitDate = true
+    dateTo.setDate(dateFrom.getDate())
+  } else if (normalized.includes('morgen')) {
+    hasExplicitDate = true
+    dateFrom.setDate(dateFrom.getDate() + 1)
+    dateTo.setTime(dateFrom.getTime())
+  } else if (normalized.includes('naechste woche')) {
+    hasExplicitDate = true
     const day = dateFrom.getDay()
     const daysUntilNextMonday = day === 0 ? 1 : 8 - day
     dateFrom.setDate(dateFrom.getDate() + daysUntilNextMonday)
     dateTo.setTime(dateFrom.getTime())
     dateTo.setDate(dateTo.getDate() + 6)
   } else if (normalized.includes('diese woche')) {
+    hasExplicitDate = true
     dateTo.setDate(dateFrom.getDate() + (7 - (dateFrom.getDay() || 7)))
   } else if (normalized.includes('wochenende')) {
+    hasExplicitDate = true
     const day = dateFrom.getDay()
     const daysUntilSaturday = day <= 6 ? 6 - day : 6
     dateFrom.setDate(dateFrom.getDate() + daysUntilSaturday)
     dateTo.setTime(dateFrom.getTime())
     dateTo.setDate(dateTo.getDate() + 1)
+  } else {
+    const weekday = extractWeekday(normalized)
+    if (weekday !== null) {
+      hasExplicitDate = true
+      const day = dateFrom.getDay()
+      let daysUntilTarget = weekday - day
+      if (daysUntilTarget < 0) daysUntilTarget += 7
+      if (daysUntilTarget === 0) daysUntilTarget = 7
+      dateFrom.setDate(dateFrom.getDate() + daysUntilTarget)
+      dateTo.setTime(dateFrom.getTime())
+    }
   }
 
   const explicitDuration = extractDuration(text)
   const title = text
-    .replace(/\b(heute|morgen|uebermorgen|übermorgen|naechste woche|nächste woche|diese woche|wochenende)\b/gi, '')
-    .replace(/\b(morgens|vormittag|nachmittag|abend|abends)\b/gi, '')
+    .replace(/\b(heute|uebermorgen|morgen|naechste woche|diese woche|wochenende|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/gi, '')
+    .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|abend|abends)\b/gi, '')
     .replace(/\b\d+\s*(min|minute|minuten|h|std|stunden)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -196,6 +259,7 @@ function parsePlanningPrompt(text: string, fallbackDuration: number): ParsedPlan
     durationMinutes: explicitDuration ?? fallbackDuration,
     dateFrom,
     dateTo,
+    hasExplicitDate,
     preferredPeriod,
     intent: detectIntent(text),
   }
@@ -206,13 +270,16 @@ function detectIntent(text: string): 'event' | 'task' {
   if (intentMode.value === 'task') return 'task'
 
   const normalized = text.toLowerCase()
-  const taskHints = ['lernen', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'planen', 'review', 'recherche']
-  const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'date', 'party']
+  const taskHints = ['lernen', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'planen', 'review', 'recherche', 'arbeiten']
+  const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'date', 'party', 'mit ']
 
   const taskMatches = taskHints.filter(hint => normalized.includes(hint)).length
   const eventMatches = eventHints.filter(hint => normalized.includes(hint)).length
 
-  if (taskMatches === 0 && eventMatches === 0) return 'event'
+  if (taskMatches === 0 && eventMatches === 0) {
+    const explicitDuration = extractDuration(text)
+    return explicitDuration && explicitDuration >= 90 ? 'task' : 'event'
+  }
   if (taskMatches > eventMatches) return 'task'
   return 'event'
 }
@@ -224,6 +291,7 @@ function inferTaskPriority(text: string): Task['priority'] {
 }
 
 function buildTaskDeadline(parsed: ParsedPlanningRequest) {
+  if (!parsed.hasExplicitDate) return undefined
   const deadline = new Date(parsed.dateTo)
   deadline.setHours(23, 59, 59, 999)
   return deadline.toISOString()
@@ -238,6 +306,26 @@ function extractDuration(text: string): number | null {
   const minuteMatch = text.match(/(\d+)\s*(min|minute|minuten)/i)
   if (minuteMatch) {
     return Number(minuteMatch[1])
+  }
+
+  return null
+}
+
+function extractWeekday(text: string): number | null {
+  const weekdayMap: Record<string, number> = {
+    sonntag: 0,
+    montag: 1,
+    dienstag: 2,
+    mittwoch: 3,
+    donnerstag: 4,
+    freitag: 5,
+    samstag: 6,
+  }
+
+  for (const [name, day] of Object.entries(weekdayMap)) {
+    if (text.includes(name)) {
+      return day
+    }
   }
 
   return null
@@ -299,7 +387,7 @@ function formatPreview(date: string | undefined) {
             <div>
               <h2 class="text-xl font-semibold text-gray-900">Planungs-Chat</h2>
               <p class="mt-1 text-sm text-gray-500">
-                Schreib einfach, was du unterbringen willst. Ich suche dir den naechsten passenden freien Slot.
+                Schreib einfach, was du unterbringen willst. Ich suche dir den naechsten passenden freien Slot oder plane die Aufgabe direkt ein.
               </p>
             </div>
             <button
@@ -419,6 +507,14 @@ function formatPreview(date: string | undefined) {
                       {{ previewTask.estimatedMinutes }} Minuten, Prioritaet {{ previewTask.priority }}
                     </p>
                     <p class="mt-2 text-sm text-primary-700">
+                      <template v-if="previewTaskSlot">
+                        Geplant fuer {{ formatPreview(previewTask.scheduledStart) }}
+                      </template>
+                      <template v-else>
+                        Noch kein freier Slot gefunden, Aufgabe wird nur angelegt.
+                      </template>
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">
                       Deadline: {{ previewTask.deadline ? new Date(previewTask.deadline).toLocaleDateString('de-DE') : 'keine' }}
                     </p>
                   </div>
