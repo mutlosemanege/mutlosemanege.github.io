@@ -285,7 +285,9 @@ export function useScheduler() {
     ]
 
     for (const slotFilter of passes) {
-      for (const slot of [...workingSlots]) {
+      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, earliestStart)
+
+      for (const slot of orderedSlots) {
         if (remainingMs <= 0) break
         if (!slotFilter(slot)) continue
 
@@ -308,6 +310,41 @@ export function useScheduler() {
       remainingSlots: workingSlots,
       scheduledMs: durationMs - remainingMs,
     }
+  }
+
+  function orderSlotsForTask(
+    slots: TimeSlot[],
+    durationMs: number,
+    earliestStart: Date,
+  ): TimeSlot[] {
+    const oneHourMs = 60 * 60 * 1000
+    const isShortTask = durationMs <= oneHourMs
+    const isLargeTask = durationMs >= 2 * oneHourMs
+
+    return [...slots].sort((a, b) => {
+      const aEffectiveStart = Math.max(a.start.getTime(), earliestStart.getTime())
+      const bEffectiveStart = Math.max(b.start.getTime(), earliestStart.getTime())
+      const aAvailable = a.end.getTime() - aEffectiveStart
+      const bAvailable = b.end.getTime() - bEffectiveStart
+
+      const aFits = aAvailable >= durationMs
+      const bFits = bAvailable >= durationMs
+      if (aFits !== bFits) return aFits ? -1 : 1
+
+      if (isShortTask) {
+        if (aFits && bFits && aAvailable !== bAvailable) {
+          return aAvailable - bAvailable
+        }
+      }
+
+      if (isLargeTask) {
+        if (aAvailable !== bAvailable) {
+          return bAvailable - aAvailable
+        }
+      }
+
+      return aEffectiveStart - bEffectiveStart
+    })
   }
 
   /**
