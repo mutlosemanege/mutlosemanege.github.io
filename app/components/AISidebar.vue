@@ -19,6 +19,8 @@ const { createEvent, fetchEvents, deleteEvent } = useCalendar()
 const { preferences } = usePreferences()
 
 const showProjectGenerator = ref(false)
+const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
+const collapsedGroups = ref<string[]>([])
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -40,6 +42,12 @@ const priorityColors: Record<string, string> = {
 }
 
 const priorityOptions: Task['priority'][] = ['critical', 'high', 'medium', 'low']
+const filterOptions = [
+  { value: 'all' as const, label: 'Alle' },
+  { value: 'open' as const, label: 'Offen' },
+  { value: 'scheduled' as const, label: 'Geplant' },
+  { value: 'done' as const, label: 'Erledigt' },
+]
 
 // KI-Priorisierung
 async function handlePrioritize() {
@@ -137,11 +145,42 @@ const tasksByProject = computed(() => {
   return groups
 })
 
+const filteredTaskGroups = computed(() => {
+  return tasksByProject.value
+    .map(group => ({
+      ...group,
+      tasks: group.tasks.filter(matchesActiveFilter),
+    }))
+    .filter(group => group.tasks.length > 0)
+})
+
 function taskStatusLabel(task: Task) {
   if (task.status === 'done') return 'Erledigt'
   if (task.status === 'scheduled') return 'Eingeplant'
   if (task.status === 'missed') return 'Neu planen'
   return 'Offen'
+}
+
+function matchesActiveFilter(task: Task) {
+  if (activeFilter.value === 'all') return true
+  if (activeFilter.value === 'open') {
+    return task.status === 'todo' || task.status === 'missed' || task.status === 'in_progress'
+  }
+  if (activeFilter.value === 'scheduled') return task.status === 'scheduled'
+  return task.status === 'done'
+}
+
+function toggleGroup(groupId: string) {
+  if (collapsedGroups.value.includes(groupId)) {
+    collapsedGroups.value = collapsedGroups.value.filter(id => id !== groupId)
+    return
+  }
+
+  collapsedGroups.value = [...collapsedGroups.value, groupId]
+}
+
+function isGroupCollapsed(groupId: string) {
+  return collapsedGroups.value.includes(groupId)
 }
 </script>
 
@@ -209,6 +248,19 @@ function taskStatusLabel(task: Task) {
         >
           KI-Projekt generieren
         </button>
+        <div class="flex flex-wrap gap-1 pt-1">
+          <button
+            v-for="filter in filterOptions"
+            :key="filter.value"
+            class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="activeFilter === filter.value
+              ? 'bg-gray-900 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+            @click="activeFilter = filter.value"
+          >
+            {{ filter.label }}
+          </button>
+        </div>
       </div>
 
       <!-- AI Error -->
@@ -225,86 +277,105 @@ function taskStatusLabel(task: Task) {
           <p class="text-xs text-gray-400 mt-1">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p>
         </div>
 
-        <div v-else class="space-y-4">
-          <section v-for="group in tasksByProject" :key="group.id" class="space-y-2">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
-              <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
-            </div>
-
-            <div
-              v-for="task in group.tasks"
-              :key="task.id"
-              class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
-              :class="{ 'opacity-50': task.status === 'done' }"
-              @click="emit('edit-task', task)"
+        <div v-else-if="filteredTaskGroups.length > 0" class="space-y-4">
+          <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
+            <button
+              class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-gray-50"
+              @click="toggleGroup(group.id)"
             >
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
-                    <span
-                      class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-                      :class="priorityColors[task.priority]"
-                    >
-                      {{ task.priority }}
-                    </span>
-                    <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                      {{ taskStatusLabel(task) }}
-                    </span>
+              <div class="flex items-center gap-2">
+                <svg
+                  class="h-4 w-4 text-gray-400 transition-transform"
+                  :class="{ 'rotate-90': !isGroupCollapsed(group.id) }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
+              </div>
+              <span class="text-xs text-gray-400">{{ group.tasks.length }}</span>
+            </button>
+
+            <div v-if="!isGroupCollapsed(group.id)" class="space-y-2">
+              <div
+                v-for="task in group.tasks"
+                :key="task.id"
+                class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors cursor-pointer"
+                :class="{ 'opacity-50': task.status === 'done' }"
+                @click="emit('edit-task', task)"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
+                      <span
+                        class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        :class="priorityColors[task.priority]"
+                      >
+                        {{ task.priority }}
+                      </span>
+                      <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {{ taskStatusLabel(task) }}
+                      </span>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
+                      <span>{{ task.estimatedMinutes }} Min.</span>
+                      <span v-if="task.deadline">
+                        Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
+                      </span>
+                      <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
+                    </div>
+
+                    <div v-if="task.scheduledStart" class="mt-1 text-xs text-blue-500">
+                      Geplant: {{ new Date(task.scheduledStart).toLocaleDateString('de-DE') }}
+                      {{ new Date(task.scheduledStart).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                    </div>
+
+                    <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
+                      <button
+                        v-for="priorityOption in priorityOptions"
+                        :key="priorityOption"
+                        class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
+                        :class="task.priority === priorityOption
+                          ? 'border-primary-300 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                        @click="changePriority(task, priorityOption)"
+                      >
+                        {{ priorityOption }}
+                      </button>
+                    </div>
                   </div>
 
-                  <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
-                    <span>{{ task.estimatedMinutes }} Min.</span>
-                    <span v-if="task.deadline">
-                      Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
-                    </span>
-                    <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
-                  </div>
-
-                  <div v-if="task.scheduledStart" class="mt-1 text-xs text-blue-500">
-                    Geplant: {{ new Date(task.scheduledStart).toLocaleDateString('de-DE') }}
-                    {{ new Date(task.scheduledStart).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
-                  </div>
-
-                  <div class="mt-2 flex flex-wrap gap-1.5" @click.stop>
+                  <div class="flex items-center gap-1" @click.stop>
                     <button
-                      v-for="priorityOption in priorityOptions"
-                      :key="priorityOption"
-                      class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
-                      :class="task.priority === priorityOption
-                        ? 'border-primary-300 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
-                      @click="changePriority(task, priorityOption)"
+                      v-if="task.status === 'scheduled'"
+                      class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                      title="Nicht geschafft, neu einplanen"
+                      @click="markMissed(task)"
                     >
-                      {{ priorityOption }}
+                      Nicht geschafft
+                    </button>
+                    <button
+                      v-if="task.status !== 'done'"
+                      class="p-1 text-gray-400 hover:text-green-600 rounded"
+                      title="Als erledigt markieren"
+                      @click="markDone(task)"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
                     </button>
                   </div>
-                </div>
-
-                <div class="flex items-center gap-1" @click.stop>
-                  <button
-                    v-if="task.status === 'scheduled'"
-                    class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
-                    title="Nicht geschafft, neu einplanen"
-                    @click="markMissed(task)"
-                  >
-                    Nicht geschafft
-                  </button>
-                  <button
-                    v-if="task.status !== 'done'"
-                    class="p-1 text-gray-400 hover:text-green-600 rounded"
-                    title="Als erledigt markieren"
-                    @click="markDone(task)"
-                  >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             </div>
           </section>
+        </div>
+        <div v-else class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
+          <p class="text-sm text-gray-500">Keine Aufgaben fuer den aktuellen Filter gefunden.</p>
         </div>
       </div>
     </div>
