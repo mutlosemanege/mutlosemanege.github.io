@@ -5,7 +5,8 @@
       "Bash(npm install:*)",
       "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
       "Bash(npx nuxi:*)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(grep -L \"⬆ \\\\[\\\\[\" *.md)"
     ]
   }
 }
