@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
-const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
+const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus } = useCalendar()
 const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } = usePreferences()
 
 const showProjectGenerator = ref(false)
@@ -1557,6 +1557,19 @@ async function restoreArchivedProject(groupId: string) {
       <div v-if="planningFeedback" class="px-4 py-2">
         <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
           {{ planningFeedback }}
+        </div>
+      </div>
+
+      <div v-if="calendarSyncStatus" class="px-4 py-2">
+        <div
+          class="rounded-lg border px-3 py-2 text-xs"
+          :class="calendarSyncStatus.state === 'error'
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : calendarSyncStatus.state === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border-slate-200 bg-slate-50 text-slate-700'"
+        >
+          Kalenderstatus: {{ calendarSyncStatus.message }}
         </div>
       </div>
 

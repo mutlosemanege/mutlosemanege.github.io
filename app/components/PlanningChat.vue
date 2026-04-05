@@ -59,7 +59,7 @@ const emit = defineEmits<{
 
 const { preferences, updatePreferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
-const { createEvent, error: calendarError } = useCalendar()
+const { createEvent, error: calendarError, syncStatus, findPotentialDuplicates } = useCalendar()
 const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
@@ -76,6 +76,57 @@ const previewReason = ref<string | null>(null)
 const previewUncertainty = ref<string | null>(null)
 const previewAlternatives = ref<Array<{ label: string; reason: string }>>([])
 const previewAvailabilityLabel = ref<string | null>(null)
+
+const previewDuplicateWarnings = computed(() => {
+  if (previewEvent.value?.start.dateTime && previewEvent.value?.end.dateTime) {
+    return findPotentialDuplicates({
+      summary: previewEvent.value.summary,
+      start: new Date(previewEvent.value.start.dateTime),
+      end: new Date(previewEvent.value.end.dateTime),
+    }, props.events)
+  }
+
+  if (previewTask.value && previewTaskSlot.value) {
+    return findPotentialDuplicates({
+      summary: previewTask.value.title,
+      start: previewTaskSlot.value.start,
+      end: previewTaskSlot.value.end,
+    }, props.events)
+  }
+
+  return []
+})
+
+const routineDuplicateWarnings = computed(() => {
+  if (!previewRoutine.value) return []
+
+  const warnings: Array<{ label: string; reason: string }> = []
+  for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+    const baseDate = nextDateForWeekday(previewRoutine.value.template.day, weekOffset, new Date())
+    const start = new Date(baseDate)
+    start.setHours(previewRoutine.value.template.startHour, 0, 0, 0)
+    const end = new Date(baseDate)
+    end.setHours(previewRoutine.value.template.endHour, 0, 0, 0)
+    if (previewRoutine.value.template.endHour <= previewRoutine.value.template.startHour) {
+      end.setDate(end.getDate() + 1)
+    }
+
+    const duplicates = findPotentialDuplicates({
+      summary: previewRoutine.value.template.title,
+      start,
+      end,
+    }, props.events)
+
+    if (duplicates.length > 0) {
+      warnings.push({
+        label: formatPreview(start.toISOString()),
+        reason: duplicates[0].reason,
+      })
+    }
+  }
+
+  return warnings.slice(0, 3)
+})
 
 watch(() => props.show, (show) => {
   if (!show) return
@@ -186,6 +237,10 @@ async function handleCreate() {
   error.value = null
 
   try {
+    if (previewDuplicateWarnings.value.some(entry => entry.kind === 'exact-match')) {
+      throw new Error('Ein sehr ähnlicher Termin ist bereits im Kalender vorhanden.')
+    }
+
     const created = await createEvent(previewEvent.value)
     if (!created?.id) {
       throw new Error(calendarError.value || 'Termin konnte nicht erstellt werden.')
@@ -207,6 +262,10 @@ async function handleCreateTask() {
   error.value = null
 
   try {
+    if (previewTaskSlot.value && previewDuplicateWarnings.value.some(entry => entry.kind === 'exact-match')) {
+      throw new Error('Ein sehr ähnlicher Kalendereintrag für diese Aufgabe ist bereits vorhanden.')
+    }
+
     const task = await createTask(previewTask.value)
 
     if (previewTaskSlot.value) {
@@ -855,6 +914,10 @@ function hasMatchingExistingEvent(
   end: Date,
   transientEvents: Array<{ summary: string; start: Date; end: Date }> = [],
 ) {
+  const persistentDuplicate = findPotentialDuplicates({ summary, start, end }, props.events)
+    .some(entry => entry.kind === 'exact-match')
+  if (persistentDuplicate) return true
+
   return [...props.events, ...transientEvents.map(event => ({
     summary: event.summary,
     start: { dateTime: event.start.toISOString() },
@@ -1140,6 +1203,23 @@ function intentLabel(intent: PlanningIntent) {
                     </p>
                   </div>
 
+                  <div
+                    v-if="previewDuplicateWarnings.length > 0"
+                    class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+                  >
+                    <div class="text-xs font-semibold uppercase tracking-wide text-amber-800">Mögliche Duplikate</div>
+                    <div class="mt-2 space-y-2">
+                      <div
+                        v-for="duplicate in previewDuplicateWarnings.slice(0, 2)"
+                        :key="`${duplicate.event.id || duplicate.event.summary}-${duplicate.reason}`"
+                        class="rounded-lg bg-white px-3 py-2"
+                      >
+                        <div class="text-xs font-medium text-gray-900">{{ duplicate.event.summary || 'Ähnlicher Termin' }}</div>
+                        <div class="mt-1 text-[11px] text-amber-800">{{ duplicate.reason }}</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
@@ -1168,6 +1248,23 @@ function intentLabel(intent: PlanningIntent) {
                     </p>
                   </div>
 
+                  <div
+                    v-if="previewDuplicateWarnings.length > 0"
+                    class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+                  >
+                    <div class="text-xs font-semibold uppercase tracking-wide text-amber-800">Mögliche Duplikate</div>
+                    <div class="mt-2 space-y-2">
+                      <div
+                        v-for="duplicate in previewDuplicateWarnings.slice(0, 2)"
+                        :key="`${duplicate.event.id || duplicate.event.summary}-${duplicate.reason}`"
+                        class="rounded-lg bg-white px-3 py-2"
+                      >
+                        <div class="text-xs font-medium text-gray-900">{{ duplicate.event.summary || 'Ähnlicher Termin' }}</div>
+                        <div class="mt-1 text-[11px] text-amber-800">{{ duplicate.reason }}</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
@@ -1193,6 +1290,23 @@ function intentLabel(intent: PlanningIntent) {
                     </p>
                   </div>
 
+                  <div
+                    v-if="routineDuplicateWarnings.length > 0"
+                    class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+                  >
+                    <div class="text-xs font-semibold uppercase tracking-wide text-amber-800">Bereits ähnliche Routinen im Kalender</div>
+                    <div class="mt-2 space-y-2">
+                      <div
+                        v-for="duplicate in routineDuplicateWarnings"
+                        :key="duplicate.label"
+                        class="rounded-lg bg-white px-3 py-2"
+                      >
+                        <div class="text-xs font-medium text-gray-900">{{ duplicate.label }}</div>
+                        <div class="mt-1 text-[11px] text-amber-800">{{ duplicate.reason }}</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
@@ -1209,6 +1323,18 @@ function intentLabel(intent: PlanningIntent) {
 
               <div v-if="error" class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {{ error }}
+              </div>
+
+              <div
+                v-else-if="syncStatus"
+                class="rounded-2xl border px-4 py-3 text-sm"
+                :class="syncStatus.state === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : syncStatus.state === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-700'"
+              >
+                {{ syncStatus.message }}
               </div>
             </div>
           </div>

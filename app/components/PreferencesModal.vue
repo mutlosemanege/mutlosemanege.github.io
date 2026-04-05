@@ -33,7 +33,7 @@ const {
   updatePreferences,
   resetPreferences,
 } = usePreferences()
-const { createEvent, fetchEvents } = useCalendar()
+const { createEvent, fetchEvents, syncStatus, findPotentialDuplicates } = useCalendar()
 
 const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
@@ -510,28 +510,8 @@ async function createBlockedEvent(summary: string, start: Date, end: Date, descr
 }
 
 function hasMatchingExistingEvent(summary: string, start: Date, end: Date) {
-  return (props.events || []).some(event => {
-    if (!event.start.dateTime || !event.end.dateTime) return false
-
-    const normalizedSummary = event.summary?.trim().toLowerCase() || ''
-    const normalizedRoutineTitle = summary.trim().toLowerCase()
-    const titlesMatch = normalizedSummary === normalizedRoutineTitle ||
-      normalizedSummary.includes(normalizedRoutineTitle) ||
-      normalizedRoutineTitle.includes(normalizedSummary)
-    if (!titlesMatch) return false
-
-    const eventStart = new Date(event.start.dateTime)
-    const eventEnd = new Date(event.end.dateTime)
-
-    const sameDay = eventStart.getFullYear() === start.getFullYear() &&
-      eventStart.getMonth() === start.getMonth() &&
-      eventStart.getDate() === start.getDate()
-
-    const startDiff = Math.abs(eventStart.getTime() - start.getTime())
-    const endDiff = Math.abs(eventEnd.getTime() - end.getTime())
-
-    return sameDay && startDiff <= 15 * 60 * 1000 && endDiff <= 15 * 60 * 1000
-  })
+  return findPotentialDuplicates({ summary, start, end }, props.events || [])
+    .some(entry => entry.kind === 'exact-match')
 }
 
 function hasMatchingRoutineTemplate(entry: ImportReviewEntry) {
@@ -669,6 +649,18 @@ function handleReset() {
           </p>
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
             Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender eintraegst.
+          </div>
+
+          <div
+            v-if="syncStatus"
+            class="rounded-xl border px-4 py-3 text-xs"
+            :class="syncStatus.state === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : syncStatus.state === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-slate-50 text-slate-700'"
+          >
+            Kalenderstatus: {{ syncStatus.message }}
           </div>
 
           <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">

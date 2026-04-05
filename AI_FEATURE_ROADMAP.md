@@ -118,8 +118,8 @@ Rahmen:
 ### 15. Vertrauen, Verlauf und Nachvollziehbarkeit
 - [x] Eine kleine Historie fuer `was wurde automatisch geplant, verschoben, priorisiert`
 - [x] Undo fuer sensible Aktionen wie Neuplanung oder Projektloeschung
-- [ ] Staerkere Dublettenpruefung ueber Chat, Routinen, Import und Kalender hinweg
-- [ ] Klarere technische Fehlermeldungen und Sync-Status fuer Kalenderaktionen
+- [x] Staerkere Dublettenpruefung ueber Chat, Routinen, Import und Kalender hinweg
+- [x] Klarere technische Fehlermeldungen und Sync-Status fuer Kalenderaktionen
 
 ### 16. Sprachqualitaet und UI-Konsistenz
 - [ ] Sichtbare UI systematisch auf echte Umlaute und sauberes Deutsch umstellen

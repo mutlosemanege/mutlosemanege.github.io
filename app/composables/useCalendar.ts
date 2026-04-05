@@ -15,9 +15,23 @@ export interface CalendarEvent {
   colorId?: string
 }
 
+export interface CalendarDuplicateCandidate {
+  event: CalendarEvent
+  kind: 'exact-match' | 'overlap'
+  reason: string
+}
+
+export interface CalendarSyncStatus {
+  state: 'idle' | 'syncing' | 'success' | 'error'
+  action: 'fetch' | 'create' | 'update' | 'delete'
+  message: string
+  at: string
+}
+
 const events = ref<CalendarEvent[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
+const syncStatus = ref<CalendarSyncStatus | null>(null)
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3'
 
@@ -54,9 +68,85 @@ export function useCalendar() {
     return res.json()
   }
 
+  function setSyncStatus(
+    state: CalendarSyncStatus['state'],
+    action: CalendarSyncStatus['action'],
+    message: string,
+  ) {
+    syncStatus.value = {
+      state,
+      action,
+      message,
+      at: new Date().toISOString(),
+    }
+  }
+
+  function getEventStart(event: CalendarEvent): Date | null {
+    if (event.start.dateTime) return new Date(event.start.dateTime)
+    if (event.start.date) return new Date(event.start.date)
+    return null
+  }
+
+  function getEventEnd(event: CalendarEvent): Date | null {
+    if (event.end.dateTime) return new Date(event.end.dateTime)
+    if (event.end.date) return new Date(event.end.date)
+    return null
+  }
+
+  function normalizeSummary(value: string | undefined) {
+    return (value || '')
+      .trim()
+      .toLowerCase()
+  }
+
+  function findPotentialDuplicates(
+    input: { summary: string; start: Date; end: Date },
+    pool: readonly CalendarEvent[] = events.value,
+  ): CalendarDuplicateCandidate[] {
+    const normalizedSummary = normalizeSummary(input.summary)
+    const inputStart = input.start.getTime()
+    const inputEnd = input.end.getTime()
+
+    return pool.flatMap((event) => {
+      const eventStart = getEventStart(event)
+      const eventEnd = getEventEnd(event)
+      if (!eventStart || !eventEnd) return []
+
+      const eventSummary = normalizeSummary(event.summary)
+      const titlesMatch = eventSummary === normalizedSummary ||
+        eventSummary.includes(normalizedSummary) ||
+        normalizedSummary.includes(eventSummary)
+
+      if (!titlesMatch) return []
+
+      const startDiff = Math.abs(eventStart.getTime() - inputStart)
+      const endDiff = Math.abs(eventEnd.getTime() - inputEnd)
+      const overlaps = eventStart < input.end && eventEnd > input.start
+
+      if (startDiff <= 15 * 60 * 1000 && endDiff <= 15 * 60 * 1000) {
+        return [{
+          event,
+          kind: 'exact-match' as const,
+          reason: 'Fast gleicher Titel und nahezu gleiche Uhrzeit sind bereits im Kalender vorhanden.',
+        }]
+      }
+
+      if (overlaps) {
+        return [{
+          event,
+          kind: 'overlap' as const,
+          reason: 'Aehnlicher Kalendereintrag mit ueberschneidender Zeit gefunden.',
+        }]
+      }
+
+      return []
+    })
+  }
+
   async function fetchEvents(timeMin: string, timeMax: string) {
     isLoading.value = true
     error.value = null
+    setSyncStatus('syncing', 'fetch', 'Kalender wird synchronisiert...')
     try {
       const params = new URLSearchParams({
         timeMin,
@@ -69,9 +159,11 @@ export function useCalendar() {
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events?${params}`
       )
       events.value = data.items || []
+      setSyncStatus('success', 'fetch', `${events.value.length} Kalendereintraege synchronisiert.`)
     } catch (e: any) {
       error.value = e.message
       events.value = []
+      setSyncStatus('error', 'fetch', e.message || 'Kalender konnte nicht synchronisiert werden.')
     } finally {
       isLoading.value = false
     }
@@ -80,6 +172,7 @@ export function useCalendar() {
   async function createEvent(event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent | null> {
     isLoading.value = true
     error.value = null
+    setSyncStatus('syncing', 'create', 'Kalendereintrag wird erstellt...')
     try {
       const result = await apiRequest(
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events`,
@@ -88,9 +181,11 @@ export function useCalendar() {
           body: JSON.stringify(event)
         }
       )
+      setSyncStatus('success', 'create', 'Kalendereintrag wurde erfolgreich erstellt.')
       return result
     } catch (e: any) {
       error.value = e.message
+      setSyncStatus('error', 'create', e.message || 'Kalendereintrag konnte nicht erstellt werden.')
       return null
     } finally {
       isLoading.value = false
@@ -100,6 +195,7 @@ export function useCalendar() {
   async function updateEvent(eventId: string, event: Partial<CalendarEvent>): Promise<CalendarEvent | null> {
     isLoading.value = true
     error.value = null
+    setSyncStatus('syncing', 'update', 'Kalendereintrag wird aktualisiert...')
     try {
       const result = await apiRequest(
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events/${encodeURIComponent(eventId)}`,
@@ -108,9 +204,11 @@ export function useCalendar() {
           body: JSON.stringify(event)
         }
       )
+      setSyncStatus('success', 'update', 'Kalendereintrag wurde aktualisiert.')
       return result
     } catch (e: any) {
       error.value = e.message
+      setSyncStatus('error', 'update', e.message || 'Kalendereintrag konnte nicht aktualisiert werden.')
       return null
     } finally {
       isLoading.value = false
@@ -120,14 +218,17 @@ export function useCalendar() {
   async function deleteEvent(eventId: string): Promise<boolean> {
     isLoading.value = true
     error.value = null
+    setSyncStatus('syncing', 'delete', 'Kalendereintrag wird entfernt...')
     try {
       await apiRequest(
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events/${encodeURIComponent(eventId)}`,
         { method: 'DELETE' }
       )
+      setSyncStatus('success', 'delete', 'Kalendereintrag wurde entfernt.')
       return true
     } catch (e: any) {
       error.value = e.message
+      setSyncStatus('error', 'delete', e.message || 'Kalendereintrag konnte nicht entfernt werden.')
       return false
     } finally {
       isLoading.value = false
@@ -138,6 +239,8 @@ export function useCalendar() {
     events: readonly(events),
     isLoading: readonly(isLoading),
     error: readonly(error),
+    syncStatus: readonly(syncStatus),
+    findPotentialDuplicates,
     fetchEvents,
     createEvent,
     updateEvent,

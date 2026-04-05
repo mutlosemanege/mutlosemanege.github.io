@@ -75,6 +75,27 @@ _INDEX  (dieser Hub)
 
 ---
 
+## Alle Dokumente
+
+> Vollständige Linkliste — erzeugt den Graph in Obsidian
+
+### Hub-Dokumente
+[[_INDEX]] · [[README]] · [[CLAUDE]]
+
+### Setup & Deployment
+[[Setup & Deployment]] · [[GOOGLE_SETUP]] · [[NETLIFY_SETUP]]
+
+### Architektur & Planung
+[[Architektur & Entwicklung]] · [[Planung & Design]] · [[AI_FEATURE_ROADMAP]] · [[REDESIGN-PROMPT]]
+
+### Skills
+[[skills/00 Skills Übersicht]] · [[skills/Greedy-Scheduler]] · [[skills/Multi-Block-Scheduling]] · [[skills/Rescheduling-Modi]] · [[skills/KI-Priorisierung]] · [[skills/Nuxt-Serverless-KI]] · [[skills/Planungs-Chat-NLP]] · [[skills/IndexedDB-Vue3]] · [[skills/Deadline-Watcher]] · [[skills/Google-OAuth2-Browser]] · [[skills/Glassmorphism-Redesign]] · [[skills/Tailwind-Design-System]]
+
+### Claude Commands & Archiv
+[[Claude Commands]] · [[Archiv]] · [[Prompt]]
+
+---
+
 ## Aktueller Status
 
 ### Zuletzt abgeschlossen
