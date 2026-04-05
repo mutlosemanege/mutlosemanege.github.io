@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode } from '~/types/task'
+import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle } from '~/types/task'
 
 const props = defineProps<{
   show: boolean
@@ -24,6 +24,7 @@ const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
 // Lokale Kopie fuer das Formular
 const form = reactive({
+  planningStyle: 'normal' as PlanningStyle,
   workStartHour: 9,
   workEndHour: 17,
   sleepStartHour: 23,
@@ -53,10 +54,32 @@ const routineDraft = reactive({
 const isApplyingRoutines = ref(false)
 const routineFeedback = ref<string | null>(null)
 const routineExceptionDrafts = ref<Record<string, string>>({})
+const planningStyleOptions: Array<{ value: PlanningStyle; label: string; description: string }> = [
+  { value: 'entspannt', label: 'Entspannt', description: 'Plant spaeter und mit mehr Luft.' },
+  { value: 'normal', label: 'Normal', description: 'Ausgewogener Standardstil.' },
+  { value: 'aggressiv', label: 'Aggressiv', description: 'Nimmt fruehe Slots schneller mit.' },
+  { value: 'deadline-first', label: 'Deadline-first', description: 'Zieht Aufgaben eher frueh vor.' },
+  { value: 'focus-first', label: 'Focus-first', description: 'Bevorzugt starke Fokuszeiten.' },
+]
+const behaviorSummary = computed(() => {
+  const signals = preferences.value.behaviorSignals
+  const topHours = Object.entries(signals.completedByHour)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour]) => `${hour}:00`)
+
+  return {
+    topHours,
+    completions: signals.completionCount,
+    missed: signals.missedCount,
+    rescheduled: signals.rescheduledCount,
+  }
+})
 
 watch(() => props.show, (val) => {
   if (!val) return
   const p = preferences.value
+  form.planningStyle = p.planningStyle
   form.workStartHour = p.workStartHour
   form.workEndHour = p.workEndHour
   form.sleepStartHour = p.sleepStartHour
@@ -377,6 +400,7 @@ function toDateKey(date: Date) {
 
 function handleSave() {
   updatePreferences({
+    planningStyle: form.planningStyle,
     workStartHour: form.workStartHour,
     workEndHour: form.workEndHour,
     sleepStartHour: form.sleepStartHour,
@@ -422,6 +446,70 @@ function handleReset() {
           </p>
           <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
             Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender eintraegst.
+          </div>
+
+          <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <h3 class="text-sm font-medium text-gray-700">Planungsstil</h3>
+            <p class="mt-1 text-xs text-gray-500">
+              Beeinflusst, welche freien Slots der Planer bevorzugt und wie stark er deine gelernten Tageszeiten nutzt.
+            </p>
+            <div class="mt-3 grid gap-2">
+              <label
+                v-for="option in planningStyleOptions"
+                :key="option.value"
+                class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors"
+                :class="form.planningStyle === option.value
+                  ? 'border-primary-300 bg-white'
+                  : 'border-gray-200 bg-white/80 hover:border-gray-300'"
+              >
+                <input
+                  v-model="form.planningStyle"
+                  type="radio"
+                  class="mt-1 border-gray-300 text-primary-600 focus:ring-primary-500"
+                  :value="option.value"
+                >
+                <div>
+                  <div class="text-sm font-medium text-gray-900">{{ option.label }}</div>
+                  <div class="mt-1 text-xs text-gray-500">{{ option.description }}</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <h3 class="text-sm font-medium text-emerald-800">Gelernt aus deinem Verhalten</h3>
+            <p class="mt-1 text-xs text-emerald-700">
+              Die App merkt sich lokal, wann Aufgaben eher geschafft oder verschoben werden, und nutzt das fuer bessere Slot-Vorschlaege.
+            </p>
+            <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+              <div class="rounded-lg bg-white px-3 py-2">
+                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.completions }}</div>
+                <div class="text-[11px] text-gray-500">Erledigt</div>
+              </div>
+              <div class="rounded-lg bg-white px-3 py-2">
+                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.missed }}</div>
+                <div class="text-[11px] text-gray-500">Nicht geschafft</div>
+              </div>
+              <div class="rounded-lg bg-white px-3 py-2">
+                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.rescheduled }}</div>
+                <div class="text-[11px] text-gray-500">Neu geplant</div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-medium text-emerald-800">Bevorzugte Zeiten</div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <span
+                  v-for="label in behaviorSummary.topHours"
+                  :key="label"
+                  class="rounded-full bg-white px-2 py-0.5 text-[11px] text-emerald-700"
+                >
+                  {{ label }}
+                </span>
+                <span v-if="behaviorSummary.topHours.length === 0" class="text-xs text-emerald-700">
+                  Noch nicht genug Daten gesammelt.
+                </span>
+              </div>
+            </div>
           </div>
 
           <!-- Arbeitszeiten -->

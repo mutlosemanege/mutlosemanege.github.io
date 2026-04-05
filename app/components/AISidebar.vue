@@ -17,7 +17,7 @@ const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, delet
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent } = useCalendar()
-const { preferences } = usePreferences()
+const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } = usePreferences()
 
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done'>('all')
@@ -211,6 +211,9 @@ async function handleAutoSchedule() {
 }
 
 async function markDone(task: Task) {
+  const completionReference = task.scheduleBlocks?.[0]?.start || task.scheduledStart
+  recordTaskCompletion(completionReference ? new Date(completionReference) : new Date(), task.isDeepWork)
+
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
   if (calendarIds.length > 0) {
     for (const calendarId of calendarIds) {
@@ -249,6 +252,7 @@ async function confirmReschedule() {
 
 async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   const previousStart = task.scheduledStart
+  recordTaskMiss(previousStart ? new Date(previousStart) : new Date())
   const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
 
   if (calendarIds.length > 0) {
@@ -436,6 +440,11 @@ function buildTaskPriorityInsight(task: Task, basePriority: TaskPriority, baseRe
   if (task.status === 'missed') {
     riskLabels.push('Schon verschoben')
     explanationParts.push('wurde bereits neu eingeplant')
+  }
+
+  const preferredHours = getPreferredHours(task.isDeepWork)
+  if (preferredHours.length > 0) {
+    riskLabels.push(`Lernt ${preferredHours.map(hour => `${String(hour).padStart(2, '0')}:00`).join(', ')}`)
   }
 
   const headline = explanationParts.length > 0

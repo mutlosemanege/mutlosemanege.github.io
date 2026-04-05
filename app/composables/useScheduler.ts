@@ -251,6 +251,7 @@ export function useScheduler() {
           task.isDeepWork,
           earliestStart,
           prefs.taskBufferMinutes,
+          prefs,
           options.preferredStartByTaskId?.[task.id] ? new Date(options.preferredStartByTaskId[task.id]!) : undefined,
           options.rescheduleModeByTaskId?.[task.id],
         )
@@ -271,6 +272,7 @@ export function useScheduler() {
     needsDeepWork: boolean,
     earliestStart: Date,
     bufferMinutes: number,
+    prefs: ReadonlyUserPreferences,
     preferredStart?: Date,
     rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): {
@@ -289,7 +291,15 @@ export function useScheduler() {
     ]
 
     for (const slotFilter of passes) {
-      const orderedSlots = orderSlotsForTask(workingSlots, durationMs, currentEarliest, preferredStart, rescheduleMode)
+      const orderedSlots = orderSlotsForTask(
+        workingSlots,
+        durationMs,
+        currentEarliest,
+        prefs,
+        needsDeepWork,
+        preferredStart,
+        rescheduleMode,
+      )
 
       for (const slot of orderedSlots) {
         if (remainingMs <= 0) break
@@ -321,6 +331,8 @@ export function useScheduler() {
     slots: TimeSlot[],
     durationMs: number,
     earliestStart: Date,
+    prefs: ReadonlyUserPreferences,
+    needsDeepWork: boolean,
     preferredStart?: Date,
     rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
   ): TimeSlot[] {
@@ -372,6 +384,18 @@ export function useScheduler() {
         if (aDistance !== bDistance) {
           return aDistance - bDistance
         }
+      }
+
+      const behaviorScoreDiff = getBehaviorSlotScore(new Date(bEffectiveStart), prefs, needsDeepWork) -
+        getBehaviorSlotScore(new Date(aEffectiveStart), prefs, needsDeepWork)
+      if (behaviorScoreDiff !== 0) {
+        return behaviorScoreDiff
+      }
+
+      const stylePenaltyDiff = getPlanningStylePenalty(new Date(aEffectiveStart), prefs) -
+        getPlanningStylePenalty(new Date(bEffectiveStart), prefs)
+      if (stylePenaltyDiff !== 0) {
+        return stylePenaltyDiff
       }
 
       return aEffectiveStart - bEffectiveStart
@@ -514,6 +538,46 @@ function isSameCalendarDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
+}
+
+function getBehaviorSlotScore(
+  start: Date,
+  prefs: ReadonlyUserPreferences,
+  needsDeepWork: boolean,
+) {
+  const hourKey = String(start.getHours()).padStart(2, '0')
+  const signals = prefs.behaviorSignals
+  const completed = needsDeepWork
+    ? signals.deepWorkCompletedByHour[hourKey] || 0
+    : signals.completedByHour[hourKey] || 0
+  const missed = signals.missedByHour[hourKey] || 0
+  const styleMultiplier = prefs.planningStyle === 'focus-first' && needsDeepWork ? 2 : 1
+  return (completed * styleMultiplier) - missed
+}
+
+function getPlanningStylePenalty(start: Date, prefs: ReadonlyUserPreferences) {
+  const hour = start.getHours() + (start.getMinutes() / 60)
+
+  if (prefs.planningStyle === 'aggressiv') {
+    return hour
+  }
+
+  if (prefs.planningStyle === 'deadline-first') {
+    return hour * 0.8
+  }
+
+  if (prefs.planningStyle === 'entspannt') {
+    if (hour < prefs.workStartHour + 1) return 10
+    if (hour >= 15) return -2
+    return 2
+  }
+
+  if (prefs.planningStyle === 'focus-first') {
+    if (hour >= 9 && hour <= 13) return -2
+    return 1
+  }
+
+  return 0
 }
 
 function createSyntheticEvent(summary: string, start: Date, end: Date): CalendarEvent {

@@ -28,6 +28,7 @@ export interface TaskScheduleBlock {
 
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done' | 'missed'
+export type PlanningStyle = 'entspannt' | 'normal' | 'aggressiv' | 'deadline-first' | 'focus-first'
 
 export interface Project {
   id: string
@@ -58,7 +59,18 @@ export interface RoutineTemplate {
   skipDates?: readonly string[]
 }
 
+export interface PlanningBehaviorSignals {
+  completedByHour: Record<string, number>
+  missedByHour: Record<string, number>
+  deepWorkCompletedByHour: Record<string, number>
+  completionCount: number
+  missedCount: number
+  rescheduledCount: number
+}
+
 export interface UserPreferences {
+  planningStyle: PlanningStyle
+  behaviorSignals: PlanningBehaviorSignals
   workStartHour: number
   workEndHour: number
   sleepStartHour: number
@@ -78,6 +90,15 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
+  planningStyle: 'normal',
+  behaviorSignals: {
+    completedByHour: {},
+    missedByHour: {},
+    deepWorkCompletedByHour: {},
+    completionCount: 0,
+    missedCount: 0,
+    rescheduledCount: 0,
+  },
   workStartHour: 9,
   workEndHour: 17,
   sleepStartHour: 23,

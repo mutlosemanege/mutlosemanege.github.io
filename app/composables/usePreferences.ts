@@ -1,5 +1,5 @@
 import { DEFAULT_PREFERENCES } from '~/types/task'
-import type { UserPreferences, DeepWorkWindow, RoutineTemplate } from '~/types/task'
+import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals } from '~/types/task'
 
 const STORAGE_KEY = 'kalender-ai-preferences'
 
@@ -10,7 +10,15 @@ function loadPreferences(): UserPreferences {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      return { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) }
+      const parsed = JSON.parse(stored) as Partial<UserPreferences>
+      return {
+        ...DEFAULT_PREFERENCES,
+        ...parsed,
+        behaviorSignals: {
+          ...DEFAULT_PREFERENCES.behaviorSignals,
+          ...(parsed.behaviorSignals || {}),
+        },
+      }
     }
   } catch {
     // Fallback to defaults
@@ -21,6 +29,28 @@ function loadPreferences(): UserPreferences {
 function savePreferences() {
   if (import.meta.server) return
   localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences.value))
+}
+
+function incrementBucket(bucket: Record<string, number>, hourKey: string) {
+  return {
+    ...bucket,
+    [hourKey]: (bucket[hourKey] || 0) + 1,
+  }
+}
+
+function hourKeyFromDate(date: Date) {
+  return String(date.getHours()).padStart(2, '0')
+}
+
+function mergeBehaviorSignals(partial: Partial<PlanningBehaviorSignals>) {
+  preferences.value = {
+    ...preferences.value,
+    behaviorSignals: {
+      ...preferences.value.behaviorSignals,
+      ...partial,
+    },
+  }
+  savePreferences()
 }
 
 export function usePreferences() {
@@ -59,6 +89,41 @@ export function usePreferences() {
     return preferences.value.deepWorkWindows.find(w => w.day === dayOfWeek)
   }
 
+  function recordTaskCompletion(date: Date, isDeepWork: boolean) {
+    const hourKey = hourKeyFromDate(date)
+    const currentSignals = preferences.value.behaviorSignals
+
+    mergeBehaviorSignals({
+      completedByHour: incrementBucket(currentSignals.completedByHour, hourKey),
+      deepWorkCompletedByHour: isDeepWork
+        ? incrementBucket(currentSignals.deepWorkCompletedByHour, hourKey)
+        : currentSignals.deepWorkCompletedByHour,
+      completionCount: currentSignals.completionCount + 1,
+    })
+  }
+
+  function recordTaskMiss(date: Date) {
+    const hourKey = hourKeyFromDate(date)
+    const currentSignals = preferences.value.behaviorSignals
+
+    mergeBehaviorSignals({
+      missedByHour: incrementBucket(currentSignals.missedByHour, hourKey),
+      missedCount: currentSignals.missedCount + 1,
+      rescheduledCount: currentSignals.rescheduledCount + 1,
+    })
+  }
+
+  function getPreferredHours(isDeepWork = false) {
+    const source = isDeepWork
+      ? preferences.value.behaviorSignals.deepWorkCompletedByHour
+      : preferences.value.behaviorSignals.completedByHour
+
+    return Object.entries(source)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([hour]) => Number(hour))
+  }
+
   return {
     preferences: readonly(preferences),
     updatePreferences,
@@ -67,5 +132,8 @@ export function usePreferences() {
     removeDeepWorkWindow,
     isWorkDay,
     getDeepWorkWindow,
+    recordTaskCompletion,
+    recordTaskMiss,
+    getPreferredHours,
   }
 }

@@ -67,9 +67,9 @@ Rahmen:
 - [x] Wiederkehrende Muster ueber die aktuellen Vorlagen hinaus erweitern
 
 ### 7. Personalisierung vorbereiten
-- [ ] Lokale Signale sammeln: oft verschoben, oft erledigt, bevorzugte Tageszeiten
-- [ ] Planungsstil definieren: `entspannt`, `normal`, `aggressiv`, `deadline-first`, `focus-first`
-- [ ] Spater daraus bessere Slot-Auswahl und Priorisierungsdarstellung ableiten
+- [x] Lokale Signale sammeln: oft verschoben, oft erledigt, bevorzugte Tageszeiten
+- [x] Planungsstil definieren: `entspannt`, `normal`, `aggressiv`, `deadline-first`, `focus-first`
+- [x] Spater daraus bessere Slot-Auswahl und Priorisierungsdarstellung ableiten
 
 ### 8. Bessere Transparenz in der gesamten KI-UX
 - [ ] `Warum diese Entscheidung?` als Muster in Sidebar, Chat und Projektgenerator vereinheitlichen
