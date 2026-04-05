@@ -89,16 +89,55 @@ Rahmen:
 - [x] Rescheduling-Edge-Cases absichern
 - [x] Regressionen bei Multi-Block-Scheduling verhindern
 
+## Phase 2: Naechste Reifestufe
+
+### 11. Verfuegbarkeit realistischer modellieren
+- [x] Zwischen Arbeitszeit, persoenlicher Zeit und sozialer Zeit sauber unterscheiden
+- [x] Abend- und Wochenend-Slots bewusst als eigene Verfuegbarkeit pflegbar machen
+- [ ] Harte vs. weiche Blocker einfuehren, damit die Planung flexibler reagieren kann
+- [x] Im Chat und Scheduler sichtbar machen, ob ein Slot aus Arbeits- oder Freizeitverfuegbarkeit stammt
+
+### 12. Heute-Ansicht und Fokuszentrale bauen
+- [ ] Eine klare `Heute`-Zusammenfassung mit wichtigsten Aufgaben, Deadlines und freien Bloecken
+- [ ] Eine sichtbare `Naechster bester Schritt`-Empfehlung einbauen
+- [ ] Ueberlastung und unrealistische Tage frueh markieren
+- [ ] One-click Aktionen fuer `heute neu planen`, `fuer morgen schieben`, `kleinere Luecke finden`
+
+### 13. Projektfortschritt und Abschlusslogik verbessern
+- [ ] Projekte mit echtem Fortschritt, Restaufwand und naechsten Schritten sichtbar machen
+- [ ] Abgeschlossene Projekte archivieren statt nur loeschen
+- [ ] Teilfortschritte und Zwischenstaende bei Aufgaben erlauben
+- [ ] Projektgenerator spaeter mit Review nach einigen Tagen koppeln: `Plan war realistisch / zu gross / zu klein`
+
+### 14. Konfliktaufloesung und Planvarianten
+- [ ] Bei Kollisionen nicht nur `geht nicht`, sondern konkrete Umplan-Optionen anbieten
+- [ ] Planvarianten vergleichen: `entspannt`, `deadline-first`, `kompakt`, `fokusfreundlich`
+- [ ] Niedrig priorisierte Slots bei Bedarf aktiv verdrengen koennen
+- [ ] Vor einer groesseren Umplanung eine Vorschau `was sich aendert` anzeigen
+
+### 15. Vertrauen, Verlauf und Nachvollziehbarkeit
+- [ ] Eine kleine Historie fuer `was wurde automatisch geplant, verschoben, priorisiert`
+- [ ] Undo fuer sensible Aktionen wie Neuplanung oder Projektloeschung
+- [ ] Staerkere Dublettenpruefung ueber Chat, Routinen, Import und Kalender hinweg
+- [ ] Klarere technische Fehlermeldungen und Sync-Status fuer Kalenderaktionen
+
+### 16. Sprachqualitaet und UI-Konsistenz
+- [ ] Sichtbare UI systematisch auf echte Umlaute und sauberes Deutsch umstellen
+- [ ] Begriffe ueberall vereinheitlichen: `Aufgabe`, `Termin`, `Routine`, `Planung`, `Prioritaet`
+- [ ] Mobile Modals und Sidebars auf Scroll- und Bedienbarkeit pruefen und nachziehen
+- [ ] Leere Zustaende, Erfolgsmeldungen und Fehlermeldungen sprachlich hochwertiger machen
+
 ## Reihenfolge fuer den naechsten grossen Sprint
 
-1. KI-Priorisierung realistischer machen
-2. Auto-Planen erklaerbarer machen
-3. Rescheduling mit mehreren Modi
-4. Planungs-Chat smarter machen
-5. Projektgenerator direkt mit Planung koppeln
+1. Verfuegbarkeit realistischer modellieren
+2. Heute-Ansicht und Fokuszentrale bauen
+3. Konfliktaufloesung und Planvarianten
+4. Vertrauen, Verlauf und Nachvollziehbarkeit
+5. Sprachqualitaet und UI-Konsistenz
 
 ## Notizen
 
 - Schlaf- und Arbeitsweg-Zeiten sind aktuell bewusst ueber Kalenderbloecke geloest, damit die bestehende Logik stabil bleibt.
 - Langfristig waere ein natives Regelmodell fuer solche Blocker noch sauberer.
 - Wenn wir an einem Punkt doch Backend oder Modelle anfassen muessen, markieren wir das vorher explizit.
+- Die erste Roadmap-Phase ist im Kern umgesetzt; die naechste Phase fokussiert jetzt staerker auf Produktreife und Alltagstauglichkeit.

@@ -73,6 +73,9 @@ export interface UserPreferences {
   behaviorSignals: PlanningBehaviorSignals
   workStartHour: number
   workEndHour: number
+  personalStartHour: number
+  personalEndHour: number
+  personalDays: readonly number[]
   sleepStartHour: number
   sleepEndHour: number
   syncSleepSchedule: boolean
@@ -101,6 +104,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   },
   workStartHour: 9,
   workEndHour: 17,
+  personalStartHour: 17,
+  personalEndHour: 22,
+  personalDays: [0, 1, 2, 3, 4, 5, 6],
   sleepStartHour: 23,
   sleepEndHour: 7,
   syncSleepSchedule: false,

@@ -75,6 +75,7 @@ const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
 const previewReason = ref<string | null>(null)
 const previewUncertainty = ref<string | null>(null)
 const previewAlternatives = ref<Array<{ label: string; reason: string }>>([])
+const previewAvailabilityLabel = ref<string | null>(null)
 
 watch(() => props.show, (show) => {
   if (!show) return
@@ -91,6 +92,7 @@ watch(() => props.show, (show) => {
   previewReason.value = null
   previewUncertainty.value = null
   previewAlternatives.value = []
+  previewAvailabilityLabel.value = null
 })
 
 async function handlePlan() {
@@ -105,6 +107,7 @@ async function handlePlan() {
   previewReason.value = null
   previewUncertainty.value = null
   previewAlternatives.value = []
+  previewAvailabilityLabel.value = null
 
   try {
     const parsed = parsePlanningPromptCore(prompt.value.trim(), durationMinutes.value, intentMode.value)
@@ -122,6 +125,7 @@ async function handlePlan() {
     previewReason.value = suggestion?.reason || buildNoSlotReason(parsed)
     previewAlternatives.value = buildAlternativePreview(parsed)
     previewUncertainty.value = buildPreviewUncertainty(parsed, Boolean(suggestion))
+    previewAvailabilityLabel.value = suggestion ? availabilityLabelForSuggestion(suggestion.start, parsed.intent) : null
 
     if (parsed.intent === 'task') {
       previewTaskSlot.value = suggestion ? { start: suggestion.start, end: suggestion.end } : null
@@ -665,8 +669,9 @@ function buildChatPlanningPreferences(parsed: ParsedPlanningRequest) {
     return base
   }
 
-  let workStartHour = 7
-  let workEndHour = 23
+  let workStartHour = base.personalStartHour
+  let workEndHour = base.personalEndHour
+  let workDays = [...base.personalDays]
 
   if (parsed.preferredPeriod === 'morning') {
     workStartHour = 6
@@ -681,12 +686,33 @@ function buildChatPlanningPreferences(parsed: ParsedPlanningRequest) {
 
   return {
     ...base,
-    workDays: [0, 1, 2, 3, 4, 5, 6],
+    workDays,
     workStartHour,
     workEndHour,
     lunchStartHour: workEndHour,
     lunchEndHour: workEndHour,
   }
+}
+
+function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
+  const day = start.getDay()
+  const hour = start.getHours() + (start.getMinutes() / 60)
+  const inWorkWindow = preferences.value.workDays.includes(day) &&
+    hour >= preferences.value.workStartHour &&
+    hour < preferences.value.workEndHour
+  const inPersonalWindow = preferences.value.personalDays.includes(day) &&
+    hour >= preferences.value.personalStartHour &&
+    hour < preferences.value.personalEndHour
+
+  if (intent === 'event') {
+    if (inPersonalWindow && !inWorkWindow) return 'Freizeit-Slot'
+    if (inWorkWindow) return 'Arbeitsnaher Slot'
+    return 'Persönlicher Termin-Slot'
+  }
+
+  if (inWorkWindow) return 'Arbeits-Slot'
+  if (inPersonalWindow) return 'Außerhalb der Arbeitszeit'
+  return 'Sonder-Slot'
 }
 
 function buildAlternativePreview(parsed: ParsedPlanningRequest) {
@@ -1063,6 +1089,9 @@ function intentLabel(intent: PlanningIntent) {
                 <div v-if="parsedDetails" class="mt-3 flex flex-wrap gap-2">
                   <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
                     Erkannt als {{ intentLabel(parsedDetails.intent) }}
+                  </span>
+                  <span v-if="previewAvailabilityLabel" class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+                    {{ previewAvailabilityLabel }}
                   </span>
                   <span v-if="parsedDetails.recurrenceLabel" class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700">
                     {{ parsedDetails.recurrenceLabel }}

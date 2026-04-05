@@ -43,6 +43,9 @@ const form = reactive({
   planningStyle: 'normal' as PlanningStyle,
   workStartHour: 9,
   workEndHour: 17,
+  personalStartHour: 17,
+  personalEndHour: 22,
+  personalDays: [0, 1, 2, 3, 4, 5, 6] as number[],
   sleepStartHour: 23,
   sleepEndHour: 7,
   syncSleepSchedule: false,
@@ -103,6 +106,9 @@ watch(() => props.show, (val) => {
   form.planningStyle = p.planningStyle
   form.workStartHour = p.workStartHour
   form.workEndHour = p.workEndHour
+  form.personalStartHour = p.personalStartHour
+  form.personalEndHour = p.personalEndHour
+  form.personalDays = [...p.personalDays]
   form.sleepStartHour = p.sleepStartHour
   form.sleepEndHour = p.sleepEndHour
   form.syncSleepSchedule = p.syncSleepSchedule
@@ -136,6 +142,16 @@ function toggleWorkDay(day: number) {
   } else {
     form.workDays.push(day)
     form.workDays.sort()
+  }
+}
+
+function togglePersonalDay(day: number) {
+  const idx = form.personalDays.indexOf(day)
+  if (idx >= 0) {
+    form.personalDays.splice(idx, 1)
+  } else {
+    form.personalDays.push(day)
+    form.personalDays.sort()
   }
 }
 
@@ -607,6 +623,9 @@ function handleSave() {
     planningStyle: form.planningStyle,
     workStartHour: form.workStartHour,
     workEndHour: form.workEndHour,
+    personalStartHour: form.personalStartHour,
+    personalEndHour: form.personalEndHour,
+    personalDays: [...form.personalDays],
     sleepStartHour: form.sleepStartHour,
     sleepEndHour: form.sleepEndHour,
     syncSleepSchedule: form.syncSleepSchedule,
@@ -741,6 +760,55 @@ function handleReset() {
                     {{ String(h).padStart(2, '0') }}:00
                   </option>
                 </select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-medium text-gray-700 mb-2">Persönliche Terminzeit</h3>
+            <p class="mb-3 text-xs text-gray-500">
+              Diese Zeiten nutzt der Planungs-Chat für Treffen, private Termine und soziale Verabredungen statt deiner reinen Arbeitszeit.
+            </p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Start</label>
+                <select
+                  v-model.number="form.personalStartHour"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option v-for="h in 24" :key="`personal-start-${h - 1}`" :value="h - 1">
+                    {{ String(h - 1).padStart(2, '0') }}:00
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">Ende</label>
+                <select
+                  v-model.number="form.personalEndHour"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option v-for="h in 24" :key="`personal-end-${h}`" :value="h">
+                    {{ String(h).padStart(2, '0') }}:00
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="block text-xs text-gray-500 mb-2">Tage für persönliche Termine</label>
+              <div class="flex gap-1.5">
+                <button
+                  v-for="day in 7"
+                  :key="`personal-day-${day}`"
+                  :class="[
+                    'w-10 h-10 rounded-lg text-xs font-medium transition-colors',
+                    form.personalDays.includes(day % 7)
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  ]"
+                  @click="togglePersonalDay(day % 7)"
+                >
+                  {{ dayNamesShort[day % 7] }}
+                </button>
               </div>
             </div>
           </div>
