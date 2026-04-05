@@ -18,6 +18,10 @@ export interface ScheduleTaskOptions {
   rescheduleModeByTaskId?: Record<string, 'same-time' | 'today' | 'next' | 'redistribute' | undefined>
 }
 
+interface FindFreeSlotsOptions {
+  ignoreSoftBlockers?: boolean
+}
+
 export function useScheduler() {
   const { preferences } = usePreferences()
 
@@ -30,12 +34,10 @@ export function useScheduler() {
     to: Date,
     existingEvents: readonly CalendarEvent[],
     prefs: ReadonlyUserPreferences = preferences.value,
+    options: FindFreeSlotsOptions = {},
   ): TimeSlot[] {
     const slots: TimeSlot[] = []
-    const planningConstraintEvents = [
-      ...existingEvents,
-      ...buildPreferenceBlockers(from, to, prefs),
-    ]
+    const planningConstraintEvents = [...existingEvents, ...buildPreferenceBlockers(from, to, prefs)]
     const current = new Date(from)
     current.setHours(0, 0, 0, 0)
 
@@ -48,7 +50,7 @@ export function useScheduler() {
 
       // Nur an Arbeitstagen
       if (prefs.workDays.includes(dayOfWeek)) {
-        const daySlots = getDaySlotsWithGaps(current, planningConstraintEvents, prefs)
+        const daySlots = getDaySlotsWithGaps(current, planningConstraintEvents, prefs, options.ignoreSoftBlockers)
         slots.push(...daySlots)
       }
 
@@ -65,6 +67,7 @@ export function useScheduler() {
     day: Date,
     existingEvents: readonly CalendarEvent[],
     prefs: UserPreferences,
+    ignoreSoftBlockers = false,
   ): TimeSlot[] {
     const bufferMs = prefs.taskBufferMinutes * 60 * 1000
     const dayStart = new Date(day)
@@ -80,9 +83,11 @@ export function useScheduler() {
     lunchEnd.setHours(prefs.lunchEndHour, 0, 0, 0)
 
     // Belegte Zeiten sammeln (Events + Mittagspause)
-    const busyPeriods: { start: Date; end: Date }[] = [
-      { start: lunchStart, end: lunchEnd },
-    ]
+    const busyPeriods: { start: Date; end: Date }[] = []
+
+    if (!ignoreSoftBlockers) {
+      busyPeriods.push({ start: lunchStart, end: lunchEnd })
+    }
 
     for (const event of existingEvents) {
       const eventStart = getEventStart(event)

@@ -13,7 +13,7 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, updateProject, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus } = useCalendar()
@@ -111,12 +111,24 @@ interface ActivityEntry {
   undo?: () => Promise<void>
 }
 
+interface DisplacementSuggestion {
+  incomingTaskId: string
+  incomingTitle: string
+  displacedTaskId: string
+  displacedTitle: string
+  start: string
+  end: string
+}
+
 const planningDiagnostics = ref<SchedulingDiagnosis[]>([])
 const schedulingAlternatives = ref<Record<string, SlotAlternative[]>>({})
 const planVariants = ref<PlanVariantPreview[]>([])
 const activityEntries = ref<ActivityEntry[]>([])
+const displacementSuggestions = ref<DisplacementSuggestion[]>([])
+const previewDisplacement = ref<DisplacementSuggestion | null>(null)
 const applyingVariantStyle = ref<PlanningStyle | null>(null)
 const applyingAlternativeTaskId = ref<string | null>(null)
+const applyingDisplacementId = ref<string | null>(null)
 const rescheduleTask = ref<Task | null>(null)
 const selectedRescheduleMode = ref<RescheduleMode>('same-time')
 const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
@@ -324,6 +336,8 @@ async function markDone(task: Task) {
 
   await updateTask(task.id, {
     status: 'done',
+    progressPercent: 100,
+    originalEstimatedMinutes: task.originalEstimatedMinutes || task.estimatedMinutes,
     scheduleBlocks: undefined,
     scheduledStart: undefined,
     scheduledEnd: undefined,
@@ -539,6 +553,7 @@ async function refreshSchedulingInsights(
   planningDiagnostics.value = diagnostics
   decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, [...remainingTasks], diagnostics)
   schedulingAlternatives.value = buildSchedulingAlternativesMap(remainingTasks, existingEvents)
+  displacementSuggestions.value = buildDisplacementSuggestions(remainingTasks)
   await evaluatePlanVariants(remainingTasks, existingEvents)
 }
 
@@ -621,7 +636,12 @@ function suggestAlternativeSlots(task: Task, existingEvents: readonly CalendarEv
     ? addDays(deadline, 7)
     : addDays(earliestReadyAt, 14)
 
-  const viableSlots = findFreeSlots(earliestReadyAt, searchEnd, existingEvents, preferences.value)
+  const strictSlots = findFreeSlots(earliestReadyAt, searchEnd, existingEvents, preferences.value)
+  const flexibleSlots = strictSlots.length > 0
+    ? strictSlots
+    : findFreeSlots(earliestReadyAt, searchEnd, existingEvents, preferences.value, { ignoreSoftBlockers: true })
+
+  const viableSlots = flexibleSlots
     .filter(slot => !task.isDeepWork || slot.isDeepWork)
     .map(slot => {
       const start = new Date(Math.max(slot.start.getTime(), earliestReadyAt.getTime()))
@@ -630,6 +650,7 @@ function suggestAlternativeSlots(task: Task, existingEvents: readonly CalendarEv
         start,
         end,
         fits: end <= slot.end,
+        usesSoftFlex: strictSlots.length === 0,
       }
     })
     .filter(slot => slot.fits)
@@ -639,7 +660,9 @@ function suggestAlternativeSlots(task: Task, existingEvents: readonly CalendarEv
     start: slot.start.toISOString(),
     end: slot.end.toISOString(),
     label: formatAlternativeSlotLabel(slot.start, slot.end),
-    detail: deadline && slot.end > deadline
+    detail: slot.usesSoftFlex
+      ? 'Würde nur mit weichen Blockern wie Pause oder Puffer funktionieren.'
+      : deadline && slot.end > deadline
       ? 'Würde erst nach der aktuellen Deadline stattfinden.'
       : task.isDeepWork
         ? 'Passt in ein freies Fokusfenster.'
@@ -734,6 +757,120 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
   }
 }
 
+function buildDisplacementSuggestions(sourceTasks: readonly Task[]) {
+  const candidates = sourceTasks
+    .filter(task => ['critical', 'high'].includes(task.priority))
+    .filter(task => !getBlockingDependency(task))
+    .sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority])
+
+  const scheduledLowTasks = tasks.value
+    .filter(task => task.status === 'scheduled' && task.priority === 'low')
+    .filter(task => (task.scheduleBlocks?.length || 0) === 1)
+
+  const suggestions: DisplacementSuggestion[] = []
+  for (const incoming of candidates) {
+    const suggestion = scheduledLowTasks.find(task => {
+      const block = task.scheduleBlocks?.[0]
+      if (!block) return false
+      const start = new Date(block.start)
+      const end = new Date(block.end)
+      const durationMinutes = (end.getTime() - start.getTime()) / 60000
+      if (durationMinutes < incoming.estimatedMinutes) return false
+      if (incoming.deadline && start > new Date(incoming.deadline)) return false
+      return true
+    })
+
+    if (!suggestion?.scheduleBlocks?.[0]) continue
+    suggestions.push({
+      incomingTaskId: incoming.id,
+      incomingTitle: incoming.title,
+      displacedTaskId: suggestion.id,
+      displacedTitle: suggestion.title,
+      start: suggestion.scheduleBlocks[0].start,
+      end: suggestion.scheduleBlocks[0].end,
+    })
+  }
+
+  return suggestions.slice(0, 3)
+}
+
+async function applyProjectReview(groupId: string, reviewStatus: 'too-big' | 'fit' | 'too-small') {
+  const projectGroup = tasksByProject.value.find(group => group.id === groupId)
+  if (!projectGroup) return
+
+  await updateProject(groupId, {
+    reviewStatus,
+  })
+
+  planningFeedback.value = `Projekt-Review für "${projectGroup.name}" gespeichert.`
+  addActivityEntry({
+    title: 'Projekt-Review',
+    detail: `"${projectGroup.name}": ${projectReviewLabel(reviewStatus)}`,
+  })
+}
+
+async function applyDisplacementSuggestion(suggestion: DisplacementSuggestion) {
+  const incoming = tasks.value.find(task => task.id === suggestion.incomingTaskId)
+  const displaced = tasks.value.find(task => task.id === suggestion.displacedTaskId)
+  if (!incoming || !displaced) return
+
+  applyingDisplacementId.value = suggestion.incomingTaskId
+
+  try {
+    const displacedIds = displaced.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+    for (const calendarId of displacedIds) {
+      await deleteEvent(calendarId!)
+    }
+
+    await updateTask(displaced.id, {
+      status: 'todo',
+      scheduleBlocks: undefined,
+      scheduledStart: undefined,
+      scheduledEnd: undefined,
+      calendarEventId: undefined,
+    })
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const createdEvent = await createEvent({
+      summary: incoming.title,
+      description: `[KALENDER-AI-TASK:${incoming.id}]\n${incoming.description || ''}`,
+      start: { dateTime: suggestion.start, timeZone: tz },
+      end: { dateTime: suggestion.end, timeZone: tz },
+      colorId: incoming.isDeepWork ? '3' : '9',
+    })
+
+    if (!createdEvent?.id) {
+      throw new Error('Kalendereintrag konnte nicht erstellt werden.')
+    }
+
+    await updateTask(incoming.id, {
+      status: 'scheduled',
+      scheduleBlocks: [{
+        start: suggestion.start,
+        end: suggestion.end,
+        calendarEventId: createdEvent.id,
+      }],
+      scheduledStart: suggestion.start,
+      scheduledEnd: suggestion.end,
+      calendarEventId: createdEvent.id,
+    })
+
+    const updatedEvents = await refreshCalendarEvents()
+    await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), updatedEvents)
+    previewDisplacement.value = null
+    planningFeedback.value = `"${incoming.title}" hat den Slot von "${displaced.title}" übernommen.`
+    addActivityEntry({
+      title: 'Slot verdrängt',
+      detail: `"${incoming.title}" wurde vor "${displaced.title}" eingeplant.`,
+    })
+  } catch (error) {
+    console.error('Verdrängung konnte nicht angewendet werden:', error)
+    planningFeedback.value = 'Die Verdrängung konnte nicht sauber angewendet werden.'
+  } finally {
+    applyingDisplacementId.value = null
+  }
+}
+
 const priorityInsights = computed(() => {
   const insights = new Map<string, TaskPriorityInsight>()
 
@@ -751,11 +888,13 @@ const tasksByProject = computed(() => {
   const groups = projects.value
     .filter(project => !project.archivedAt)
     .map(project => ({
-    id: project.id,
-    name: project.name,
-    archivedAt: project.archivedAt,
-    tasks: tasks.value.filter(task => task.projectId === project.id),
-  })).filter(group => group.tasks.length > 0)
+      id: project.id,
+      name: project.name,
+      archivedAt: project.archivedAt,
+      reviewAfterDate: project.reviewAfterDate,
+      reviewStatus: project.reviewStatus,
+      tasks: tasks.value.filter(task => task.projectId === project.id),
+    })).filter(group => group.tasks.length > 0)
 
   const inboxTasks = tasks.value.filter(task => !task.projectId)
   if (inboxTasks.length > 0) {
@@ -776,6 +915,8 @@ const archivedTaskGroups = computed(() => {
       id: project.id,
       name: project.name,
       archivedAt: project.archivedAt,
+      reviewAfterDate: project.reviewAfterDate,
+      reviewStatus: project.reviewStatus,
       tasks: tasks.value.filter(task => task.projectId === project.id),
     }))
 })
@@ -866,6 +1007,24 @@ function formatArchivedDate(value?: string) {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+function taskProgressLabel(task: Task) {
+  if (!task.progressPercent || task.progressPercent <= 0) return null
+  const original = task.originalEstimatedMinutes || task.estimatedMinutes
+  return `${task.progressPercent}% erledigt · ${task.estimatedMinutes} von ${original} Min. offen`
+}
+
+function isProjectReviewDue(group: { reviewAfterDate?: string; reviewStatus?: string }) {
+  if (!group.reviewAfterDate || group.reviewStatus) return false
+  return new Date(group.reviewAfterDate) <= new Date()
+}
+
+function projectReviewLabel(status?: 'too-big' | 'fit' | 'too-small') {
+  if (status === 'fit') return 'Plan war passend'
+  if (status === 'too-big') return 'Plan war zu groß'
+  if (status === 'too-small') return 'Plan war zu klein'
+  return null
 }
 
 function getTaskInsight(task: Task) {
@@ -1464,7 +1623,7 @@ async function restoreArchivedProject(groupId: string) {
 
 <template>
   <Transition name="sidebar">
-    <div v-if="show" class="fixed inset-y-0 right-0 z-40 w-96 max-w-full bg-white shadow-2xl border-l border-gray-200 flex flex-col">
+    <div v-if="show" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-full flex-col border-l border-gray-200 bg-white shadow-2xl sm:w-96">
       <!-- Header -->
       <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <h2 class="text-lg font-semibold text-gray-900">Aufgaben</h2>
@@ -1723,6 +1882,27 @@ async function restoreArchivedProject(groupId: string) {
         </div>
       </div>
 
+      <div v-if="displacementSuggestions.length > 0" class="px-4 pb-2">
+        <div class="rounded-xl border border-violet-200 bg-violet-50 p-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-violet-800">Umplan-Vorschau</h3>
+          <p class="mt-1 text-xs text-violet-700">Wichtige Aufgaben können auf Wunsch niedrig priorisierte Slots übernehmen.</p>
+          <div class="mt-3 space-y-2">
+            <button
+              v-for="suggestion in displacementSuggestions"
+              :key="`${suggestion.incomingTaskId}-${suggestion.displacedTaskId}`"
+              type="button"
+              class="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-left transition hover:bg-violet-100"
+              @click="previewDisplacement = suggestion"
+            >
+              <div class="text-xs font-medium text-gray-900">{{ suggestion.incomingTitle }}</div>
+              <div class="mt-1 text-[11px] text-violet-800">
+                würde {{ suggestion.displacedTitle }} am {{ formatTaskDateTime(suggestion.start) }} verdrängen
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div v-if="activityEntries.length > 0" class="px-4 pb-2">
         <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div class="flex items-center justify-between gap-2">
@@ -1814,6 +1994,38 @@ async function restoreArchivedProject(groupId: string) {
                       <p v-else class="mt-2 text-xs text-green-700">
                         Projekt abgeschlossen und bereit zum Archivieren.
                       </p>
+                      <div
+                        v-if="isProjectReviewDue(group) || projectReviewLabel(group.reviewStatus)"
+                        class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2"
+                      >
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-sky-800">Projekt-Review</p>
+                        <p v-if="projectReviewLabel(group.reviewStatus)" class="mt-1 text-xs text-sky-700">
+                          {{ projectReviewLabel(group.reviewStatus) }}
+                        </p>
+                        <div v-else class="mt-2 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            @click.stop="applyProjectReview(group.id, 'too-big')"
+                          >
+                            Zu groß
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            @click.stop="applyProjectReview(group.id, 'fit')"
+                          >
+                            Passend
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            @click.stop="applyProjectReview(group.id, 'too-small')"
+                          >
+                            Zu klein
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </button>
                   <div class="flex flex-shrink-0 items-center gap-1">
@@ -1890,6 +2102,10 @@ async function restoreArchivedProject(groupId: string) {
 
                       <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
                         Grund: {{ task.priorityReason }}
+                      </div>
+
+                      <div v-if="taskProgressLabel(task)" class="mt-1 text-xs text-sky-600">
+                        {{ taskProgressLabel(task) }}
                       </div>
 
                       <div
@@ -2032,7 +2248,7 @@ async function restoreArchivedProject(groupId: string) {
       <div v-if="rescheduleTask" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40" @click="closeRescheduleDialog" />
 
-        <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
           <div class="flex items-start justify-between gap-4">
             <div>
               <h3 class="text-lg font-semibold text-gray-900">Neu einplanen</h3>
@@ -2092,6 +2308,51 @@ async function restoreArchivedProject(groupId: string) {
               @click="confirmReschedule"
             >
               Neu einplanen
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="previewDisplacement" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="previewDisplacement = null" />
+
+        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-gray-900">Änderungsvorschau</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            {{ previewDisplacement.incomingTitle }} würde {{ previewDisplacement.displacedTitle }} verdrängen.
+          </p>
+
+          <div class="mt-4 space-y-3">
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Wird frei gemacht</div>
+              <p class="mt-1 text-sm font-medium text-gray-900">{{ previewDisplacement.displacedTitle }}</p>
+              <p class="mt-1 text-xs text-gray-500">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
+            </div>
+
+            <div class="rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <div class="text-xs font-semibold uppercase tracking-wide text-violet-700">Wird eingeplant</div>
+              <p class="mt-1 text-sm font-medium text-gray-900">{{ previewDisplacement.incomingTitle }}</p>
+              <p class="mt-1 text-xs text-violet-800">{{ formatTaskDateTime(previewDisplacement.start) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              class="rounded-xl px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+              @click="previewDisplacement = null"
+            >
+              Abbrechen
+            </button>
+            <button
+              class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              :disabled="applyingDisplacementId === previewDisplacement.incomingTaskId"
+              @click="applyDisplacementSuggestion(previewDisplacement)"
+            >
+              {{ applyingDisplacementId === previewDisplacement.incomingTaskId ? 'Plant um...' : 'Jetzt umplanen' }}
             </button>
           </div>
         </div>

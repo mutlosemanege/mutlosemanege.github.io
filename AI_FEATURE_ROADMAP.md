@@ -94,7 +94,7 @@ Rahmen:
 ### 11. Verfuegbarkeit realistischer modellieren
 - [x] Zwischen Arbeitszeit, persoenlicher Zeit und sozialer Zeit sauber unterscheiden
 - [x] Abend- und Wochenend-Slots bewusst als eigene Verfuegbarkeit pflegbar machen
-- [ ] Harte vs. weiche Blocker einfuehren, damit die Planung flexibler reagieren kann
+- [x] Harte vs. weiche Blocker einfuehren, damit die Planung flexibler reagieren kann
 - [x] Im Chat und Scheduler sichtbar machen, ob ein Slot aus Arbeits- oder Freizeitverfuegbarkeit stammt
 
 ### 12. Heute-Ansicht und Fokuszentrale bauen
@@ -106,14 +106,14 @@ Rahmen:
 ### 13. Projektfortschritt und Abschlusslogik verbessern
 - [x] Projekte mit echtem Fortschritt, Restaufwand und naechsten Schritten sichtbar machen
 - [x] Abgeschlossene Projekte archivieren statt nur loeschen
-- [ ] Teilfortschritte und Zwischenstaende bei Aufgaben erlauben
-- [ ] Projektgenerator spaeter mit Review nach einigen Tagen koppeln: `Plan war realistisch / zu gross / zu klein`
+- [x] Teilfortschritte und Zwischenstaende bei Aufgaben erlauben
+- [x] Projektgenerator spaeter mit Review nach einigen Tagen koppeln: `Plan war realistisch / zu gross / zu klein`
 
 ### 14. Konfliktaufloesung und Planvarianten
 - [x] Bei Kollisionen nicht nur `geht nicht`, sondern konkrete Umplan-Optionen anbieten
 - [x] Planvarianten vergleichen: `entspannt`, `deadline-first`, `kompakt`, `fokusfreundlich`
-- [ ] Niedrig priorisierte Slots bei Bedarf aktiv verdrengen koennen
-- [ ] Vor einer groesseren Umplanung eine Vorschau `was sich aendert` anzeigen
+- [x] Niedrig priorisierte Slots bei Bedarf aktiv verdrengen koennen
+- [x] Vor einer groesseren Umplanung eine Vorschau `was sich aendert` anzeigen
 
 ### 15. Vertrauen, Verlauf und Nachvollziehbarkeit
 - [x] Eine kleine Historie fuer `was wurde automatisch geplant, verschoben, priorisiert`
@@ -124,7 +124,7 @@ Rahmen:
 ### 16. Sprachqualitaet und UI-Konsistenz
 - [x] Sichtbare UI systematisch auf echte Umlaute und sauberes Deutsch umstellen
 - [x] Begriffe ueberall vereinheitlichen: `Aufgabe`, `Termin`, `Routine`, `Planung`, `Prioritaet`
-- [ ] Mobile Modals und Sidebars auf Scroll- und Bedienbarkeit pruefen und nachziehen
+- [x] Mobile Modals und Sidebars auf Scroll- und Bedienbarkeit pruefen und nachziehen
 - [x] Leere Zustaende, Erfolgsmeldungen und Fehlermeldungen sprachlich hochwertiger machen
 
 ## Reihenfolge fuer den naechsten grossen Sprint

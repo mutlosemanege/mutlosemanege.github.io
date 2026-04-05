@@ -24,6 +24,7 @@ const priority = ref<TaskPriority>('medium')
 const isDeepWork = ref(false)
 const projectId = ref('')
 const dependencies = ref<string[]>([])
+const progressPercent = ref(0)
 
 const priorityOptions: { value: TaskPriority; label: string; color: string }[] = [
   { value: 'critical', label: 'Kritisch', color: 'text-red-600' },
@@ -54,6 +55,7 @@ watch(() => props.show, (val) => {
     isDeepWork.value = props.task.isDeepWork
     projectId.value = props.task.projectId || ''
     dependencies.value = [...props.task.dependencies]
+    progressPercent.value = props.task.progressPercent || 0
   } else {
     title.value = ''
     description.value = ''
@@ -63,6 +65,7 @@ watch(() => props.show, (val) => {
     isDeepWork.value = false
     projectId.value = ''
     dependencies.value = []
+    progressPercent.value = 0
   }
 })
 
@@ -82,16 +85,28 @@ function toggleDependency(taskId: string) {
 function handleSave() {
   if (!title.value.trim()) return
 
+  const baseMinutes = props.task?.originalEstimatedMinutes || props.task?.estimatedMinutes || estimatedMinutes.value
+  const remainingMinutes = progressPercent.value > 0
+    ? Math.max(5, Math.round(baseMinutes * ((100 - progressPercent.value) / 100)))
+    : estimatedMinutes.value
+  const nextStatus = progressPercent.value > 0 && (props.task?.status === 'todo' || props.task?.status === 'missed')
+    ? 'in_progress'
+    : (props.task?.status || 'todo')
+
   emit('save', {
     title: title.value.trim(),
     description: description.value.trim() || undefined,
-    estimatedMinutes: estimatedMinutes.value,
+    estimatedMinutes: remainingMinutes,
+    originalEstimatedMinutes: progressPercent.value > 0 || props.task?.originalEstimatedMinutes
+      ? baseMinutes
+      : undefined,
+    progressPercent: progressPercent.value,
     deadline: deadline.value ? new Date(`${deadline.value}T23:59:59`).toISOString() : undefined,
     priority: priority.value,
     aiSuggestedPriority: props.task?.aiSuggestedPriority,
     priorityReason: 'Manuell im Aufgaben-Editor gesetzt',
     prioritySource: 'manual',
-    status: props.task?.status || 'todo',
+    status: nextStatus,
     projectId: projectId.value || undefined,
     dependencies: dependencies.value,
     scheduleBlocks: props.task?.scheduleBlocks,
@@ -117,7 +132,7 @@ function handleDelete() {
         <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
 
         <!-- Modal -->
-        <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 space-y-4 shadow-2xl sm:rounded-xl">
           <h2 class="text-lg font-semibold text-gray-900">
             {{ isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe' }}
           </h2>
@@ -172,6 +187,24 @@ function handleDelete() {
               </div>
             </div>
 
+            <div>
+              <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Zwischenstand</label>
+                <span class="text-xs text-gray-500">{{ progressPercent }}%</span>
+              </div>
+              <input
+                v-model.number="progressPercent"
+                type="range"
+                min="0"
+                max="90"
+                step="10"
+                class="w-full accent-primary-600"
+              >
+              <p class="mt-1 text-xs text-gray-500">
+                Noch offen: {{ progressPercent > 0 ? Math.max(5, Math.round((props.task?.originalEstimatedMinutes || props.task?.estimatedMinutes || estimatedMinutes) * ((100 - progressPercent) / 100))) : estimatedMinutes }} Minuten
+              </p>
+            </div>
+
             <!-- Deadline -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
@@ -221,7 +254,7 @@ function handleDelete() {
                 type="checkbox"
                 class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               >
-              <span class="text-sm text-gray-700">Deep Work (Fokuszeit noetig)</span>
+              <span class="text-sm text-gray-700">Deep Work (Fokuszeit nötig)</span>
             </label>
           </div>
 

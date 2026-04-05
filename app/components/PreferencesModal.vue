@@ -651,6 +651,11 @@ function handleReset() {
             Routinen werden jetzt auch direkt bei der Planung respektiert. Schlaf, Arbeitswege und gespeicherte Routinen blockieren passende Zeiten schon im Scheduler, auch wenn du sie nicht jedes Mal manuell in den Kalender einträgst.
           </div>
 
+          <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            Harte Blocker: Schlaf, Arbeitsweg, Routinen und bestehende Kalendereinträge.
+            Weiche Blocker: Mittagspause und Puffer. Wenn es eng wird, zeigt die Planung dafür flexible Alternativen an.
+          </div>
+
           <div
             v-if="syncStatus"
             class="rounded-xl border px-4 py-3 text-xs"

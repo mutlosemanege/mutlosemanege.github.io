@@ -82,6 +82,7 @@ async function handleConfirm() {
     description: description.value,
     taskIds: [],
     deadline: deadline.value ? new Date(`${deadline.value}T23:59:59`).toISOString() : undefined,
+    reviewAfterDate: addDays(new Date(), 3).toISOString(),
   })
 
   // TempId → echte ID Mapping
@@ -404,7 +405,7 @@ function addDays(date: Date, days: number) {
       <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
 
-        <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 space-y-4 shadow-2xl sm:rounded-xl">
 
           <!-- Step 1: Eingabe -->
           <template v-if="step === 'input'">

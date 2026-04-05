@@ -3,6 +3,8 @@ export interface Task {
   title: string
   description?: string
   estimatedMinutes: number
+  originalEstimatedMinutes?: number
+  progressPercent?: number
   deadline?: string // ISO 8601
   priority: TaskPriority
   aiSuggestedPriority?: TaskPriority
@@ -37,6 +39,8 @@ export interface Project {
   taskIds: string[]
   deadline?: string
   archivedAt?: string
+  reviewAfterDate?: string
+  reviewStatus?: 'too-big' | 'fit' | 'too-small'
   createdAt: string
   updatedAt: string
 }
