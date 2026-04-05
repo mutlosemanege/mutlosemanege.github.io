@@ -632,7 +632,7 @@ function buildSlotCandidate(slot: { start: Date; end: Date }, parsed: ParsedPlan
 }
 
 function collectSlotCandidates(parsed: ParsedPlanningRequest): SlotSuggestion[] {
-  const slots = findFreeSlots(parsed.dateFrom, parsed.dateTo, props.events, preferences.value)
+  const slots = findFreeSlots(parsed.dateFrom, parsed.dateTo, props.events, buildChatPlanningPreferences(parsed))
   const candidates: SlotCandidate[] = []
 
   for (const strategy of buildSlotStrategies(parsed)) {
@@ -656,6 +656,37 @@ function collectSlotCandidates(parsed: ParsedPlanningRequest): SlotSuggestion[] 
       seen.add(key)
       return true
     })
+}
+
+function buildChatPlanningPreferences(parsed: ParsedPlanningRequest) {
+  const base = preferences.value
+
+  if (parsed.intent !== 'event') {
+    return base
+  }
+
+  let workStartHour = 7
+  let workEndHour = 23
+
+  if (parsed.preferredPeriod === 'morning') {
+    workStartHour = 6
+    workEndHour = 13
+  } else if (parsed.preferredPeriod === 'afternoon') {
+    workStartHour = 11
+    workEndHour = 19
+  } else if (parsed.preferredPeriod === 'evening') {
+    workStartHour = 17
+    workEndHour = 23
+  }
+
+  return {
+    ...base,
+    workDays: [0, 1, 2, 3, 4, 5, 6],
+    workStartHour,
+    workEndHour,
+    lunchStartHour: workEndHour,
+    lunchEndHour: workEndHour,
+  }
 }
 
 function buildAlternativePreview(parsed: ParsedPlanningRequest) {
@@ -720,7 +751,7 @@ function buildSlotReason(parsed: ParsedPlanningRequest, start: Date, strategy: S
   if ((strategy === 'time-and-period' || strategy === 'time-only') && parsed.timePreference) {
     reasons.push(`er in dein Zeitfenster ${parsed.timePreference.label} passt`)
   } else if (parsed.timePreference?.exactStartMinutes !== undefined) {
-    reasons.push('die genaue Wunschzeit belegt war und ich den naechsten sinnvollen freien Slot gesucht habe')
+    reasons.push('die genaue Wunschzeit belegt war und ich den nächsten sinnvollen freien Slot gesucht habe')
   }
 
   if ((strategy === 'time-and-period' || strategy === 'period-only') && parsed.preferredPeriod !== 'any') {
@@ -730,21 +761,21 @@ function buildSlotReason(parsed: ParsedPlanningRequest, start: Date, strategy: S
   if (parsed.hasExplicitDate) {
     reasons.push(`er am ${start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })} frei ist`)
   } else {
-    reasons.push('es der frueheste freie Slot ist')
+    reasons.push('es der früheste freie Slot ist')
   }
 
-  return `Gewaehlt, weil ${reasons.join(' und ')} und dort ${parsed.durationMinutes} Minuten frei waren.`
+  return `Gewählt, weil ${reasons.join(' und ')} und dort ${parsed.durationMinutes} Minuten frei waren.`
 }
 
 function buildNoSlotReason(parsed: ParsedPlanningRequest) {
   if (parsed.timePreference && parsed.hasExplicitDate) {
-    return `Ich habe in ${parsed.timePreference.label} rund um deinen gewuenschten Zeitraum keinen freien Slot gefunden.`
+    return `Ich habe in ${parsed.timePreference.label} rund um deinen gewünschten Zeitraum keinen freien Slot gefunden.`
   }
   if (parsed.preferredPeriod !== 'any' && parsed.hasExplicitDate) {
     return `Ich habe in deinem bevorzugten Zeitraum "${periodLabel(parsed.preferredPeriod)}" keinen freien Slot gefunden.`
   }
   if (parsed.hasExplicitDate) {
-    return 'Ich habe in deinem gewuenschten Zeitraum keinen freien Slot gefunden.'
+    return 'Ich habe in deinem gewünschten Zeitraum keinen freien Slot gefunden.'
   }
   return 'Ich habe aktuell keinen passenden freien Slot gefunden.'
 }
@@ -752,7 +783,7 @@ function buildNoSlotReason(parsed: ParsedPlanningRequest) {
 function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roundedToHour: boolean) {
   const reasons = [
     `${parsed.recurrenceLabel || 'Wiederkehrung'} erkannt`,
-    `naechste Ausfuehrung ${formatPreview(nextStart.toISOString())}`,
+    `nächste Ausführung ${formatPreview(nextStart.toISOString())}`,
   ]
 
   if (parsed.timePreference) {
@@ -762,10 +793,10 @@ function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roun
   }
 
   if (roundedToHour) {
-    reasons.push('fuer Routinen aktuell auf volle Stunden gerundet')
+    reasons.push('für Routinen aktuell auf volle Stunden gerundet')
   }
 
-  return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und fuer die naechsten 4 Wochen in den Kalender eingetragen.`
+  return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und für die nächsten 4 Wochen in den Kalender eingetragen.`
 }
 
 function buildPreviewUncertainty(
@@ -778,7 +809,7 @@ function buildPreviewUncertainty(
   }
 
   if (!hasSuggestion) {
-    return 'Es gibt aktuell keinen sicheren passenden Slot im gewuenschten Fenster.'
+    return 'Es gibt aktuell keinen sicheren passenden Slot im gewünschten Fenster.'
   }
 
   if (intentMode.value === 'auto') {
@@ -786,7 +817,7 @@ function buildPreviewUncertainty(
   }
 
   if (!parsed.hasExplicitDate && !parsed.timePreference && parsed.preferredPeriod === 'any') {
-    return 'Es wurde kein fester Zeitpunkt erkannt, deshalb nutze ich den fruehesten sinnvollen freien Slot.'
+    return 'Es wurde kein fester Zeitpunkt erkannt, deshalb nutze ich den frühesten sinnvollen freien Slot.'
   }
 
   return null
@@ -947,7 +978,7 @@ function intentLabel(intent: PlanningIntent) {
           <div class="mt-5 grid gap-4 lg:grid-cols-[1.45fr,1fr]">
             <div class="space-y-4">
               <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                <label class="block text-sm font-medium text-gray-700">Was moechtest du einplanen?</label>
+                <label class="block text-sm font-medium text-gray-700">Was möchtest du einplanen?</label>
                 <textarea
                   v-model="prompt"
                   rows="5"
@@ -1011,7 +1042,7 @@ function intentLabel(intent: PlanningIntent) {
                   class="rounded-xl px-4 py-3 text-sm text-gray-600 transition hover:bg-gray-100"
                   @click="emit('close')"
                 >
-                  Schliessen
+                  Schließen
                 </button>
               </div>
             </div>
@@ -1093,11 +1124,11 @@ function intentLabel(intent: PlanningIntent) {
                   <div class="rounded-xl bg-white p-3 shadow-sm">
                     <p class="text-sm font-medium text-gray-900">{{ previewTask.title }}</p>
                     <p class="mt-1 text-sm text-gray-500">
-                      {{ previewTask.estimatedMinutes }} Minuten, Prioritaet {{ previewTask.priority }}
+                      {{ previewTask.estimatedMinutes }} Minuten, Priorität {{ previewTask.priority }}
                     </p>
                     <p class="mt-2 text-sm text-primary-700">
                       <template v-if="previewTaskSlot">
-                        Wird als Aufgabe angelegt und direkt fuer {{ formatPreview(previewTask.scheduledStart) }} terminiert
+                        Wird als Aufgabe angelegt und direkt für {{ formatPreview(previewTask.scheduledStart) }} terminiert
                       </template>
                       <template v-else>
                         Wird nur als Aufgabe angelegt, weil gerade kein passender Slot frei ist
@@ -1126,10 +1157,10 @@ function intentLabel(intent: PlanningIntent) {
                       {{ String(previewRoutine.template.endHour).padStart(2, '0') }}:00
                     </p>
                     <p class="mt-2 text-sm text-primary-700">
-                      Wird als Routine-Vorlage gespeichert und fuer die naechsten 4 Wochen eingetragen
+                      Wird als Routine-Vorlage gespeichert und für die nächsten 4 Wochen eingetragen
                     </p>
                     <p class="mt-1 text-xs text-gray-500">
-                      Naechste Ausfuehrung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
+                      Nächste Ausführung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
                     </p>
                   </div>
 
