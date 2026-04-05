@@ -26,11 +26,11 @@ const projectId = ref('')
 const dependencies = ref<string[]>([])
 const progressPercent = ref(0)
 
-const priorityOptions: { value: TaskPriority; label: string; color: string }[] = [
-  { value: 'critical', label: 'Kritisch', color: 'text-red-600' },
-  { value: 'high', label: 'Hoch', color: 'text-orange-600' },
-  { value: 'medium', label: 'Mittel', color: 'text-yellow-600' },
-  { value: 'low', label: 'Niedrig', color: 'text-green-600' },
+const priorityOptions: { value: TaskPriority; label: string; active: string; inactive: string }[] = [
+  { value: 'critical', label: 'Kritisch', active: 'bg-priority-critical/15 text-priority-critical border-priority-critical/40', inactive: 'border-border-subtle text-text-secondary hover:border-priority-critical/30 hover:text-priority-critical' },
+  { value: 'high', label: 'Hoch', active: 'bg-priority-high/15 text-priority-high border-priority-high/40', inactive: 'border-border-subtle text-text-secondary hover:border-priority-high/30 hover:text-priority-high' },
+  { value: 'medium', label: 'Mittel', active: 'bg-priority-medium/15 text-priority-medium border-priority-medium/40', inactive: 'border-border-subtle text-text-secondary hover:border-priority-medium/30 hover:text-priority-medium' },
+  { value: 'low', label: 'Niedrig', active: 'bg-priority-low/15 text-priority-low border-priority-low/40', inactive: 'border-border-subtle text-text-secondary hover:border-priority-low/30 hover:text-priority-low' },
 ]
 
 const durationOptions = [
@@ -127,70 +127,82 @@ function handleDelete() {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
+      <div v-if="show" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="absolute inset-0" @click="emit('close')" />
 
-        <!-- Modal -->
-        <div class="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 space-y-4 shadow-2xl sm:rounded-xl">
-          <h2 class="text-lg font-semibold text-gray-900">
-            {{ isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe' }}
-          </h2>
-
-          <div class="space-y-3">
-            <!-- Titel -->
+        <div class="glass-card-elevated relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-glass-xl p-6 sm:max-w-lg sm:rounded-glass-lg">
+          <div class="flex items-start justify-between gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Titel</label>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Aufgaben-Editor</p>
+              <h2 class="mt-2 text-xl font-semibold text-text-primary">
+                {{ isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe' }}
+              </h2>
+            </div>
+            <button type="button" class="btn-secondary inline-flex h-10 w-10 items-center justify-center" @click="emit('close')">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mt-5 space-y-5">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-text-secondary">Titel</label>
               <input
                 v-model="title"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                class="input-dark w-full px-4 py-3"
                 placeholder="Aufgabe beschreiben..."
                 @keydown.enter="handleSave"
               >
             </div>
 
-            <!-- Beschreibung -->
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+              <label class="mb-2 block text-sm font-medium text-text-secondary">Beschreibung</label>
               <textarea
                 v-model="description"
-                rows="2"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+                rows="3"
+                class="input-dark w-full resize-none px-4 py-3"
                 placeholder="Optional..."
               />
             </div>
 
-            <!-- Dauer & Prioritaet -->
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Dauer</label>
-                <select
-                  v-model.number="estimatedMinutes"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            <div>
+              <label class="mb-2 block text-sm font-medium text-text-secondary">Dauer</label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="opt in durationOptions"
+                  :key="opt.value"
+                  type="button"
+                  class="rounded-full border px-3 py-2 text-sm transition"
+                  :class="estimatedMinutes === opt.value ? 'border-accent-purple/40 bg-accent-purple/15 text-accent-purple' : 'border-border-subtle bg-white/[0.03] text-text-secondary hover:border-border-medium hover:text-text-primary'"
+                  @click="estimatedMinutes = opt.value"
                 >
-                  <option v-for="opt in durationOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </select>
+                  {{ opt.label }}
+                </button>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Prioritaet</label>
-                <select
-                  v-model="priority"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            </div>
+
+            <div>
+              <label class="mb-2 block text-sm font-medium text-text-secondary">Priorität</label>
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <button
+                  v-for="opt in priorityOptions"
+                  :key="opt.value"
+                  type="button"
+                  class="rounded-xl border px-3 py-2 text-sm font-medium transition"
+                  :class="priority === opt.value ? opt.active : opt.inactive"
+                  @click="priority = opt.value"
                 >
-                  <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </select>
+                  {{ opt.label }}
+                </button>
               </div>
             </div>
 
             <div>
               <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Zwischenstand</label>
-                <span class="text-xs text-gray-500">{{ progressPercent }}%</span>
+                <label class="mb-2 block text-sm font-medium text-text-secondary">Zwischenstand</label>
+                <span class="text-xs text-text-muted">{{ progressPercent }}%</span>
               </div>
               <input
                 v-model.number="progressPercent"
@@ -198,89 +210,82 @@ function handleDelete() {
                 min="0"
                 max="90"
                 step="10"
-                class="w-full accent-primary-600"
+                class="w-full accent-accent-purple"
               >
-              <p class="mt-1 text-xs text-gray-500">
+              <p class="mt-2 text-xs text-text-muted">
                 Noch offen: {{ progressPercent > 0 ? Math.max(5, Math.round((props.task?.originalEstimatedMinutes || props.task?.estimatedMinutes || estimatedMinutes) * ((100 - progressPercent) / 100))) : estimatedMinutes }} Minuten
               </p>
             </div>
 
-            <!-- Deadline -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-              <input
-                v-model="deadline"
-                type="date"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              >
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Projekt</label>
-              <select
-                v-model="projectId"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              >
-                <option value="">Kein Projekt</option>
-                <option v-for="project in projects" :key="project.id" :value="project.id">
-                  {{ project.name }}
-                </option>
-              </select>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-text-secondary">Deadline</label>
+                <input
+                  v-model="deadline"
+                  type="date"
+                  class="input-dark w-full px-4 py-3"
+                >
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-text-secondary">Projekt</label>
+                <select v-model="projectId" class="input-dark w-full px-4 py-3">
+                  <option value="">Kein Projekt</option>
+                  <option v-for="project in projects" :key="project.id" :value="project.id">
+                    {{ project.name }}
+                  </option>
+                </select>
+              </div>
             </div>
 
             <div v-if="availableDependencies.length > 0">
-              <label class="block text-sm font-medium text-gray-700 mb-2">Abhaengigkeiten</label>
-              <div class="max-h-32 overflow-y-auto space-y-1.5 rounded-lg border border-gray-200 p-2">
+              <label class="mb-2 block text-sm font-medium text-text-secondary">Abhängigkeiten</label>
+              <div class="max-h-36 space-y-2 overflow-y-auto rounded-glass border border-border-subtle bg-white/[0.03] p-3">
                 <label
                   v-for="task in availableDependencies"
                   :key="task.id"
-                  class="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1 hover:bg-gray-50"
+                  class="flex cursor-pointer items-center gap-3 rounded-xl border border-transparent px-3 py-2 transition hover:border-border-subtle hover:bg-white/[0.03]"
                 >
                   <input
                     type="checkbox"
                     :checked="dependencies.includes(task.id)"
-                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                     @change="toggleDependency(task.id)"
                   >
-                  <span class="text-sm text-gray-700">{{ task.title }}</span>
+                  <span class="text-sm text-text-secondary">{{ task.title }}</span>
                 </label>
               </div>
             </div>
 
-            <!-- Deep Work Toggle -->
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                v-model="isDeepWork"
-                type="checkbox"
-                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              >
-              <span class="text-sm text-gray-700">Deep Work (Fokuszeit nÃ¶tig)</span>
-            </label>
+            <button
+              type="button"
+              class="flex w-full items-center justify-between rounded-glass border px-4 py-3 text-left transition"
+              :class="isDeepWork ? 'border-accent-purple/40 bg-accent-purple/10 text-text-primary' : 'border-border-subtle bg-white/[0.03] text-text-secondary hover:border-border-medium'"
+              @click="isDeepWork = !isDeepWork"
+            >
+              <div>
+                <div class="text-sm font-medium">Deep Work</div>
+                <div class="mt-1 text-xs text-text-muted">Für Aufgaben, die einen ruhigen Fokusblock brauchen.</div>
+              </div>
+              <span class="relative inline-flex h-6 w-11 rounded-full transition" :class="isDeepWork ? 'bg-accent-purple' : 'bg-white/10'">
+                <span class="absolute top-1 h-4 w-4 rounded-full bg-white transition" :class="isDeepWork ? 'left-6' : 'left-1'" />
+              </span>
+            </button>
           </div>
 
-          <!-- Actions -->
-          <div class="flex items-center justify-between pt-2">
+          <div class="mt-6 flex items-center justify-between gap-3 border-t border-border-subtle pt-5">
             <button
               v-if="isEditing"
-              class="px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+              type="button"
+              class="rounded-xl px-3 py-2 text-sm text-priority-critical transition hover:bg-priority-critical/10"
               @click="handleDelete"
             >
-              Loeschen
+              Löschen
             </button>
             <div v-else />
 
             <div class="flex gap-2">
-              <button
-                class="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                @click="emit('close')"
-              >
-                Abbrechen
-              </button>
-              <button
-                class="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-                :disabled="!title.trim()"
-                @click="handleSave"
-              >
+              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
+              <button type="button" class="btn-primary px-4 py-2 text-sm disabled:opacity-50" :disabled="!title.trim()" @click="handleSave">
                 {{ isEditing ? 'Speichern' : 'Erstellen' }}
               </button>
             </div>

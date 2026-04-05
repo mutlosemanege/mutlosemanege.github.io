@@ -95,32 +95,27 @@ function getAllDayEvents(events: CalendarEvent[]): CalendarEvent[] {
 </script>
 
 <template>
-  <div>
-    <!-- Header -->
-    <div class="text-center mb-4">
-      <h2 class="text-xl font-semibold text-gray-900">{{ weekLabel }}</h2>
-    </div>
-
-    <!-- All-day events row -->
-    <div class="border border-gray-200 rounded-t-lg overflow-hidden">
-      <div class="grid grid-cols-8 bg-gray-50 border-b border-gray-200">
-        <div class="py-2 px-1 text-center text-xs text-gray-500 border-r border-gray-200" />
+  <div class="glass-card ambient-glow-blue overflow-hidden">
+    <div class="grid grid-cols-8 border-b border-border-subtle bg-white/[0.03]">
+      <div class="border-r border-border-subtle px-2 py-3 text-center text-xs uppercase tracking-[0.24em] text-text-muted" />
         <div
           v-for="col in weekDays"
           :key="col.dateStr"
-          class="py-2 text-center border-r border-gray-200 last:border-r-0"
+          :class="[
+            'border-r border-border-subtle px-2 py-3 text-center last:border-r-0',
+            col.isToday && 'bg-accent-purple/5',
+          ]"
         >
-          <div class="text-xs font-semibold text-gray-600 uppercase">{{ col.label }}</div>
+          <div class="text-xs font-medium uppercase tracking-[0.24em] text-text-secondary">{{ col.label }}</div>
           <div
             :class="[
-              'inline-flex items-center justify-center w-8 h-8 text-sm rounded-full mt-0.5',
-              col.isToday ? 'bg-primary-600 text-white font-bold' : 'text-gray-900'
+              'mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-sm',
+              col.isToday ? 'bg-accent-purple text-white font-bold shadow-glow-purple' : 'text-text-primary'
             ]"
           >
             {{ col.dayNum }}
           </div>
-          <!-- All-day events -->
-          <div class="px-0.5 space-y-0.5">
+          <div class="mt-2 space-y-1 px-0.5">
             <EventItem
               v-for="ev in getAllDayEvents(col.events)"
               :key="ev.id"
@@ -131,33 +126,30 @@ function getAllDayEvents(events: CalendarEvent[]): CalendarEvent[] {
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Time grid -->
-    <div class="border-x border-b border-gray-200 rounded-b-lg overflow-auto max-h-[600px]">
+    <div class="overflow-auto">
       <div class="grid grid-cols-8 relative">
-        <!-- Time labels -->
-        <div class="border-r border-gray-200">
-          <div v-for="hour in HOURS" :key="hour" class="h-14 border-b border-gray-100 pr-2 pt-0 text-right">
-            <span class="text-xs text-gray-400">{{ String(hour).padStart(2, '0') }}:00</span>
+        <div class="border-r border-border-subtle bg-surface/35">
+          <div v-for="hour in HOURS" :key="hour" class="h-14 border-b border-border-subtle/70 pr-2 pt-0 text-right">
+            <span class="text-xs text-text-muted">{{ String(hour).padStart(2, '0') }}:00</span>
           </div>
         </div>
 
-        <!-- Day columns -->
         <div
           v-for="col in weekDays"
           :key="col.dateStr"
-          class="relative border-r border-gray-200 last:border-r-0 cursor-pointer"
+          :class="[
+            'relative cursor-pointer border-r border-border-subtle last:border-r-0',
+            col.isToday && 'bg-accent-purple/[0.04]',
+          ]"
           @click="emit('select-date', col.dateStr)"
         >
-          <!-- Hour lines -->
-          <div v-for="hour in HOURS" :key="hour" class="h-14 border-b border-gray-100" />
+          <div v-for="hour in HOURS" :key="hour" class="h-14 border-b border-border-subtle/70 transition hover:bg-white/[0.02]" />
 
-          <!-- Timed events -->
           <div
             v-for="ev in getTimedEvents(col.events)"
             :key="ev.id"
-            class="absolute left-0.5 right-0.5 z-10"
+            class="absolute left-1 right-1 z-10"
             :style="getEventStyle(ev)"
           >
             <EventItem :event="ev" compact @click="emit('select-event', ev)" />
