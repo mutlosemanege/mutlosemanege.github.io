@@ -59,7 +59,7 @@ const emit = defineEmits<{
 
 const { preferences, updatePreferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
-const { createEvent } = useCalendar()
+const { createEvent, error: calendarError } = useCalendar()
 const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
@@ -184,13 +184,13 @@ async function handleCreate() {
   try {
     const created = await createEvent(previewEvent.value)
     if (!created?.id) {
-      throw new Error('Termin konnte nicht erstellt werden.')
+      throw new Error(calendarError.value || 'Termin konnte nicht erstellt werden.')
     }
 
     emit('created')
     emit('close')
   } catch (err: any) {
-    error.value = err.message || 'Termin konnte nicht erstellt werden.'
+    error.value = err.message || calendarError.value || 'Termin konnte nicht erstellt werden.'
   } finally {
     isPlanning.value = false
   }
@@ -222,7 +222,7 @@ async function handleCreateTask() {
       })
 
       if (!createdEvent?.id) {
-        throw new Error('Aufgabe wurde erstellt, aber der Kalendereintrag konnte nicht angelegt werden.')
+        throw new Error(calendarError.value || 'Aufgabe wurde erstellt, aber der Kalendereintrag konnte nicht angelegt werden.')
       }
 
       await updateTask(task.id, {
@@ -241,7 +241,7 @@ async function handleCreateTask() {
     emit('created')
     emit('close')
   } catch (err: any) {
-    error.value = err.message || 'Aufgabe konnte nicht erstellt werden.'
+    error.value = err.message || calendarError.value || 'Aufgabe konnte nicht erstellt werden.'
   } finally {
     isPlanning.value = false
   }
@@ -306,7 +306,7 @@ async function handleCreateRoutine() {
     emit('created')
     emit('close')
   } catch (err: any) {
-    error.value = err.message || 'Routine konnte nicht erstellt werden.'
+    error.value = err.message || calendarError.value || 'Routine konnte nicht erstellt werden.'
   } finally {
     isPlanning.value = false
   }
@@ -959,8 +959,9 @@ function intentLabel(intent: PlanningIntent) {
               <div class="rounded-2xl border border-gray-200 p-4">
                 <label class="block text-sm font-medium text-gray-700">Typ</label>
                 <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                  <button
-                    v-for="mode in [
+                <button
+                  type="button"
+                  v-for="mode in [
                       { value: 'auto', label: 'Automatisch' },
                       { value: 'event', label: 'Termin' },
                       { value: 'task', label: 'Aufgabe' },
@@ -994,6 +995,7 @@ function intentLabel(intent: PlanningIntent) {
 
               <div class="flex gap-2">
                 <button
+                  type="button"
                   class="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-50"
                   :disabled="!prompt.trim() || isPlanning"
                   @click="handlePlan"
@@ -1005,6 +1007,7 @@ function intentLabel(intent: PlanningIntent) {
                   Vorschlag suchen
                 </button>
                 <button
+                  type="button"
                   class="rounded-xl px-4 py-3 text-sm text-gray-600 transition hover:bg-gray-100"
                   @click="emit('close')"
                 >
@@ -1078,6 +1081,7 @@ function intentLabel(intent: PlanningIntent) {
                   </div>
 
                   <button
+                    type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
                     :disabled="isPlanning"
                     @click="handleCreate"
@@ -1105,6 +1109,7 @@ function intentLabel(intent: PlanningIntent) {
                   </div>
 
                   <button
+                    type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
                     :disabled="isPlanning"
                     @click="handleCreateTask"
@@ -1129,6 +1134,7 @@ function intentLabel(intent: PlanningIntent) {
                   </div>
 
                   <button
+                    type="button"
                     class="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
                     :disabled="isPlanning"
                     @click="handleCreateRoutine"

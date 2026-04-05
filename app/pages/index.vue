@@ -129,6 +129,10 @@ async function onDeleteTask(taskId: string) {
   await removeTask(taskId)
   showTaskModal.value = false
 }
+
+async function onPlanningChatCreated() {
+  await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
+}
 </script>
 
 <template>
@@ -260,7 +264,7 @@ async function onDeleteTask(taskId: string) {
       :show="showPlanningChat"
       :events="events"
       @close="showPlanningChat = false"
-      @created="fetchEvents(timeRange.timeMin, timeRange.timeMax)"
+      @created="onPlanningChatCreated"
     />
   </div>
 </template>
