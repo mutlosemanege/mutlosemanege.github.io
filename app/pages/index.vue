@@ -19,6 +19,8 @@ const showPlanningChat = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
 const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
+const todayActionFeedback = ref<string | null>(null)
+const isRunningTodayAction = ref(false)
 
 const todayRange = computed(() => {
   const start = new Date()
@@ -226,6 +228,136 @@ async function onPlanningChatCreated() {
   await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
 }
 
+async function clearTaskSchedule(task: Task) {
+  const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+
+  if (calendarIds.length > 0) {
+    for (const calendarId of calendarIds) {
+      await deleteEvent(calendarId!)
+    }
+  } else if (task.calendarEventId) {
+    await deleteEvent(task.calendarEventId)
+  }
+}
+
+function findSlotForTask(task: Task, start: Date, end: Date, preferSmallest = false) {
+  const slots = findFreeSlots(start, end, events.value, preferences.value)
+    .filter(slot => !task.isDeepWork || slot.isDeepWork)
+    .filter(slot => ((slot.end.getTime() - slot.start.getTime()) / 60000) >= task.estimatedMinutes)
+
+  if (slots.length === 0) return null
+
+  const orderedSlots = [...slots].sort((a, b) => {
+    const aDuration = a.end.getTime() - a.start.getTime()
+    const bDuration = b.end.getTime() - b.start.getTime()
+    if (preferSmallest && aDuration !== bDuration) {
+      return aDuration - bDuration
+    }
+    if (!preferSmallest && a.start.getTime() !== b.start.getTime()) {
+      return a.start.getTime() - b.start.getTime()
+    }
+    return aDuration - bDuration
+  })
+
+  return orderedSlots[0]
+}
+
+async function scheduleTaskIntoSlot(task: Task, slot: { start: Date; end: Date }, successMessage: string) {
+  await clearTaskSchedule(task)
+
+  const eventEnd = new Date(slot.start.getTime() + task.estimatedMinutes * 60000)
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const createdEvent = await createEvent({
+    summary: task.title,
+    description: `[KALENDER-AI-TASK:${task.id}]\n${task.description || ''}`,
+    start: { dateTime: slot.start.toISOString(), timeZone: tz },
+    end: { dateTime: eventEnd.toISOString(), timeZone: tz },
+    colorId: task.isDeepWork ? '3' : '9',
+  })
+
+  if (!createdEvent?.id) {
+    throw new Error('Kalendereintrag konnte nicht erstellt werden.')
+  }
+
+  await updateTask(task.id, {
+    status: 'scheduled',
+    scheduleBlocks: [{
+      start: slot.start.toISOString(),
+      end: eventEnd.toISOString(),
+      calendarEventId: createdEvent.id,
+    }],
+    scheduledStart: slot.start.toISOString(),
+    scheduledEnd: eventEnd.toISOString(),
+    calendarEventId: createdEvent.id,
+  })
+
+  await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
+  todayActionFeedback.value = successMessage
+}
+
+async function runTodayAction(action: () => Promise<void>) {
+  if (isRunningTodayAction.value) return
+  isRunningTodayAction.value = true
+  todayActionFeedback.value = null
+  try {
+    await action()
+  } catch (error: any) {
+    todayActionFeedback.value = error?.message || 'Aktion konnte gerade nicht ausgeführt werden.'
+  } finally {
+    isRunningTodayAction.value = false
+  }
+}
+
+async function planNextTaskToday() {
+  if (!nextBestTask.value) return
+
+  const slot = findSlotForTask(nextBestTask.value, todayRange.value.start, todayRange.value.end)
+  if (!slot) {
+    throw new Error('Heute ist kein passender freier Block mehr für diese Aufgabe verfügbar.')
+  }
+
+  await scheduleTaskIntoSlot(
+    nextBestTask.value,
+    slot,
+    `"${nextBestTask.value.title}" wurde heute neu eingeplant.`,
+  )
+}
+
+async function fitNextTaskIntoSmallGap() {
+  if (!nextBestTask.value) return
+
+  const slot = findSlotForTask(nextBestTask.value, todayRange.value.start, todayRange.value.end, true)
+  if (!slot) {
+    throw new Error('Es gibt heute keine passende kleinere Lücke für diese Aufgabe.')
+  }
+
+  await scheduleTaskIntoSlot(
+    nextBestTask.value,
+    slot,
+    `"${nextBestTask.value.title}" wurde in eine kleinere freie Lücke gesetzt.`,
+  )
+}
+
+async function moveNextTaskToTomorrow() {
+  if (!nextBestTask.value) return
+
+  const tomorrowStart = new Date(todayRange.value.start)
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1)
+  const tomorrowEnd = new Date(todayRange.value.end)
+  tomorrowEnd.setDate(tomorrowEnd.getDate() + 1)
+
+  const slot = findSlotForTask(nextBestTask.value, tomorrowStart, tomorrowEnd)
+  if (!slot) {
+    throw new Error('Morgen gibt es aktuell keinen passenden freien Slot für diese Aufgabe.')
+  }
+
+  await scheduleTaskIntoSlot(
+    nextBestTask.value,
+    slot,
+    `"${nextBestTask.value.title}" wurde auf morgen verschoben.`,
+  )
+}
+
 function formatDateTime(value?: string) {
   if (!value) return ''
   return new Date(value).toLocaleString('de-DE', {
@@ -312,6 +444,10 @@ function formatSlotRange(start: Date, end: Date) {
               <div class="text-xs text-gray-500">Kritische Warnungen</div>
             </div>
           </div>
+
+          <div v-if="todayActionFeedback" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {{ todayActionFeedback }}
+          </div>
         </section>
 
         <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -336,6 +472,29 @@ function formatSlotRange(start: Date, end: Date) {
             >
               Aufgabe öffnen
             </button>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                class="rounded-xl bg-primary-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-50"
+                :disabled="isRunningTodayAction"
+                @click="runTodayAction(planNextTaskToday)"
+              >
+                Heute neu planen
+              </button>
+              <button
+                class="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                :disabled="isRunningTodayAction"
+                @click="runTodayAction(fitNextTaskIntoSmallGap)"
+              >
+                Kleinere Lücke finden
+              </button>
+              <button
+                class="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                :disabled="isRunningTodayAction"
+                @click="runTodayAction(moveNextTaskToTomorrow)"
+              >
+                Für morgen schieben
+              </button>
+            </div>
           </div>
           <p v-else class="mt-3 text-sm text-gray-500">
             Gerade ist nichts offen. Du kannst entspannt neue Aufgaben oder Termine planen.
