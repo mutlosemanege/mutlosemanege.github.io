@@ -148,7 +148,7 @@ Rahmen:
 - [x] `Auto-Planen` zuerst als Vorschau zeigen, bevor Termine erstellt werden
 - [x] Planvarianten zuerst pruefen lassen, statt sofort anzuwenden
 - [x] Rescheduling an dieselbe Review-Stufe anbinden
-- [ ] Projektgenerator-Autoplan ebenfalls erst in einer Vorschau bestaetigen lassen
+- [x] Projektgenerator-Autoplan ebenfalls erst in einer Vorschau bestaetigen lassen
 
 ### 18. Einheitliche Entscheidungs-Karten
 - [ ] `Warum / Risiko / Alternative / Naechster Schritt` als einheitliches Muster in Sidebar, Chat, Heute-Ansicht und Projektgenerator weiter angleichen

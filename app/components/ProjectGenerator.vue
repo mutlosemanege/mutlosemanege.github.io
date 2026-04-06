@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { Task, TaskPriority } from '~/types/task'
+import type { ScheduledTaskPlan } from '~/composables/useScheduler'
 
 const emit = defineEmits<{
   close: []
@@ -21,9 +22,33 @@ const { preferences } = usePreferences()
 const description = ref('')
 const deadline = ref('')
 const projectType = ref('allgemein')
-const step = ref<'input' | 'review' | 'done'>('input')
+const step = ref<'input' | 'review' | 'schedule-review' | 'done'>('input')
 const autoScheduleAfterCreate = ref(true)
 const creationSummary = ref<{ scheduledCount: number; remainingCount: number } | null>(null)
+const createdProjectId = ref<string | null>(null)
+
+interface ProjectSchedulePreviewItem {
+  taskId: string
+  title: string
+  priority: TaskPriority
+  isDeepWork: boolean
+  totalMinutes: number
+  blockCount: number
+  firstStart?: string
+  lastEnd?: string
+}
+
+interface ProjectSchedulePreview {
+  plannedSchedule: Map<string, ScheduledTaskPlan>
+  items: ProjectSchedulePreviewItem[]
+  remainingTasks: Task[]
+  totalBlocks: number
+  totalMinutes: number
+}
+
+const schedulePreview = ref<ProjectSchedulePreview | null>(null)
+const createdTasksForSchedule = ref<Task[]>([])
+const isApplyingSchedulePreview = ref(false)
 
 interface PreviewTask {
   tempId: string
@@ -47,6 +72,9 @@ watch(() => props.show, (val) => {
   step.value = 'input'
   autoScheduleAfterCreate.value = true
   creationSummary.value = null
+  createdProjectId.value = null
+  schedulePreview.value = null
+  createdTasksForSchedule.value = []
   projectName.value = ''
   previewTasks.value = []
 })
@@ -128,7 +156,25 @@ async function handleConfirm() {
   await updateProject(project.id, { taskIds: createdIds })
 
   if (autoScheduleAfterCreate.value) {
-    creationSummary.value = await scheduleCreatedTasks([...createdTaskMap.values()])
+    const createdTasks = [...createdTaskMap.values()]
+    createdProjectId.value = project.id
+    createdTasksForSchedule.value = createdTasks
+
+    const preview = buildSchedulePreview(createdTasks)
+    if (preview.plannedSchedule.size > 0) {
+      schedulePreview.value = preview
+      creationSummary.value = {
+        scheduledCount: 0,
+        remainingCount: createdTaskMap.size,
+      }
+      step.value = 'schedule-review'
+      return
+    }
+
+    creationSummary.value = {
+      scheduledCount: 0,
+      remainingCount: createdTaskMap.size,
+    }
   } else {
     creationSummary.value = {
       scheduledCount: 0,
@@ -137,7 +183,6 @@ async function handleConfirm() {
   }
 
   step.value = 'done'
-  emit('created', project.id)
 }
 
 const totalMinutes = computed(() =>
@@ -326,6 +371,14 @@ async function scheduleCreatedTasks(tasksToSchedule: Task[]) {
     preferences.value,
   )
 
+  return applyPlannedProjectSchedule(plannedSchedule, tasksToSchedule)
+}
+
+async function applyPlannedProjectSchedule(
+  plannedSchedule: Map<string, ScheduledTaskPlan>,
+  tasksToSchedule: Task[],
+) {
+
   let scheduledCount = 0
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -388,6 +441,103 @@ async function scheduleCreatedTasks(tasksToSchedule: Task[]) {
     scheduledCount,
     remainingCount: tasksToSchedule.length - scheduledCount,
   }
+}
+
+function buildSchedulePreview(tasksToSchedule: Task[]): ProjectSchedulePreview {
+  const plannedSchedule = scheduleTasks(
+    tasksToSchedule,
+    props.events,
+    preferences.value,
+  )
+
+  const items = [...plannedSchedule.entries()]
+    .map(([taskId, plan]) => {
+      const task = tasksToSchedule.find(entry => entry.id === taskId)
+      if (!task) return null
+
+      const firstBlock = plan.blocks[0]
+      const lastBlock = plan.blocks[plan.blocks.length - 1]
+      const totalMinutes = Math.round(
+        plan.blocks.reduce((sum, block) => sum + ((block.end.getTime() - block.start.getTime()) / 60000), 0),
+      )
+
+      return {
+        taskId,
+        title: task.title,
+        priority: task.priority,
+        isDeepWork: task.isDeepWork,
+        totalMinutes,
+        blockCount: plan.blocks.length,
+        firstStart: firstBlock?.start.toISOString(),
+        lastEnd: lastBlock?.end.toISOString(),
+      } satisfies ProjectSchedulePreviewItem
+    })
+    .filter((item): item is ProjectSchedulePreviewItem => item !== null)
+    .sort((a, b) => {
+      const aStart = a.firstStart ? new Date(a.firstStart).getTime() : Infinity
+      const bStart = b.firstStart ? new Date(b.firstStart).getTime() : Infinity
+      return aStart - bStart
+    })
+
+  return {
+    plannedSchedule,
+    items,
+    remainingTasks: tasksToSchedule.filter(task => !plannedSchedule.has(task.id)),
+    totalBlocks: items.reduce((sum, item) => sum + item.blockCount, 0),
+    totalMinutes: items.reduce((sum, item) => sum + item.totalMinutes, 0),
+  }
+}
+
+async function applySchedulePreview() {
+  if (!schedulePreview.value || createdTasksForSchedule.value.length === 0 || !createdProjectId.value) return
+
+  isApplyingSchedulePreview.value = true
+
+  try {
+    creationSummary.value = await applyPlannedProjectSchedule(
+      schedulePreview.value.plannedSchedule,
+      createdTasksForSchedule.value,
+    )
+    step.value = 'done'
+  } finally {
+    isApplyingSchedulePreview.value = false
+  }
+}
+
+function finishWithoutScheduling() {
+  if (!createdProjectId.value) return
+  creationSummary.value = creationSummary.value || {
+    scheduledCount: 0,
+    remainingCount: createdTasksForSchedule.value.length,
+  }
+  step.value = 'done'
+}
+
+function finishProjectFlow() {
+  if (createdProjectId.value) {
+    emit('created', createdProjectId.value)
+    return
+  }
+
+  emit('close')
+}
+
+function formatSchedulePreviewRange(start?: string, end?: string) {
+  if (!start || !end) return 'Zeit wird beim Anwenden gesetzt.'
+
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  return `${startDate.toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  })}, ${startDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })} - ${endDate.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
 }
 
 function addDays(date: Date, days: number) {
@@ -654,12 +804,136 @@ function addDays(date: Date, days: number) {
               <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-xs text-text-secondary">
                   {{ includedPreviewTasks.length }} Aufgaben werden übernommen.
-                  <span v-if="autoScheduleAfterCreate">Auto-Planen ist nach dem Erstellen aktiv.</span>
+                  <span v-if="autoScheduleAfterCreate">Danach folgt zuerst eine Plan-Vorschau.</span>
                 </div>
                 <div class="flex justify-between gap-2 sm:justify-end">
                   <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zurück</button>
                   <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
-                  <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">Projekt erstellen</button>
+                  <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">
+                    {{ autoScheduleAfterCreate ? 'Projekt erstellen & Planung prüfen' : 'Projekt erstellen' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="step === 'schedule-review'">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Plan-Review</p>
+                <h2 class="mt-2 text-2xl font-semibold text-text-primary">Ersteinplanung prüfen</h2>
+                <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
+                  Das Projekt ist angelegt. Prüfe jetzt, welche Aufgaben direkt in den Kalender geschrieben würden.
+                </p>
+              </div>
+            </div>
+
+            <div v-if="schedulePreview" class="mt-5 space-y-5">
+              <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="glass-card p-4">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Direkt planbar</div>
+                  <div class="mt-3 text-2xl font-semibold text-text-primary">{{ schedulePreview.items.length }}</div>
+                  <div class="mt-1 text-xs text-text-secondary">Aufgaben mit Slot</div>
+                </div>
+                <div class="glass-card p-4">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Kalenderblöcke</div>
+                  <div class="mt-3 text-2xl font-semibold text-accent-green">{{ schedulePreview.totalBlocks }}</div>
+                  <div class="mt-1 text-xs text-text-secondary">würden erstellt</div>
+                </div>
+                <div class="glass-card p-4">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Geplante Zeit</div>
+                  <div class="mt-3 text-2xl font-semibold text-text-primary">{{ Math.round((schedulePreview.totalMinutes / 60) * 10) / 10 }}h</div>
+                  <div class="mt-1 text-xs text-text-secondary">würden verteilt</div>
+                </div>
+                <div class="glass-card p-4">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Bleibt offen</div>
+                  <div class="mt-3 text-2xl font-semibold" :class="schedulePreview.remainingTasks.length > 0 ? 'text-priority-high' : 'text-accent-green'">
+                    {{ schedulePreview.remainingTasks.length }}
+                  </div>
+                  <div class="mt-1 text-xs text-text-secondary">für später</div>
+                </div>
+              </div>
+
+              <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
+                <div class="text-sm font-medium text-accent-blue">Was jetzt passieren würde</div>
+                <p class="mt-2 text-sm leading-6 text-text-secondary">
+                  Beim Anwenden werden nur die hier sichtbaren Aufgaben automatisch terminiert. Alle übrigen Aufgaben bleiben im Projekt erhalten und können später weiter geplant werden.
+                </p>
+              </div>
+
+              <div class="glass-card p-4">
+                <div class="text-sm font-medium text-text-primary">Geplante erste Blöcke</div>
+                <div class="mt-4 space-y-3">
+                  <div
+                    v-for="item in schedulePreview.items.slice(0, 8)"
+                    :key="item.taskId"
+                    class="rounded-xl border border-border-subtle bg-white/[0.04] px-4 py-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="text-sm font-medium text-text-primary">{{ item.title }}</span>
+                          <span
+                            class="rounded-full px-2 py-0.5 text-[11px]"
+                            :class="{
+                              'bg-priority-critical/15 text-priority-critical': item.priority === 'critical',
+                              'bg-priority-high/15 text-priority-high': item.priority === 'high',
+                              'bg-priority-medium/15 text-priority-medium': item.priority === 'medium',
+                              'bg-priority-low/15 text-priority-low': item.priority === 'low',
+                            }"
+                          >
+                            {{ item.priority }}
+                          </span>
+                          <span v-if="item.isDeepWork" class="rounded-full bg-accent-purple/15 px-2 py-0.5 text-[11px] text-accent-purple">
+                            Deep Work
+                          </span>
+                        </div>
+                        <p class="mt-2 text-sm text-text-secondary">{{ formatSchedulePreviewRange(item.firstStart, item.lastEnd) }}</p>
+                      </div>
+                      <div class="text-right text-xs text-text-secondary">
+                        <div>{{ item.blockCount }} Block{{ item.blockCount === 1 ? '' : 'e' }}</div>
+                        <div class="mt-1">{{ item.totalMinutes }} Min.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p v-if="schedulePreview.items.length > 8" class="mt-3 text-xs text-text-muted">
+                  {{ schedulePreview.items.length - 8 }} weitere Aufgaben hätten ebenfalls einen ersten Slot.
+                </p>
+              </div>
+
+              <div v-if="schedulePreview.remainingTasks.length > 0" class="rounded-glass border border-priority-high/20 bg-priority-high/10 p-4">
+                <div class="text-sm font-medium text-priority-high">Bleibt erst einmal offen</div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <span
+                    v-for="task in schedulePreview.remainingTasks.slice(0, 8)"
+                    :key="task.id"
+                    class="rounded-full border border-priority-high/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-text-secondary"
+                  >
+                    {{ task.title }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="sticky bottom-0 rounded-glass border border-border-subtle bg-surface/80 px-4 py-3 backdrop-blur-glass">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="text-xs text-text-secondary">
+                    Du kannst jetzt bewusst entscheiden, ob die KI sofort einplant oder das Projekt erstmal nur angelegt bleibt.
+                  </div>
+                  <div class="flex flex-wrap justify-end gap-2">
+                    <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'review'">Zurück</button>
+                    <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="finishWithoutScheduling">
+                      Ohne Auto-Planen abschließen
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-accent-green px-4 py-2 text-sm disabled:opacity-50"
+                      :disabled="isApplyingSchedulePreview"
+                      @click="applySchedulePreview"
+                    >
+                      {{ isApplyingSchedulePreview ? 'Plant ein...' : 'Jetzt einplanen' }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -683,7 +957,7 @@ function addDays(date: Date, days: number) {
                 Die Aufgaben wurden angelegt und können danach manuell oder per Auto-Planen eingeplant werden.
               </p>
               <div class="mt-6 flex justify-center gap-2">
-                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schließen</button>
+                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="finishProjectFlow">Schließen</button>
               </div>
             </div>
           </template>
