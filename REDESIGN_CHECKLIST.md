@@ -20,17 +20,16 @@
 - [x] `AISidebar.vue` komplett auf Premium-Dark-Panel umgezogen
 - [x] `PreferencesModal.vue` vollständig an das neue Designsystem angeglichen
 - [x] `PreferencesModal.vue`: alle Sektionen visuell vereinheitlicht
-
-## In Arbeit
-- [ ] `ProjectGenerator.vue`: Step-2-Review noch feiner polieren
-- [ ] `PlanningChat.vue`: leere Zustände und Erfolgszustände auf Mobile prüfen
+- [x] `ProjectGenerator.vue`: Step-2-Review noch feiner poliert
+- [x] `PlanningChat.vue`: leere Zustände und Erfolgszustände auf Mobile geprüft
+- [x] Mobile: `AISidebar` als sauberer Fullscreen-/Bottom-Sheet-Flow nachgezogen
+- [x] Responsive Feinschliffe für 360px bis große Desktop-Breiten umgesetzt
+- [x] Hover-/Focus-Zustände in den zentralen Panels angeglichen
+- [x] Umlaute und UI-Texte in den offenen Redesign-Komponenten konsistent bereinigt
+- [x] Finaler Redesign-Build erfolgreich bis zum bekannten lokalen Nuxt-Cache-`EPERM` durchgelaufen
 
 ## Offen
-- [ ] Mobile: `AISidebar` als sauberer Fullscreen-/Bottom-Sheet-Flow prüfen
-- [ ] Hover-/Focus-Zustände in allen Panels angleichen
-- [ ] Responsive Feinschliffe für 360px bis große Desktop-Breiten
-- [ ] Umlaute und UI-Texte in allen noch offenen Redesign-Komponenten konsistent prüfen
-- [ ] Finaler Redesign-Build- und Klicktest über die wichtigsten Flows
+- [ ] Letzter manueller Klicktest über alle Hauptflows im Browser
 
 ## Test-Check
 - [ ] Login-Screen prüfen

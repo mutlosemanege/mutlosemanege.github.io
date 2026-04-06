@@ -38,7 +38,7 @@ const { createEvent, fetchEvents, syncStatus, findPotentialDuplicates } = useCal
 const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-// Lokale Kopie fuer das Formular
+// Lokale Kopie für das Formular
 const form = reactive({
   planningStyle: 'normal' as PlanningStyle,
   workStartHour: 9,
@@ -74,7 +74,7 @@ const isApplyingRoutines = ref(false)
 const routineFeedback = ref<string | null>(null)
 const routineExceptionDrafts = ref<Record<string, string>>({})
 const planningStyleOptions: Array<{ value: PlanningStyle; label: string; description: string }> = [
-  { value: 'entspannt', label: 'Entspannt', description: 'Plant spaeter und mit mehr Luft.' },
+  { value: 'entspannt', label: 'Entspannt', description: 'Plant später und mit mehr Luft.' },
   { value: 'normal', label: 'Normal', description: 'Ausgewogener Standardstil.' },
   { value: 'aggressiv', label: 'Aggressiv', description: 'Nimmt frühe Slots schneller mit.' },
   { value: 'deadline-first', label: 'Deadline-first', description: 'Zieht Aufgaben eher früh vor.' },
@@ -642,8 +642,9 @@ function handleReset() {
         <div class="absolute inset-0" @click="emit('close')" />
 
         <!-- Modal -->
-        <div class="glass-card-elevated relative w-full max-h-[92vh] overflow-y-auto rounded-t-glass-xl p-6 space-y-5 sm:max-w-5xl sm:rounded-glass-lg">
-          <div class="flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+        <div class="glass-card-elevated relative w-full max-h-[100dvh] overflow-y-auto rounded-t-glass-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-5 sm:max-h-[92vh] sm:max-w-5xl sm:rounded-glass-lg sm:p-6 sm:pb-6">
+          <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border-subtle bg-surface/88 pb-5 pt-3 backdrop-blur-glass sm:bg-transparent sm:pt-0">
+            <div class="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-white/12 sm:hidden" />
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Planung und Routinen</p>
               <h2 class="mt-2 text-2xl font-semibold text-text-primary">Deine Planungsregeln</h2>
@@ -745,7 +746,7 @@ function handleReset() {
           <!-- Arbeitszeiten -->
           <div>
             <h3 class="mb-2 text-sm font-medium text-text-primary">Arbeitszeiten</h3>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Start</label>
                 <select
@@ -776,7 +777,7 @@ function handleReset() {
             <p class="mb-3 text-xs text-text-secondary">
               Diese Zeiten nutzt der Planungs-Chat für Treffen, private Termine und soziale Verabredungen statt deiner reinen Arbeitszeit.
             </p>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Start</label>
                 <select
@@ -802,7 +803,7 @@ function handleReset() {
             </div>
             <div class="mt-3">
               <label class="mb-2 block text-xs text-text-muted">Tage für persönliche Termine</label>
-              <div class="flex gap-1.5">
+              <div class="flex flex-wrap gap-1.5">
                 <button
                   v-for="day in 7"
                   :key="`personal-day-${day}`"
@@ -830,7 +831,7 @@ function handleReset() {
               >
               Schlafzeiten beim Eintragen als blockierende Termine anlegen
             </label>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Schlafen ab</label>
                 <select
@@ -862,7 +863,7 @@ function handleReset() {
           <!-- Mittagspause -->
           <div>
             <h3 class="mb-2 text-sm font-medium text-text-primary">Mittagspause</h3>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Von</label>
                 <select
@@ -891,7 +892,7 @@ function handleReset() {
           <!-- Arbeitstage -->
           <div>
             <h3 class="mb-2 text-sm font-medium text-text-primary">Arbeitstage</h3>
-            <div class="flex gap-1.5">
+            <div class="flex flex-wrap gap-1.5">
               <button
                 v-for="day in 7"
                 :key="day"
@@ -955,7 +956,7 @@ function handleReset() {
           </div>
 
           <!-- Weitere Einstellungen -->
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="mb-1 block text-sm font-medium text-text-primary">Min. Deep-Work-Block</label>
               <select
@@ -983,7 +984,7 @@ function handleReset() {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="mb-1 block text-sm font-medium text-text-primary">Deadline-Warnung</label>
               <select
@@ -1012,7 +1013,7 @@ function handleReset() {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="mb-1 block text-sm font-medium text-text-primary">Rückweg von der Arbeit</label>
               <select
@@ -1066,7 +1067,7 @@ function handleReset() {
                 v-model="routineDraft.repeatMode"
                 class="input-dark w-full px-3 py-2 text-sm"
               >
-                <option value="weekly">Woechentlich</option>
+                <option value="weekly">Wöchentlich</option>
                 <option value="workdays">An Arbeitstagen</option>
               </select>
               <select
@@ -1148,13 +1149,13 @@ function handleReset() {
                     Entfernen
                   </button>
                 </div>
-                <div class="mt-3 grid grid-cols-2 gap-2">
+                <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <select
                     :value="routine.repeatMode || 'weekly'"
                     class="input-dark w-full px-3 py-2 text-sm"
                     @change="updateRoutineRepeatMode(routine.id, ($event.target as HTMLSelectElement).value as RoutineRepeatMode)"
                   >
-                    <option value="weekly">Woechentlich</option>
+                    <option value="weekly">Wöchentlich</option>
                     <option value="workdays">An Arbeitstagen</option>
                   </select>
                   <template v-if="(routine.repeatMode || 'weekly') === 'weekly'">
@@ -1175,7 +1176,7 @@ function handleReset() {
                     Aktiv an Arbeitstagen
                   </div>
                 </div>
-                <div class="mt-2 grid grid-cols-2 gap-2">
+                <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <select
                     :value="routine.startHour"
                     class="input-dark w-full px-3 py-2 text-sm"
@@ -1251,7 +1252,7 @@ function handleReset() {
                   </div>
                 </div>
                 <label class="btn-secondary inline-flex cursor-pointer items-center justify-center px-3 py-2 text-sm">
-                  Bild auswaehlen
+                  Bild auswählen
                   <input
                     type="file"
                     accept="image/*"
@@ -1284,7 +1285,7 @@ function handleReset() {
             <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
               <div class="flex items-start justify-between gap-4">
                 <div>
-                  <div class="text-sm font-medium text-text-primary">2. Eintraege reviewen</div>
+                  <div class="text-sm font-medium text-text-primary">2. Einträge reviewen</div>
                   <div class="mt-1 text-xs text-text-secondary">
                     Lege darunter die Einträge an, die du aus dem Bild übernehmen willst. Alles bleibt vor dem Übernehmen editierbar.
                   </div>
@@ -1339,7 +1340,7 @@ function handleReset() {
                         v-model="entry.repeatMode"
                         class="input-dark w-full px-3 py-2 text-sm"
                       >
-                        <option value="weekly">Woechentlich</option>
+                        <option value="weekly">Wöchentlich</option>
                         <option value="workdays">An Arbeitstagen</option>
                       </select>
                       <select
@@ -1373,7 +1374,7 @@ function handleReset() {
                         type="checkbox"
                         class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                       >
-                      Zusaetzlich in den Kalender eintragen
+                      Zusätzlich in den Kalender eintragen
                     </label>
                     <div v-else class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-2 text-xs text-text-secondary">
                       Feste Termine werden direkt in den Kalender eingetragen.
@@ -1484,6 +1485,9 @@ function handleReset() {
   opacity: 0;
 }
 </style>
+
+
+
 
 
 

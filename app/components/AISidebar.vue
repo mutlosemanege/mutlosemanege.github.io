@@ -284,7 +284,7 @@ async function handlePrioritize() {
     why: ['Alle offenen Aufgaben sind aktuell manuell fixiert und wurden deshalb nicht automatisch überschrieben.'],
       uncertainty: null,
       alternatives: [
-        'Manuelle Prioritaeten einzelner Aufgaben wieder freigeben.',
+        'Manuelle Prioritäten einzelner Aufgaben wieder freigeben.',
         'Nur neue oder offene Aufgaben ohne manuellen Schutz per KI priorisieren.',
       ],
     }
@@ -1208,7 +1208,7 @@ function buildPriorityDecisionTransparency(input: {
   }
 
   const alternatives = [
-    'Prioritaeten manuell anpassen, wenn deine echte Reihenfolge anders ist.',
+    'Prioritäten manuell anpassen, wenn deine echte Reihenfolge anders ist.',
     'Danach direkt Auto-Planen starten, um die Reihenfolge gegen den Kalender zu pruefen.',
   ]
 
@@ -1257,7 +1257,7 @@ function buildSchedulingDecisionTransparency(
 
   let uncertainty: string | null = null
   if (remainingTasks.length > 0) {
-    uncertainty = 'Die offenen Aufgaben sind nicht unmoeglich, aber innerhalb der aktuellen Grenzen aus Deadline, Fokuszeit und Kalenderbelegung noch nicht sauber unterzubringen.'
+    uncertainty = 'Die offenen Aufgaben sind nicht unmöglich, aber innerhalb der aktuellen Grenzen aus Deadline, Fokuszeit und Kalenderbelegung noch nicht sauber unterzubringen.'
   } else if (schedule.size > 0) {
     uncertainty = 'Mehrere Slots könnten ähnlich gut gewesen sein. Die aktuelle Planung ist die beste verfügbare Option im jetzigen Kalenderstand.'
   }
@@ -1295,8 +1295,8 @@ function buildRescheduleDecisionTransparency(
     title: succeeded ? 'Warum diese Entscheidung?' : 'Warum noch nicht neu eingeplant',
     why,
     uncertainty: succeeded
-      ? 'Je nach spaeteren Kalenderaenderungen koennten noch bessere Alternativen frei werden.'
-      : 'Die aktuelle Zeitlage ist eng. Ein anderer Modus oder lockerere Rahmenbedingungen koennen noch helfen.',
+      ? 'Je nach späteren Kalenderänderungen könnten noch bessere Alternativen frei werden.'
+      : 'Die aktuelle Zeitlage ist eng. Ein anderer Modus oder lockerere Rahmenbedingungen können noch helfen.',
     alternatives,
   }
 }
@@ -1490,14 +1490,14 @@ function describeRescheduleShift(previousStart?: string, nextStart?: Date) {
   }
 
   if (diffDays === 0) {
-    return 'Auf einen spaeteren freien Slot heute verschoben.'
+    return 'Auf einen späteren freien Slot heute verschoben.'
   }
 
   if (diffDays === 1) {
     return diffMs > 0 ? 'Auf den nächsten Tag verschoben.' : 'Einen Tag früher neu einsortiert.'
   }
 
-  return `${diffDays} Tage ${diffMs > 0 ? 'spaeter' : 'frueher'} neu eingeplant.`
+  return `${diffDays} Tage ${diffMs > 0 ? 'später' : 'früher'} neu eingeplant.`
 }
 
 function isSameCalendarDay(a: Date, b: Date) {
@@ -1701,17 +1701,18 @@ async function restoreArchivedProject(groupId: string) {
   <Transition name="sidebar">
     <div
       v-if="show || props.persistent"
-      :class="props.persistent ? 'relative h-full min-h-0 w-full' : 'fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm'"
+      :class="props.persistent ? 'relative h-full min-h-0 w-full' : 'fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-stretch sm:justify-end'"
     >
       <div v-if="!props.persistent" class="absolute inset-0" @click="emit('close')" />
 
       <div
         :class="props.persistent
           ? 'relative flex h-full min-h-0 w-full flex-col border-l border-border-subtle bg-surface/55 backdrop-blur-glass'
-          : 'relative flex h-full w-full max-w-full flex-col border-l border-border-subtle bg-surface/90 shadow-2xl sm:my-4 sm:mr-4 sm:w-[420px] sm:rounded-glass-lg sm:border sm:bg-surface-secondary/85'"
+          : 'relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-surface/95 shadow-2xl sm:my-4 sm:mr-4 sm:h-[calc(100dvh-2rem)] sm:w-[420px] sm:rounded-glass-lg sm:border sm:border-border-subtle sm:bg-surface-secondary/85'"
       >
-        <div class="border-b border-border-subtle px-4 py-4 sm:px-5">
+        <div class="sticky top-0 z-10 border-b border-border-subtle bg-surface/88 px-4 py-4 backdrop-blur-glass sm:bg-transparent sm:px-5">
           <div class="flex items-start justify-between gap-4">
+            <div v-if="!props.persistent" class="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-white/12 sm:hidden" />
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-purple/25 to-accent-blue/20 text-accent-purple shadow-glow-purple">
@@ -1739,7 +1740,7 @@ async function restoreArchivedProject(groupId: string) {
             </button>
           </div>
 
-          <div class="mt-4 grid grid-cols-4 gap-2">
+          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-2 text-center">
               <div class="text-base font-semibold text-text-primary">{{ stats.total }}</div>
               <div class="text-[11px] text-text-muted">Gesamt</div>
@@ -1770,7 +1771,7 @@ async function restoreArchivedProject(groupId: string) {
                 {{ todayDoneCount }}/{{ todayDueOrScheduledCount || todayDoneCount }} erledigt
               </div>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-3">
+            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
                 <div class="text-lg font-semibold text-text-primary">{{ todayDueOrScheduledCount }}</div>
                 <div class="text-[11px] uppercase tracking-wide text-text-muted">Aufgaben heute</div>
@@ -2543,6 +2544,8 @@ async function restoreArchivedProject(groupId: string) {
   opacity: 0;
 }
 </style>
+
+
 
 
 

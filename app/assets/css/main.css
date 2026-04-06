@@ -77,6 +77,11 @@ body {
   transform: translateY(-1px);
 }
 
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(139, 108, 255, 0.2), 0 6px 25px rgba(139, 108, 255, 0.45);
+}
+
 .btn-secondary {
   background: rgba(255, 255, 255, 0.06);
   color: #A7B0C5;
@@ -92,6 +97,12 @@ body {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+.btn-secondary:focus-visible {
+  outline: none;
+  border-color: rgba(139, 108, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(139, 108, 255, 0.14);
+}
+
 .btn-accent-green {
   background: linear-gradient(135deg, #8DFFB5 0%, #6CB8FF 100%);
   color: #0B1020;
@@ -105,6 +116,11 @@ body {
 .btn-accent-green:hover {
   box-shadow: 0 6px 25px rgba(141, 255, 181, 0.35);
   transform: translateY(-1px);
+}
+
+.btn-accent-green:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(108, 184, 255, 0.18), 0 6px 25px rgba(141, 255, 181, 0.35);
 }
 
 .input-dark {
@@ -123,6 +139,19 @@ body {
 
 .input-dark::placeholder {
   color: #6B7A99;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid rgba(139, 108, 255, 0.5);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 .ambient-glow-purple {

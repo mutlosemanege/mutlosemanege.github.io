@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { RoutineTemplate, Task } from '~/types/task'
@@ -76,6 +76,11 @@ const previewReason = ref<string | null>(null)
 const previewUncertainty = ref<string | null>(null)
 const previewAlternatives = ref<Array<{ label: string; reason: string }>>([])
 const previewAvailabilityLabel = ref<string | null>(null)
+const examplePrompts = [
+  'Treffen mit Bro morgen Abend',
+  '2h Videoschnitt zwischen 14 und 17 Uhr',
+  'jeden Mittwoch Gym 18 bis 20 Uhr',
+]
 
 const previewDuplicateWarnings = computed(() => {
   if (previewEvent.value?.start.dateTime && previewEvent.value?.end.dateTime) {
@@ -238,7 +243,7 @@ async function handleCreate() {
 
   try {
     if (previewDuplicateWarnings.value.some(entry => entry.kind === 'exact-match')) {
-      throw new Error('Ein sehr �hnlicher Termin ist bereits im Kalender vorhanden.')
+      throw new Error('Ein sehr ähnlicher Termin ist bereits im Kalender vorhanden.')
     }
 
     const created = await createEvent(previewEvent.value)
@@ -263,7 +268,7 @@ async function handleCreateTask() {
 
   try {
     if (previewTaskSlot.value && previewDuplicateWarnings.value.some(entry => entry.kind === 'exact-match')) {
-      throw new Error('Ein sehr �hnlicher Kalendereintrag f�r diese Aufgabe ist bereits vorhanden.')
+      throw new Error('Ein sehr ähnlicher Kalendereintrag für diese Aufgabe ist bereits vorhanden.')
     }
 
     const task = await createTask(previewTask.value)
@@ -610,7 +615,7 @@ function buildCleanTitle(text: string) {
 
 function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
   if (parsed.recurrenceDay === undefined) {
-    throw new Error('F�r eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
+    throw new Error('Für eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
   }
 
   const baseStartMinutes = parsed.timePreference?.exactStartMinutes ??
@@ -766,11 +771,11 @@ function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
   if (intent === 'event') {
     if (inPersonalWindow && !inWorkWindow) return 'Freizeit-Slot'
     if (inWorkWindow) return 'Arbeitsnaher Slot'
-    return 'Pers�nlicher Termin-Slot'
+    return 'Persönlicher Termin-Slot'
   }
 
   if (inWorkWindow) return 'Arbeits-Slot'
-  if (inPersonalWindow) return 'Au�erhalb der Arbeitszeit'
+  if (inPersonalWindow) return 'Außerhalb der Arbeitszeit'
   return 'Sonder-Slot'
 }
 
@@ -836,7 +841,7 @@ function buildSlotReason(parsed: ParsedPlanningRequest, start: Date, strategy: S
   if ((strategy === 'time-and-period' || strategy === 'time-only') && parsed.timePreference) {
     reasons.push(`er in dein Zeitfenster ${parsed.timePreference.label} passt`)
   } else if (parsed.timePreference?.exactStartMinutes !== undefined) {
-    reasons.push('die genaue Wunschzeit belegt war und ich den n�chsten sinnvollen freien Slot gesucht habe')
+    reasons.push('die genaue Wunschzeit belegt war und ich den nächsten sinnvollen freien Slot gesucht habe')
   }
 
   if ((strategy === 'time-and-period' || strategy === 'period-only') && parsed.preferredPeriod !== 'any') {
@@ -846,21 +851,21 @@ function buildSlotReason(parsed: ParsedPlanningRequest, start: Date, strategy: S
   if (parsed.hasExplicitDate) {
     reasons.push(`er am ${start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })} frei ist`)
   } else {
-    reasons.push('es der fr�heste freie Slot ist')
+    reasons.push('es der früheste freie Slot ist')
   }
 
-  return `Gew�hlt, weil ${reasons.join(' und ')} und dort ${parsed.durationMinutes} Minuten frei waren.`
+  return `Gewählt, weil ${reasons.join(' und ')} und dort ${parsed.durationMinutes} Minuten frei waren.`
 }
 
 function buildNoSlotReason(parsed: ParsedPlanningRequest) {
   if (parsed.timePreference && parsed.hasExplicitDate) {
-    return `Ich habe in ${parsed.timePreference.label} rund um deinen gew�nschten Zeitraum keinen freien Slot gefunden.`
+    return `Ich habe in ${parsed.timePreference.label} rund um deinen gewünschten Zeitraum keinen freien Slot gefunden.`
   }
   if (parsed.preferredPeriod !== 'any' && parsed.hasExplicitDate) {
     return `Ich habe in deinem bevorzugten Zeitraum "${periodLabel(parsed.preferredPeriod)}" keinen freien Slot gefunden.`
   }
   if (parsed.hasExplicitDate) {
-    return 'Ich habe in deinem gew�nschten Zeitraum keinen freien Slot gefunden.'
+    return 'Ich habe in deinem gewünschten Zeitraum keinen freien Slot gefunden.'
   }
   return 'Ich habe aktuell keinen passenden freien Slot gefunden.'
 }
@@ -868,7 +873,7 @@ function buildNoSlotReason(parsed: ParsedPlanningRequest) {
 function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roundedToHour: boolean) {
   const reasons = [
     `${parsed.recurrenceLabel || 'Wiederkehrung'} erkannt`,
-    `n�chste Ausf�hrung ${formatPreview(nextStart.toISOString())}`,
+    `nächste Ausführung ${formatPreview(nextStart.toISOString())}`,
   ]
 
   if (parsed.timePreference) {
@@ -878,10 +883,10 @@ function buildRoutineReason(parsed: ParsedPlanningRequest, nextStart: Date, roun
   }
 
   if (roundedToHour) {
-    reasons.push('f�r Routinen aktuell auf volle Stunden gerundet')
+    reasons.push('für Routinen aktuell auf volle Stunden gerundet')
   }
 
-  return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und f�r die n�chsten 4 Wochen in den Kalender eingetragen.`
+  return `Routine-Vorschlag: ${reasons.join(', ')}. Sie wird als Vorlage gespeichert und für die nächsten 4 Wochen in den Kalender eingetragen.`
 }
 
 function buildPreviewUncertainty(
@@ -894,7 +899,7 @@ function buildPreviewUncertainty(
   }
 
   if (!hasSuggestion) {
-    return 'Es gibt aktuell keinen sicheren passenden Slot im gew�nschten Fenster.'
+    return 'Es gibt aktuell keinen sicheren passenden Slot im gewünschten Fenster.'
   }
 
   if (intentMode.value === 'auto') {
@@ -902,7 +907,7 @@ function buildPreviewUncertainty(
   }
 
   if (!parsed.hasExplicitDate && !parsed.timePreference && parsed.preferredPeriod === 'any') {
-    return 'Es wurde kein fester Zeitpunkt erkannt, deshalb nutze ich den fr�hesten sinnvollen freien Slot.'
+    return 'Es wurde kein fester Zeitpunkt erkannt, deshalb nutze ich den frühesten sinnvollen freien Slot.'
   }
 
   return null
@@ -1038,6 +1043,10 @@ function intentLabel(intent: PlanningIntent) {
   if (intent === 'task') return 'Aufgabe'
   return 'Routine'
 }
+
+function useExamplePrompt(value: string) {
+  prompt.value = value
+}
 </script>
 
 <template>
@@ -1046,15 +1055,16 @@ function intentLabel(intent: PlanningIntent) {
       <div v-if="show" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div class="absolute inset-0" @click="emit('close')" />
 
-        <div class="glass-card-elevated relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-glass-xl sm:max-w-5xl sm:rounded-glass-lg">
-          <div class="border-b border-border-subtle px-6 py-5">
+        <div class="glass-card-elevated relative z-10 max-h-[100dvh] w-full overflow-y-auto rounded-t-glass-xl pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-glass-lg sm:pb-0">
+          <div class="sticky top-0 z-10 border-b border-border-subtle bg-surface/88 px-4 py-5 backdrop-blur-glass sm:bg-transparent sm:px-6">
             <div class="flex items-start justify-between gap-4">
+              <div class="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-white/12 sm:hidden" />
               <div>
                 <div class="flex items-center gap-2">
                   <span class="h-2.5 w-2.5 animate-glow rounded-full bg-accent-purple shadow-glow-purple" />
                   <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">KI Planer</p>
                 </div>
-                <h2 class="mt-2 text-2xl font-semibold text-text-primary">Nat�rlich planen</h2>
+                <h2 class="mt-2 text-2xl font-semibold text-text-primary">Natürlich planen</h2>
                 <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
                   Schreib einfach, was du unterbringen willst. Ich erkenne Termin, Aufgabe oder Routine und zeige dir direkt, was daraus entsteht.
                 </p>
@@ -1067,16 +1077,31 @@ function intentLabel(intent: PlanningIntent) {
             </div>
           </div>
 
-          <div class="grid gap-6 px-6 py-6 lg:grid-cols-[1.2fr,0.95fr]">
+          <div class="grid gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:grid-cols-[1.2fr,0.95fr]">
             <div class="space-y-5">
               <section class="glass-card p-4">
-                <label class="block text-sm font-medium text-text-secondary">Was m�chtest du einplanen?</label>
+                <label class="block text-sm font-medium text-text-secondary">Was möchtest du einplanen?</label>
                 <textarea
                   v-model="prompt"
                   rows="5"
                   class="input-dark mt-3 w-full resize-none px-4 py-4"
                   placeholder="z.B. Meeting morgen um 14 Uhr, Hausarbeit 3h diese Woche oder jeden Mittwoch Gym 18 bis 20 Uhr"
                 />
+
+                <div class="mt-4">
+                  <div class="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Schnell starten</div>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button
+                      v-for="example in examplePrompts"
+                      :key="example"
+                      type="button"
+                      class="rounded-full border border-border-subtle bg-white/[0.03] px-3 py-2 text-left text-xs text-text-secondary transition hover:border-border-medium hover:bg-white/[0.06] hover:text-text-primary"
+                      @click="useExamplePrompt(example)"
+                    >
+                      {{ example }}
+                    </button>
+                  </div>
+                </div>
 
                 <div class="mt-4 space-y-4">
                   <div>
@@ -1135,14 +1160,26 @@ function intentLabel(intent: PlanningIntent) {
                     Vorschlag suchen
                   </button>
                   <button type="button" class="btn-secondary px-4 py-3 text-sm" @click="emit('close')">
-                    Schlie�en
+                    Schließen
                   </button>
                 </div>
               </section>
 
               <section class="glass-card border-dashed p-4" v-if="!parsedDetails">
-                <h3 class="text-sm font-semibold text-text-primary">Beispiele</h3>
-                <div class="mt-3 space-y-2 text-sm italic text-text-muted">
+                <div class="flex items-start gap-3">
+                  <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent-purple/12 text-accent-purple shadow-glow-purple">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-semibold text-text-primary">Beispiele und Ideen</h3>
+                    <p class="mt-2 text-sm leading-6 text-text-secondary">
+                      Formuliere locker, was du vorhast. Der Chat erkennt daraus Termin, Aufgabe oder Routine und zeigt dir direkt einen passenden Vorschlag.
+                    </p>
+                  </div>
+                </div>
+                <div class="mt-4 space-y-2 text-sm italic text-text-muted">
                   <p>`Treffen mit Bro morgen Abend`</p>
                   <p>`2h Videoschnitt zwischen 14 und 17 Uhr`</p>
                   <p>`jeden Mittwoch Gym 18 bis 20 Uhr`</p>
@@ -1233,14 +1270,14 @@ function intentLabel(intent: PlanningIntent) {
                     v-if="previewDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
                   >
-                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">M�gliche Duplikate</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Mögliche Duplikate</div>
                     <div class="mt-3 space-y-2">
                       <div
                         v-for="duplicate in previewDuplicateWarnings.slice(0, 2)"
                         :key="`${duplicate.event.id || duplicate.event.summary}-${duplicate.reason}`"
                         class="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
                       >
-                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || '�hnlicher Termin' }}</div>
+                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || 'ähnlicher Termin' }}</div>
                         <div class="mt-1 text-[11px] text-priority-high">{{ duplicate.reason }}</div>
                       </div>
                     </div>
@@ -1260,11 +1297,11 @@ function intentLabel(intent: PlanningIntent) {
                   <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
                     <p class="text-sm font-medium text-text-primary">{{ previewTask.title }}</p>
                     <p class="mt-1 text-sm text-text-secondary">
-                      {{ previewTask.estimatedMinutes }} Minuten, Priorit�t {{ previewTask.priority }}
+                      {{ previewTask.estimatedMinutes }} Minuten, Priorität {{ previewTask.priority }}
                     </p>
                     <p class="mt-3 text-sm text-accent-purple">
                       <template v-if="previewTaskSlot">
-                        Wird als Aufgabe angelegt und direkt f�r {{ formatPreview(previewTask.scheduledStart) }} terminiert
+                        Wird als Aufgabe angelegt und direkt für {{ formatPreview(previewTask.scheduledStart) }} terminiert
                       </template>
                       <template v-else>
                         Noch kein freier Slot gefunden, Aufgabe wird nur angelegt.
@@ -1279,14 +1316,14 @@ function intentLabel(intent: PlanningIntent) {
                     v-if="previewDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
                   >
-                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">M�gliche Duplikate</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Mögliche Duplikate</div>
                     <div class="mt-3 space-y-2">
                       <div
                         v-for="duplicate in previewDuplicateWarnings.slice(0, 2)"
                         :key="`${duplicate.event.id || duplicate.event.summary}-${duplicate.reason}`"
                         class="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
                       >
-                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || '�hnlicher Termin' }}</div>
+                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || 'ähnlicher Termin' }}</div>
                         <div class="mt-1 text-[11px] text-priority-high">{{ duplicate.reason }}</div>
                       </div>
                     </div>
@@ -1311,10 +1348,10 @@ function intentLabel(intent: PlanningIntent) {
                       {{ String(previewRoutine.template.endHour).padStart(2, '0') }}:00
                     </p>
                     <p class="mt-3 text-sm text-accent-green">
-                      Wird als Routine-Vorlage gespeichert und f�r die n�chsten 4 Wochen eingetragen
+                      Wird als Routine-Vorlage gespeichert und für die nächsten 4 Wochen eingetragen
                     </p>
                     <p class="mt-2 text-xs text-text-muted">
-                      N�chste Ausf�hrung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
+                      Nächste Ausführung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
                     </p>
                   </div>
 
@@ -1322,7 +1359,7 @@ function intentLabel(intent: PlanningIntent) {
                     v-if="routineDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
                   >
-                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Bereits �hnliche Routinen im Kalender</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Bereits ähnliche Routinen im Kalender</div>
                     <div class="mt-3 space-y-2">
                       <div
                         v-for="duplicate in routineDuplicateWarnings"
@@ -1345,8 +1382,16 @@ function intentLabel(intent: PlanningIntent) {
                   </button>
                 </div>
 
-                <div v-else class="mt-4 rounded-glass border border-dashed border-border-subtle bg-white/[0.03] px-4 py-6 text-center text-sm text-text-muted">
-                  Noch kein Vorschlag vorhanden.
+                <div v-else class="mt-4 rounded-glass border border-dashed border-border-subtle bg-white/[0.03] px-4 py-6 text-center">
+                  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-blue/12 text-accent-blue shadow-glow-blue">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 12h14m-7-7 7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 class="mt-4 text-sm font-semibold text-text-primary">Noch kein Vorschlag vorhanden</h4>
+                  <p class="mt-2 text-sm text-text-secondary">
+                    Beschreibe links deinen Wunsch in natürlicher Sprache oder tippe auf ein Beispiel, damit rechts direkt ein Vorschlag erscheint.
+                  </p>
                 </div>
               </section>
 
@@ -1383,4 +1428,6 @@ function intentLabel(intent: PlanningIntent) {
   opacity: 0;
 }
 </style>
+
+
 

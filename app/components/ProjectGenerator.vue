@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { Task, TaskPriority } from '~/types/task'
 
@@ -232,7 +232,7 @@ const projectScopeInsights = computed(() => {
   }
 
   if (totalHours.value >= 20) {
-    labels.push('Umfang ueber 20 Stunden')
+    labels.push('Umfang über 20 Stunden')
     severity = severity === 'danger' ? 'danger' : 'warning'
   }
 
@@ -260,12 +260,12 @@ const reviewWhy = computed(() => {
   const reasons: string[] = []
 
   if (suggestedStartTasks.value.length > 0) {
-    reasons.push(`${suggestedStartTasks.value.length} Aufgaben koennen sofort starten, weil sie keine offenen Abhaengigkeiten haben.`)
+    reasons.push(`${suggestedStartTasks.value.length} Aufgaben können sofort starten, weil sie keine offenen Abhängigkeiten haben.`)
   }
 
   const deepWorkCount = includedPreviewTasks.value.filter(task => task.isDeepWork).length
   if (deepWorkCount > 0) {
-    reasons.push(`${deepWorkCount} Aufgaben wurden als Deep Work markiert und sollten in ruhigere Bloecke.`)
+    reasons.push(`${deepWorkCount} Aufgaben wurden als Deep Work markiert und sollten in ruhigere Blöcke.`)
   }
 
   if (projectScopeInsights.value.availableHours > 0) {
@@ -277,15 +277,15 @@ const reviewWhy = computed(() => {
 
 const reviewUncertainty = computed(() => {
   if (projectScopeInsights.value.severity === 'danger') {
-    return 'Der Umfang wirkt aktuell kritisch. Deadline oder Umfang koennten fuer den verfuegbaren Kalender zu eng sein.'
+    return 'Der Umfang wirkt aktuell kritisch. Deadline oder Umfang könnten für den verfügbaren Kalender zu eng sein.'
   }
 
   if (!deadline.value) {
-    return 'Ohne Deadline ist die Reihenfolge plausibel, aber die Dringlichkeit der spaeteren Schritte bleibt unschaerfer.'
+    return 'Ohne Deadline ist die Reihenfolge plausibel, aber die Dringlichkeit der späteren Schritte bleibt unschärfer.'
   }
 
   if (includedPreviewTasks.value.some(task => task.dependsOn.length >= 2)) {
-    return 'Mehrere vernetzte Abhaengigkeiten koennen spaeter noch Feintuning brauchen.'
+    return 'Mehrere vernetzte Abhängigkeiten können später noch Feintuning brauchen.'
   }
 
   return null
@@ -295,17 +295,17 @@ const reviewAlternatives = computed(() => {
   const alternatives: string[] = []
 
   if (projectScopeInsights.value.severity !== 'normal') {
-    alternatives.push('Nur die Startaufgaben uebernehmen und den Rest spaeter nachziehen.')
+    alternatives.push('Nur die Startaufgaben übernehmen und den Rest später nachziehen.')
   }
 
   if (autoScheduleAfterCreate.value) {
-    alternatives.push('Projekt erst nur anlegen und Auto-Planen spaeter manuell starten.')
+    alternatives.push('Projekt erst nur anlegen und Auto-Planen später manuell starten.')
   } else {
     alternatives.push('Direkt nach dem Erstellen automatisch einplanen lassen.')
   }
 
   if (includedPreviewTasks.value.some(task => task.dependsOn.length > 0)) {
-    alternatives.push('Blockierte Aufgaben vorerst abwaehlen und nur den ersten Abschnitt uebernehmen.')
+    alternatives.push('Blockierte Aufgaben vorerst abwählen und nur den ersten Abschnitt übernehmen.')
   }
 
   return alternatives
@@ -405,9 +405,10 @@ function addDays(date: Date, days: number) {
       <div v-if="show" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div class="absolute inset-0" @click="emit('close')" />
 
-        <div class="glass-card-elevated relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-glass-xl p-6 sm:max-w-4xl sm:rounded-glass-lg">
+        <div class="glass-card-elevated relative z-10 max-h-[100dvh] w-full overflow-y-auto rounded-t-glass-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-h-[92vh] sm:max-w-4xl sm:rounded-glass-lg sm:p-6 sm:pb-6">
           <template v-if="step === 'input'">
             <div class="flex items-start justify-between gap-4">
+              <div class="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-white/12 sm:hidden" />
               <div>
                 <div class="flex items-center gap-2">
                   <span class="h-2.5 w-2.5 animate-glow rounded-full bg-accent-purple shadow-glow-purple" />
@@ -415,7 +416,7 @@ function addDays(date: Date, days: number) {
                 </div>
                 <h2 class="mt-2 text-2xl font-semibold text-text-primary">Projekt in Aufgaben zerlegen</h2>
                 <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-                  Beschreibe dein Projekt und die KI erstellt daraus sinnvolle Aufgaben, Priorit�ten und Abh�ngigkeiten.
+                  Beschreibe dein Projekt und die KI erstellt daraus sinnvolle Aufgaben, Prioritäten und Abhängigkeiten.
                 </p>
               </div>
             </div>
@@ -427,7 +428,7 @@ function addDays(date: Date, days: number) {
                   v-model="description"
                   rows="5"
                   class="input-dark mt-3 w-full resize-none px-4 py-4"
-                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Pr�fung vorbereiten oder Website relaunchen..."
+                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Prüfung vorbereiten oder Website relaunchen..."
                 />
 
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -454,10 +455,10 @@ function addDays(date: Date, days: number) {
                 <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-accent-blue">Leitplanken</h3>
                 <div class="mt-4 space-y-3 text-sm text-text-secondary">
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
-                    Die vorhandene KI bleibt unver�ndert. Wir redesignen nur die Oberfl�che und den Review-Fluss.
+                    Die vorhandene KI bleibt unverändert. Wir redesignen nur die Oberfläche und den Review-Fluss.
                   </div>
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
-                    Der Generator ist bewusst allgemeiner gehalten und passt f�r private, kreative und produktive Projekte.
+                    Der Generator ist bewusst allgemeiner gehalten und passt für private, kreative und produktive Projekte.
                   </div>
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
                     Nach dem Erstellen kann das Projekt auf Wunsch direkt automatisch eingeplant werden.
@@ -501,6 +502,31 @@ function addDays(date: Date, days: number) {
               </span>
             </div>
 
+            <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div class="glass-card p-4">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Aktive Aufgaben</div>
+                <div class="mt-3 text-2xl font-semibold text-text-primary">{{ includedPreviewTasks.length }}</div>
+                <div class="mt-1 text-xs text-text-secondary">werden übernommen</div>
+              </div>
+              <div class="glass-card p-4">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Geplanter Aufwand</div>
+                <div class="mt-3 text-2xl font-semibold text-text-primary">{{ totalHours }}h</div>
+                <div class="mt-1 text-xs text-text-secondary">{{ totalMinutes }} Minuten Gesamtumfang</div>
+              </div>
+              <div class="glass-card p-4">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Sofort startbar</div>
+                <div class="mt-3 text-2xl font-semibold text-accent-blue">{{ suggestedStartTasks.length }}</div>
+                <div class="mt-1 text-xs text-text-secondary">ohne offene Abhängigkeiten</div>
+              </div>
+              <div class="glass-card p-4">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Deep Work</div>
+                <div class="mt-3 text-2xl font-semibold text-accent-purple-soft">
+                  {{ includedPreviewTasks.filter(task => task.isDeepWork).length }}
+                </div>
+                <div class="mt-1 text-xs text-text-secondary">mit Fokusbedarf</div>
+              </div>
+            </div>
+
             <div v-if="projectScopeInsights.labels.length > 0" class="mt-5 rounded-glass border px-4 py-4"
               :class="projectScopeInsights.severity === 'danger'
                 ? 'border-priority-critical/30 bg-priority-critical/10'
@@ -536,7 +562,7 @@ function addDays(date: Date, days: number) {
                     <div class="min-w-0">
                       <div class="text-sm font-medium text-text-primary">{{ task.title }}</div>
                       <div class="mt-1 text-xs text-text-secondary">
-                        {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abh�ngigkeiten' : '' }}
+                        {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abhängigkeiten' : '' }}
                       </div>
                     </div>
                     <span class="rounded-full bg-accent-blue/15 px-2 py-0.5 text-[11px] text-accent-blue">zuerst</span>
@@ -574,9 +600,19 @@ function addDays(date: Date, days: number) {
               Nach dem Erstellen direkt automatisch einplanen
             </label>
 
-            <div class="mt-5 space-y-3">
+            <div v-if="orderedPreviewTasks.length === 0" class="mt-5 rounded-glass border border-dashed border-border-strong bg-white/[0.03] px-4 py-8 text-center">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-purple/12 text-accent-purple shadow-glow-purple">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
+                </svg>
+              </div>
+              <h3 class="mt-4 text-sm font-semibold text-text-primary">Keine Aufgabe ausgewählt</h3>
+              <p class="mt-2 text-sm text-text-secondary">Aktiviere mindestens eine Aufgabe, damit das Projekt erstellt werden kann.</p>
+            </div>
+
+            <div v-else class="mt-5 space-y-3">
               <div
-                v-for="task in orderedPreviewTasks"
+                v-for="(task, index) in orderedPreviewTasks"
                 :key="task.tempId"
                 class="rounded-glass border p-4 transition"
                 :class="task.include ? 'border-border-subtle bg-white/[0.04]' : 'border-border-subtle/60 bg-white/[0.02] opacity-50'"
@@ -589,6 +625,9 @@ function addDays(date: Date, days: number) {
                   >
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
+                      <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary">
+                        Schritt {{ index + 1 }}
+                      </span>
                       <span class="text-sm font-medium text-text-primary">{{ task.title }}</span>
                       <span
                         class="rounded-full px-2 py-0.5 text-[11px]"
@@ -609,18 +648,24 @@ function addDays(date: Date, days: number) {
                     <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-text-muted">
                       <span>{{ task.estimatedMinutes }} Min.</span>
                       <span v-if="task.dependsOn.length === 0" class="text-accent-blue">Startklar</span>
-                      <span v-if="task.dependsOn.length > 0">Abh�ngig von: {{ dependencyLabels(task) }}</span>
+                      <span v-if="task.dependsOn.length > 0">Abhängig von: {{ dependencyLabels(task) }}</span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="mt-6 flex justify-between gap-2">
-              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zur�ck</button>
-              <div class="flex gap-2">
-                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
-                <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">Projekt erstellen</button>
+            <div class="sticky bottom-0 mt-6 rounded-glass border border-border-subtle bg-surface/80 px-4 py-3 backdrop-blur-glass">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-xs text-text-secondary">
+                  {{ includedPreviewTasks.length }} Aufgaben werden übernommen.
+                  <span v-if="autoScheduleAfterCreate">Auto-Planen ist nach dem Erstellen aktiv.</span>
+                </div>
+                <div class="flex justify-between gap-2 sm:justify-end">
+                  <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zurück</button>
+                  <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
+                  <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">Projekt erstellen</button>
+                </div>
               </div>
             </div>
           </template>
@@ -640,10 +685,10 @@ function addDays(date: Date, days: number) {
                 {{ creationSummary.scheduledCount }} Aufgaben wurden direkt eingeplant, {{ creationSummary.remainingCount }} bleiben vorerst offen.
               </p>
               <p v-else-if="creationSummary && !autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
-                Die Aufgaben wurden angelegt und k�nnen danach manuell oder per Auto-Planen eingeplant werden.
+                Die Aufgaben wurden angelegt und können danach manuell oder per Auto-Planen eingeplant werden.
               </p>
               <div class="mt-6 flex justify-center gap-2">
-                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schlie�en</button>
+                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schließen</button>
               </div>
             </div>
           </template>
@@ -663,4 +708,9 @@ function addDays(date: Date, days: number) {
   opacity: 0;
 }
 </style>
+
+
+
+
+
 

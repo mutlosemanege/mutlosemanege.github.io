@@ -1,4 +1,4 @@
-<script setup lang="ts">
+ï»¿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { Task } from '~/types/task'
 
@@ -85,7 +85,7 @@ const nextBestTask = computed(() => {
 const nextBestTaskReason = computed(() => {
   const task = nextBestTask.value
   if (!task) return 'Gerade ist nichts Dringendes offen.'
-  if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
+  if (task.scheduledStart) return `Schon eingeplant fÃ¼r ${formatDateTime(task.scheduledStart)}.`
   if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
   if (task.priorityReason) return task.priorityReason
   return 'Aktuell die wichtigste offene Aufgabe.'
@@ -108,7 +108,7 @@ const todayPressure = computed(() => {
     return 'Heute ist kein klarer Fokusblock mehr frei.'
   }
 
-  return 'Heute wirkt der Plan machbar und es gibt noch nutzbare freie Blöcke.'
+  return 'Heute wirkt der Plan machbar und es gibt noch nutzbare freie BlÃ¶cke.'
 })
 
 let desktopSidebarQuery: MediaQueryList | null = null
@@ -317,7 +317,7 @@ async function runTodayAction(action: () => Promise<void>) {
   try {
     await action()
   } catch (error: any) {
-    todayActionFeedback.value = error?.message || 'Aktion konnte gerade nicht ausgeführt werden.'
+    todayActionFeedback.value = error?.message || 'Aktion konnte gerade nicht ausgefÃ¼hrt werden.'
   } finally {
     isRunningTodayAction.value = false
   }
@@ -328,7 +328,7 @@ async function planNextTaskToday() {
 
   const slot = findSlotForTask(nextBestTask.value, todayRange.value.start, todayRange.value.end)
   if (!slot) {
-    throw new Error('Heute ist kein passender freier Block mehr für diese Aufgabe verfügbar.')
+    throw new Error('Heute ist kein passender freier Block mehr fÃ¼r diese Aufgabe verfÃ¼gbar.')
   }
 
   await scheduleTaskIntoSlot(
@@ -343,13 +343,13 @@ async function fitNextTaskIntoSmallGap() {
 
   const slot = findSlotForTask(nextBestTask.value, todayRange.value.start, todayRange.value.end, true)
   if (!slot) {
-    throw new Error('Es gibt heute keine passende kleinere Lücke für diese Aufgabe.')
+    throw new Error('Es gibt heute keine passende kleinere LÃ¼cke fÃ¼r diese Aufgabe.')
   }
 
   await scheduleTaskIntoSlot(
     nextBestTask.value,
     slot,
-    `"${nextBestTask.value.title}" wurde in eine kleinere freie Lücke gesetzt.`,
+    `"${nextBestTask.value.title}" wurde in eine kleinere freie LÃ¼cke gesetzt.`,
   )
 }
 
@@ -363,7 +363,7 @@ async function moveNextTaskToTomorrow() {
 
   const slot = findSlotForTask(nextBestTask.value, tomorrowStart, tomorrowEnd)
   if (!slot) {
-    throw new Error('Morgen gibt es aktuell keinen passenden freien Slot für diese Aufgabe.')
+    throw new Error('Morgen gibt es aktuell keinen passenden freien Slot fÃ¼r diese Aufgabe.')
   }
 
   await scheduleTaskIntoSlot(
@@ -467,16 +467,16 @@ function formatSlotRange(start: Date, end: Date) {
           </div>
           <h1 class="mt-6 text-3xl font-semibold text-text-primary">Kalender AI Workspace</h1>
           <p class="mx-auto mt-3 max-w-xl text-base leading-7 text-text-secondary">
-            Verbinde dein Google-Konto und steuere Termine, Aufgaben, Routinen und KI-Planung in einer ruhigen Premium-Oberfläche.
+            Verbinde dein Google-Konto und steuere Termine, Aufgaben, Routinen und KI-Planung in einer ruhigen Premium-OberflÃ¤che.
           </p>
           <div class="mt-8 grid gap-3 text-left sm:grid-cols-3">
             <div class="rounded-glass border border-border-subtle bg-white/[0.04] p-4">
               <p class="text-xs uppercase tracking-[0.24em] text-accent-purple-soft">Planen</p>
-              <p class="mt-2 text-sm text-text-secondary">Monats- und Wochenansicht mit Fokus auf freie Blöcke und Tagesdruck.</p>
+              <p class="mt-2 text-sm text-text-secondary">Monats- und Wochenansicht mit Fokus auf freie BlÃ¶cke und Tagesdruck.</p>
             </div>
             <div class="rounded-glass border border-border-subtle bg-white/[0.04] p-4">
               <p class="text-xs uppercase tracking-[0.24em] text-accent-blue">KI</p>
-              <p class="mt-2 text-sm text-text-secondary">Priorisierung, Projektgenerator und natürlicher Planungs-Chat bleiben vollständig erhalten.</p>
+              <p class="mt-2 text-sm text-text-secondary">Priorisierung, Projektgenerator und natÃ¼rlicher Planungs-Chat bleiben vollstÃ¤ndig erhalten.</p>
             </div>
             <div class="rounded-glass border border-border-subtle bg-white/[0.04] p-4">
               <p class="text-xs uppercase tracking-[0.24em] text-accent-green">Struktur</p>
@@ -503,7 +503,7 @@ function formatSlotRange(start: Date, end: Date) {
                 </button>
               </div>
 
-              <div class="relative z-10 mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div class="relative z-10 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
                   <div class="text-lg font-semibold text-text-primary">{{ todayEvents.length }}</div>
                   <div class="text-xs text-text-muted">Termine heute</div>
@@ -528,7 +528,7 @@ function formatSlotRange(start: Date, end: Date) {
             </section>
 
             <section class="glass-card p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Nächster bester Schritt</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">NÃ¤chster bester Schritt</p>
               <div v-if="nextBestTask" class="mt-4">
                 <h3 class="text-lg font-semibold text-text-primary">{{ nextBestTask.title }}</h3>
                 <p class="mt-2 text-sm leading-6 text-text-secondary">{{ nextBestTaskReason }}</p>
@@ -542,17 +542,17 @@ function formatSlotRange(start: Date, end: Date) {
                   </span>
                 </div>
                 <button class="btn-secondary mt-4 px-4 py-2 text-sm" @click="onEditTask(nextBestTask)">
-                  Aufgabe öffnen
+                  Aufgabe Ã¶ffnen
                 </button>
                 <div class="mt-4 flex flex-wrap gap-2">
                   <button class="btn-primary px-4 py-2 text-sm disabled:opacity-50" :disabled="isRunningTodayAction" @click="runTodayAction(planNextTaskToday)">
                     Heute neu planen
                   </button>
                   <button class="btn-secondary px-4 py-2 text-sm disabled:opacity-50" :disabled="isRunningTodayAction" @click="runTodayAction(fitNextTaskIntoSmallGap)">
-                    Kleinere Lücke finden
+                    Kleinere LÃ¼cke finden
                   </button>
                   <button class="btn-secondary px-4 py-2 text-sm disabled:opacity-50" :disabled="isRunningTodayAction" @click="runTodayAction(moveNextTaskToTomorrow)">
-                    Für morgen schieben
+                    FÃ¼r morgen schieben
                   </button>
                 </div>
               </div>
@@ -562,7 +562,7 @@ function formatSlotRange(start: Date, end: Date) {
             </section>
 
             <section class="glass-card p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Freie Fokusblöcke</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Freie FokusblÃ¶cke</p>
               <div v-if="todayFocusSlots.length > 0" class="mt-4 space-y-3">
                 <div
                   v-for="slot in todayFocusSlots"
@@ -576,7 +576,7 @@ function formatSlotRange(start: Date, end: Date) {
                 </div>
               </div>
               <p v-else class="mt-4 text-sm leading-6 text-text-secondary">
-                Heute ist kein längerer Fokusblock mehr frei. Kleinere Slots sind aber noch möglich.
+                Heute ist kein lÃ¤ngerer Fokusblock mehr frei. Kleinere Slots sind aber noch mÃ¶glich.
               </p>
             </section>
           </div>
@@ -695,6 +695,7 @@ function formatSlotRange(start: Date, end: Date) {
     />
   </div>
 </template>
+
 
 
 
