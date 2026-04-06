@@ -206,14 +206,14 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
     }
   }
 
-  const exactMatch = text.match(/\bum\s+(\d{1,2})(?::(\d{2}))?\s*uhr?\b/)
+  const exactMatch = text.match(/(?:\bum\s+|\b)(\d{1,2})(?::(\d{2}))?\s*uhr\b/)
   if (exactMatch) {
     const exactStartMinutes = toMinutes(exactMatch[1], exactMatch[2])
     return {
       exactStartMinutes,
       startMinutes: exactStartMinutes,
       endMinutes: exactStartMinutes + fallbackDuration,
-      label: `ab ${formatClockMinutes(exactStartMinutes)}`,
+      label: `um ${formatClockMinutes(exactStartMinutes)}`,
     }
   }
 

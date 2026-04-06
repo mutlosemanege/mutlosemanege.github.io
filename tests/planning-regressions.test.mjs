@@ -239,6 +239,13 @@ const cases = [
       assert.equal(windowRequest.dateFrom.toISOString().slice(0, 10), '2026-04-07')
       assert.equal(windowRequest.timePreference?.startMinutes, 14 * 60)
       assert.equal(windowRequest.timePreference?.endMinutes, 17 * 60)
+
+      const exactTimeRequest = parsePlanningPrompt('Treffen mit Bro 12 Uhr', 60, 'auto', baseNow)
+      assert.equal(exactTimeRequest.intent, 'event')
+      assert.equal(exactTimeRequest.timePreference?.exactStartMinutes, 12 * 60)
+      assert.equal(exactTimeRequest.timePreference?.startMinutes, 12 * 60)
+      assert.equal(exactTimeRequest.timePreference?.endMinutes, 13 * 60)
+      assert.equal(exactTimeRequest.timePreference?.label, 'um 12:00')
     },
   },
 ]
