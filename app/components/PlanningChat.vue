@@ -39,6 +39,13 @@ interface SlotCandidate extends SlotSuggestion {
   strategy: SlotStrategy
 }
 
+interface PreviewAlternative {
+  label: string
+  reason: string
+  start: Date
+  end: Date
+}
+
 interface RoutinePreview {
   template: RoutineTemplate
   nextStart: Date
@@ -74,7 +81,7 @@ const parsedDetails = ref<ParsedPlanningRequest | null>(null)
 const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
 const previewReason = ref<string | null>(null)
 const previewUncertainty = ref<string | null>(null)
-const previewAlternatives = ref<Array<{ label: string; reason: string }>>([])
+const previewAlternatives = ref<PreviewAlternative[]>([])
 const previewAvailabilityLabel = ref<string | null>(null)
 const examplePrompts = [
   'Treffen mit Bro morgen Abend',
@@ -802,7 +809,46 @@ function buildAlternativePreview(parsed: ParsedPlanningRequest) {
     .map(option => ({
       label: `${formatPreview(option.start.toISOString())} bis ${formatPreview(option.end.toISOString())}`,
       reason: option.reason,
+      start: option.start,
+      end: option.end,
     }))
+}
+
+function applyAlternativeSuggestion(alternative: PreviewAlternative) {
+  if (!parsedDetails.value) return
+
+  previewReason.value = `${alternative.reason} Diesen Alternativ-Slot hast du manuell ausgewählt.`
+  previewAvailabilityLabel.value = availabilityLabelForSuggestion(alternative.start, parsedDetails.value.intent)
+  previewUncertainty.value = buildPreviewUncertainty(parsedDetails.value, true)
+
+  if (parsedDetails.value.intent === 'task' && previewTask.value) {
+    previewTaskSlot.value = { start: alternative.start, end: alternative.end }
+    previewTask.value = {
+      ...previewTask.value,
+      status: 'scheduled',
+      priorityReason: 'Erstellt aus Planungs-Chat und mit Alternativ-Slot terminiert',
+      scheduleBlocks: [{ start: alternative.start.toISOString(), end: alternative.end.toISOString() }],
+      scheduledStart: alternative.start.toISOString(),
+      scheduledEnd: alternative.end.toISOString(),
+    }
+    return
+  }
+
+  if (parsedDetails.value.intent === 'event') {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    previewEvent.value = {
+      summary: parsedDetails.value.title,
+      description: `Geplant aus Chat-Eingabe: "${prompt.value.trim()}"`,
+      start: {
+        dateTime: alternative.start.toISOString(),
+        timeZone: tz,
+      },
+      end: {
+        dateTime: alternative.end.toISOString(),
+        timeZone: tz,
+      },
+    }
+  }
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
@@ -1261,14 +1307,23 @@ function useExamplePrompt(value: string) {
                   <div v-if="previewAlternatives.length > 0" class="mt-4">
                     <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Alternativen</div>
                     <div class="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
-                      <div
+                      <button
                         v-for="alternative in previewAlternatives"
                         :key="alternative.label"
-                        class="rounded-xl border border-border-subtle bg-white/[0.04] px-3 py-2"
+                        type="button"
+                        class="w-full rounded-xl border border-border-subtle bg-white/[0.04] px-3 py-2 text-left transition hover:border-border-medium hover:bg-white/[0.06]"
+                        @click="applyAlternativeSuggestion(alternative)"
                       >
-                        <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
-                        <div class="mt-1 text-[11px] text-text-muted">{{ alternative.reason }}</div>
-                      </div>
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0 flex-1">
+                            <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
+                            <div class="mt-1 text-[11px] text-text-muted">{{ alternative.reason }}</div>
+                          </div>
+                          <span class="rounded-full border border-accent-blue/20 bg-accent-blue/10 px-2 py-0.5 text-[10px] font-medium text-accent-blue">
+                            Übernehmen
+                          </span>
+                        </div>
+                      </button>
                     </div>
                   </div>
                 </div>
