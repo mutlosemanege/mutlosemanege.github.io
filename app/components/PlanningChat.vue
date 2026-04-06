@@ -40,10 +40,12 @@ interface SlotCandidate extends SlotSuggestion {
 }
 
 interface PreviewAlternative {
+  key: string
   label: string
   reason: string
   start: Date
   end: Date
+  isPrimary?: boolean
 }
 
 interface RoutinePreview {
@@ -83,6 +85,7 @@ const previewReason = ref<string | null>(null)
 const previewUncertainty = ref<string | null>(null)
 const previewAlternatives = ref<PreviewAlternative[]>([])
 const previewAvailabilityLabel = ref<string | null>(null)
+const selectedPreviewSuggestionKey = ref<string | null>(null)
 const examplePrompts = [
   'Treffen mit Bro morgen Abend',
   '2h Videoschnitt zwischen 14 und 17 Uhr',
@@ -156,6 +159,7 @@ watch(() => props.show, (show) => {
   previewUncertainty.value = null
   previewAlternatives.value = []
   previewAvailabilityLabel.value = null
+  selectedPreviewSuggestionKey.value = null
 })
 
 async function handlePlan() {
@@ -171,6 +175,7 @@ async function handlePlan() {
   previewUncertainty.value = null
   previewAlternatives.value = []
   previewAvailabilityLabel.value = null
+  selectedPreviewSuggestionKey.value = null
 
   try {
     const parsed = parsePlanningPromptCore(prompt.value.trim(), durationMinutes.value, intentMode.value)
@@ -184,11 +189,13 @@ async function handlePlan() {
       return
     }
 
-    const suggestion = findBestSlot(parsed)
+    const previewSuggestions = buildPreviewSuggestions(parsed)
+    const suggestion = previewSuggestions[0] || null
     previewReason.value = suggestion?.reason || buildNoSlotReason(parsed)
-    previewAlternatives.value = buildAlternativePreview(parsed)
+    previewAlternatives.value = previewSuggestions
     previewUncertainty.value = buildPreviewUncertainty(parsed, Boolean(suggestion))
     previewAvailabilityLabel.value = suggestion ? availabilityLabelForSuggestion(suggestion.start, parsed.intent) : null
+    selectedPreviewSuggestionKey.value = suggestion?.key || null
 
     if (parsed.intent === 'task') {
       previewTaskSlot.value = suggestion ? { start: suggestion.start, end: suggestion.end } : null
@@ -803,20 +810,64 @@ function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
   return 'Sonder-Slot'
 }
 
-function buildAlternativePreview(parsed: ParsedPlanningRequest) {
-  return collectSlotCandidates(parsed)
-    .slice(1, 6)
-    .map(option => ({
-      label: `${formatPreview(option.start.toISOString())} bis ${formatPreview(option.end.toISOString())}`,
-      reason: option.reason,
-      start: option.start,
-      end: option.end,
-    }))
+function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
+  const suggestions: PreviewAlternative[] = []
+  const seen = new Set<string>()
+
+  const pushCandidates = (
+    candidates: SlotSuggestion[],
+    suffixReason?: string,
+  ) => {
+    for (const candidate of candidates) {
+      const key = `${candidate.start.toISOString()}-${candidate.end.toISOString()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      suggestions.push({
+        key,
+        label: `${formatPreview(candidate.start.toISOString())} bis ${formatPreview(candidate.end.toISOString())}`,
+        reason: suffixReason ? `${candidate.reason} ${suffixReason}` : candidate.reason,
+        start: candidate.start,
+        end: candidate.end,
+        isPrimary: suggestions.length === 0,
+      })
+      if (suggestions.length >= 5) return
+    }
+  }
+
+  pushCandidates(collectSlotCandidates(parsed))
+
+  if (suggestions.length < 3) {
+    const extendedParsed = {
+      ...parsed,
+      dateTo: addPreviewDays(parsed.dateTo, 14),
+      hasExplicitDate: false,
+    }
+    pushCandidates(
+      collectSlotCandidates(extendedParsed),
+      'Alternative auf einem späteren freien Tag mit ähnlicher Zeitlage.',
+    )
+  }
+
+  if (suggestions.length < 3 && parsed.timePreference) {
+    const relaxedTimeParsed = {
+      ...parsed,
+      timePreference: undefined,
+      dateTo: addPreviewDays(parsed.dateTo, 21),
+      hasExplicitDate: false,
+    }
+    pushCandidates(
+      collectSlotCandidates(relaxedTimeParsed),
+      'Lockerere Alternative ohne feste Uhrzeit, falls dein Wunschslot belegt ist.',
+    )
+  }
+
+  return suggestions.slice(0, Math.max(3, Math.min(5, suggestions.length)))
 }
 
 function applyAlternativeSuggestion(alternative: PreviewAlternative) {
   if (!parsedDetails.value) return
 
+  selectedPreviewSuggestionKey.value = alternative.key
   previewReason.value = `${alternative.reason} Diesen Alternativ-Slot hast du manuell ausgewählt.`
   previewAvailabilityLabel.value = availabilityLabelForSuggestion(alternative.start, parsedDetails.value.intent)
   previewUncertainty.value = buildPreviewUncertainty(parsedDetails.value, true)
@@ -849,6 +900,12 @@ function applyAlternativeSuggestion(alternative: PreviewAlternative) {
       },
     }
   }
+}
+
+function addPreviewDays(date: Date, days: number) {
+  const copy = new Date(date)
+  copy.setDate(copy.getDate() + days)
+  return copy
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
@@ -1305,22 +1362,41 @@ function useExamplePrompt(value: string) {
                     Unsicherheit: {{ previewUncertainty }}
                   </p>
                   <div v-if="previewAlternatives.length > 0" class="mt-4">
-                    <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Alternativen</div>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Vorschläge</div>
+                      <div class="text-[11px] text-text-muted">{{ previewAlternatives.length }} auswählbar</div>
+                    </div>
                     <div class="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
                       <button
                         v-for="alternative in previewAlternatives"
-                        :key="alternative.label"
+                        :key="alternative.key"
                         type="button"
-                        class="w-full rounded-xl border border-border-subtle bg-white/[0.04] px-3 py-2 text-left transition hover:border-border-medium hover:bg-white/[0.06]"
+                        class="w-full rounded-xl border px-3 py-2 text-left transition hover:border-border-medium hover:bg-white/[0.06]"
+                        :class="selectedPreviewSuggestionKey === alternative.key
+                          ? 'border-accent-blue/35 bg-accent-blue/12'
+                          : 'border-border-subtle bg-white/[0.04]'"
                         @click="applyAlternativeSuggestion(alternative)"
                       >
                         <div class="flex items-start justify-between gap-3">
                           <div class="min-w-0 flex-1">
-                            <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
+                            <div class="flex flex-wrap items-center gap-2">
+                              <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
+                              <span
+                                v-if="alternative.isPrimary"
+                                class="rounded-full border border-accent-green/20 bg-accent-green/10 px-2 py-0.5 text-[10px] font-medium text-accent-green"
+                              >
+                                Empfohlen
+                              </span>
+                            </div>
                             <div class="mt-1 text-[11px] text-text-muted">{{ alternative.reason }}</div>
                           </div>
-                          <span class="rounded-full border border-accent-blue/20 bg-accent-blue/10 px-2 py-0.5 text-[10px] font-medium text-accent-blue">
-                            Übernehmen
+                          <span
+                            class="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                            :class="selectedPreviewSuggestionKey === alternative.key
+                              ? 'border-accent-blue/25 bg-accent-blue/15 text-accent-blue'
+                              : 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue'"
+                          >
+                            {{ selectedPreviewSuggestionKey === alternative.key ? 'Ausgewählt' : 'Übernehmen' }}
                           </span>
                         </div>
                       </button>
