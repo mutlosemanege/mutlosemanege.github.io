@@ -11,6 +11,7 @@ export interface Task {
   priorityReason?: string
   prioritySource?: 'ai' | 'manual' | 'system'
   status: TaskStatus
+  lifeArea?: LifeArea
   projectId?: string
   dependencies: readonly string[] // Task-IDs die vorher erledigt sein muessen
   scheduleBlocks?: readonly TaskScheduleBlock[]
@@ -32,6 +33,7 @@ export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done' | 'missed'
 export type PlanningStyle = 'entspannt' | 'normal' | 'aggressiv' | 'deadline-first' | 'focus-first'
 export type DailyPlanningMode = 'fokussiert' | 'entspannt' | 'wenig-zeit' | 'aufholen'
+export type LifeArea = 'arbeit' | 'privat' | 'gesundheit' | 'lernen' | 'alltag'
 export type GermanHolidayRegion =
   | 'DE'
   | 'BW'
@@ -187,4 +189,16 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   deadlineWarningDays: 3,
   workDays: [1, 2, 3, 4, 5],
   routineTemplates: [],
+}
+
+export const LIFE_AREA_OPTIONS: Array<{ value: LifeArea; label: string }> = [
+  { value: 'arbeit', label: 'Arbeit' },
+  { value: 'privat', label: 'Privat' },
+  { value: 'gesundheit', label: 'Gesundheit' },
+  { value: 'lernen', label: 'Lernen' },
+  { value: 'alltag', label: 'Alltag' },
+]
+
+export function resolveLifeAreaLabel(lifeArea: LifeArea) {
+  return LIFE_AREA_OPTIONS.find(option => option.value === lifeArea)?.label || 'Alltag'
 }

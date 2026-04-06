@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { DailyPlanningMode, DailyReflectionTag, PlanningStyle, Task } from '~/types/task'
+import { resolveLifeAreaLabel } from '~/types/task'
+import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Task } from '~/types/task'
 
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
@@ -35,6 +36,13 @@ const reflectionOptions: Array<{ value: DailyReflectionTag; label: string; descr
   { value: 'verschoben', label: 'Verschoben', description: 'Es musste spürbar umgeplant werden.' },
   { value: 'unrealistisch', label: 'Unrealistisch', description: 'Die Planung war für heute zu ambitioniert.' },
 ]
+const lifeAreaColors: Record<LifeArea, string> = {
+  arbeit: 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue',
+  privat: 'border-accent-purple/20 bg-accent-purple/10 text-accent-purple-soft',
+  gesundheit: 'border-accent-green/20 bg-accent-green/10 text-accent-green',
+  lernen: 'border-priority-high/20 bg-priority-high/10 text-priority-high',
+  alltag: 'border-border-subtle bg-white/[0.04] text-text-secondary',
+}
 
 const todayRange = computed(() => {
   const start = new Date()
@@ -55,6 +63,66 @@ const todayEvents = computed(() => {
 
 const todayPendingTasks = computed(() => {
   return tasks.value.filter(task => task.status !== 'done')
+})
+
+function normalizeLifeAreaText(value: string) {
+  return value
+    .toLocaleLowerCase('de-DE')
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+}
+
+function inferLifeArea(task: Task): LifeArea {
+  if (task.lifeArea) return task.lifeArea
+
+  const haystack = normalizeLifeAreaText(`${task.title} ${task.description || ''}`)
+
+  if (/(arzt|gym|sport|training|laufen|schlaf|gesund|routine|fitness)/.test(haystack)) return 'gesundheit'
+  if (/(lernen|uni|schule|kurs|lesen|review|recherche|studium|pruefung)/.test(haystack)) return 'lernen'
+  if (/(treffen|familie|freunde|essen|date|feier|privat|bro)/.test(haystack)) return 'privat'
+  if (/(rechnung|haushalt|putzen|einkauf|orga|alltag|wohnung|kuche|kuendigen)/.test(haystack)) return 'alltag'
+
+  return 'arbeit'
+}
+
+const lifeAreaSummary = computed(() => {
+  const grouped = new Map<LifeArea, { area: LifeArea; total: number; urgent: number; deepWork: number }>()
+
+  for (const task of todayPendingTasks.value) {
+    const area = inferLifeArea(task)
+    const current = grouped.get(area) || { area, total: 0, urgent: 0, deepWork: 0 }
+    current.total += 1
+    if (task.priority === 'critical' || task.priority === 'high') current.urgent += 1
+    if (task.isDeepWork) current.deepWork += 1
+    grouped.set(area, current)
+  }
+
+  return [...grouped.values()].sort((a, b) => {
+    if (b.urgent !== a.urgent) return b.urgent - a.urgent
+    return b.total - a.total
+  })
+})
+
+const lifeAreaBalanceSummary = computed(() => {
+  if (lifeAreaSummary.value.length === 0) {
+    return 'Gerade ist keine offene Aufgabe aktiv. Neue Bereiche koennen entspannt entstehen.'
+  }
+
+  if (lifeAreaSummary.value.length === 1) {
+    return `${resolveLifeAreaLabel(lifeAreaSummary.value[0].area)} dominiert den aktuellen Plan.`
+  }
+
+  const urgentAreas = lifeAreaSummary.value
+    .filter(item => item.urgent > 0)
+    .map(item => resolveLifeAreaLabel(item.area))
+
+  if (urgentAreas.length > 0) {
+    return `${urgentAreas.join(', ')} tragen gerade den meisten Druck. Die Balance bleibt dabei sichtbar.`
+  }
+
+  return `${lifeAreaSummary.value.length} Lebensbereiche sind aktuell parallel im Plan aktiv.`
 })
 
 const todayCommit = computed(() => getDailyCommit())
@@ -185,6 +253,9 @@ const nextBestTaskReason = computed(() => {
   if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
   if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
   if (task.priorityReason) return task.priorityReason
+  if (lifeAreaSummary.value.length > 1) {
+    return `${resolveLifeAreaLabel(inferLifeArea(task))} bekommt heute sichtbar Aufmerksamkeit im aktuellen Plan.`
+  }
   return 'Aktuell die wichtigste offene Aufgabe.'
 })
 const todayDecisionWhy = computed(() => {
@@ -1069,6 +1140,12 @@ function isSameCalendarDay(a: Date, b: Date) {
                 <p class="mt-2 text-sm leading-6 text-text-secondary">{{ nextBestTaskReason }}</p>
                 <div class="mt-4 flex flex-wrap gap-2">
                   <span class="rounded-full bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">{{ nextBestTask.priority }}</span>
+                  <span
+                    class="rounded-full border px-3 py-1 text-xs"
+                    :class="lifeAreaColors[inferLifeArea(nextBestTask)]"
+                  >
+                    {{ resolveLifeAreaLabel(inferLifeArea(nextBestTask)) }}
+                  </span>
                   <span v-if="activeDailyModeMeta" class="rounded-full bg-accent-blue/10 px-3 py-1 text-xs text-accent-blue">
                     Modus {{ activeDailyModeMeta.label }}
                   </span>
@@ -1214,6 +1291,46 @@ function isSameCalendarDay(a: Date, b: Date) {
               </p>
             </section>
           </div>
+
+          <section class="glass-card mt-4 p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Lebensbereiche</p>
+                <h2 class="mt-2 text-xl font-semibold text-text-primary">Balance im aktuellen Plan</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">{{ lifeAreaBalanceSummary }}</p>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                {{ lifeAreaSummary.length }} aktiv
+              </div>
+            </div>
+
+            <div v-if="lifeAreaSummary.length > 0" class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div
+                v-for="entry in lifeAreaSummary"
+                :key="entry.area"
+                class="rounded-glass border p-4"
+                :class="lifeAreaColors[entry.area]"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-semibold">{{ resolveLifeAreaLabel(entry.area) }}</div>
+                    <div class="mt-1 text-xs opacity-80">{{ entry.total }} offene Aufgabe{{ entry.total === 1 ? '' : 'n' }}</div>
+                  </div>
+                  <span class="rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    {{ entry.urgent }} dringend
+                  </span>
+                </div>
+                <div class="mt-4 flex items-center justify-between text-xs opacity-80">
+                  <span>{{ entry.deepWork }} Fokusblock{{ entry.deepWork === 1 ? '' : 'e' }}</span>
+                  <span>{{ Math.round((entry.total / Math.max(todayPendingTasks.length, 1)) * 100) }}%</span>
+                </div>
+              </div>
+            </div>
+
+            <p v-else class="mt-5 text-sm leading-6 text-text-secondary">
+              Sobald offene Aufgaben da sind, zeigt dir die App hier die Balance zwischen Arbeit, Privatleben, Gesundheit, Lernen und Alltag.
+            </p>
+          </section>
 
           <section class="glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">

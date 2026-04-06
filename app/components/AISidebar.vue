@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
-import type { PlanningStyle, Task, TaskPriority, UserPreferences } from '~/types/task'
+import { resolveLifeAreaLabel } from '~/types/task'
+import type { LifeArea, PlanningStyle, Task, TaskPriority, UserPreferences } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useScheduler'
 
@@ -139,6 +140,13 @@ const priorityColors: Record<string, string> = {
   high: 'border border-priority-high/30 bg-priority-high/15 text-priority-high',
   medium: 'border border-priority-medium/30 bg-priority-medium/15 text-priority-medium',
   low: 'border border-priority-low/30 bg-priority-low/15 text-priority-low',
+}
+const lifeAreaColors: Record<LifeArea, string> = {
+  arbeit: 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue',
+  privat: 'border-accent-purple/20 bg-accent-purple/10 text-accent-purple-soft',
+  gesundheit: 'border-accent-green/20 bg-accent-green/10 text-accent-green',
+  lernen: 'border-priority-high/20 bg-priority-high/10 text-priority-high',
+  alltag: 'border-border-subtle bg-white/[0.04] text-text-secondary',
 }
 
 const priorityOptions: Task['priority'][] = ['critical', 'high', 'medium', 'low']
@@ -1456,6 +1464,28 @@ function taskStatusLabel(task: Task) {
   if (task.status === 'scheduled') return 'Eingeplant'
   if (task.status === 'missed') return 'Neu planen'
   return 'Offen'
+}
+
+function normalizeLifeAreaText(value: string) {
+  return value
+    .toLocaleLowerCase('de-DE')
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+}
+
+function inferLifeArea(task: Task): LifeArea {
+  if (task.lifeArea) return task.lifeArea
+
+  const haystack = normalizeLifeAreaText(`${task.title} ${task.description || ''}`)
+
+  if (/(arzt|gym|sport|training|laufen|schlaf|gesund|routine|fitness)/.test(haystack)) return 'gesundheit'
+  if (/(lernen|uni|schule|kurs|lesen|review|recherche|studium|pruefung)/.test(haystack)) return 'lernen'
+  if (/(treffen|familie|freunde|essen|date|feier|privat|bro)/.test(haystack)) return 'privat'
+  if (/(rechnung|haushalt|putzen|einkauf|orga|alltag|wohnung|kuche|kuendigen)/.test(haystack)) return 'alltag'
+
+  return 'arbeit'
 }
 
 function getDailyCommitRank(task: Task) {
@@ -3079,7 +3109,7 @@ async function handleRetryCalendarAction() {
                 <div
                   v-for="task in group.tasks"
                   :key="task.id"
-                  v-memo="[task.id, task.status, task.priority, task.updatedAt, task.progressPercent, task.scheduleBlocks?.length || 0]"
+                  v-memo="[task.id, task.status, task.priority, task.lifeArea, task.updatedAt, task.progressPercent, task.scheduleBlocks?.length || 0]"
                   class="cursor-pointer rounded-glass border border-border-subtle bg-white/[0.03] p-3 transition hover:-translate-y-0.5 hover:border-border-strong hover:bg-white/[0.05]"
                   :class="{ 'opacity-50': task.status === 'done' }"
                   @click="emit('edit-task', task)"
@@ -3112,6 +3142,12 @@ async function handleRetryCalendarAction() {
                       </div>
 
                       <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                        <span
+                          class="rounded-full border px-1.5 py-0.5"
+                          :class="lifeAreaColors[inferLifeArea(task)]"
+                        >
+                          {{ resolveLifeAreaLabel(inferLifeArea(task)) }}
+                        </span>
                         <span>{{ task.estimatedMinutes }} Min.</span>
                         <span v-if="task.deadline">
                           Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}

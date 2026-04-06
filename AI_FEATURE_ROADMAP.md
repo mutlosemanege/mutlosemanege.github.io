@@ -175,3 +175,7 @@ Rahmen:
 ## Phase 4: Persoenliche Steuerung und Klarheit
 
 - Phase 4 fuehren wir separat in [AI_FEATURE_ROADMAP_PHASE_4.md](d:/kalender-ai/AI_FEATURE_ROADMAP_PHASE_4.md) weiter.
+
+## Phase 5: Lebensbereiche und echte Balance
+
+- Phase 5 fuehren wir separat in [AI_FEATURE_ROADMAP_PHASE_5.md](d:/kalender-ai/AI_FEATURE_ROADMAP_PHASE_5.md) weiter.
