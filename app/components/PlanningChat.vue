@@ -41,11 +41,18 @@ interface SlotCandidate extends SlotSuggestion {
 
 interface PreviewAlternative {
   key: string
+  dayKey: string
   label: string
   reason: string
   start: Date
   end: Date
   isPrimary?: boolean
+}
+
+interface PreviewSuggestionGroup {
+  dayKey: string
+  dayLabel: string
+  suggestions: PreviewAlternative[]
 }
 
 interface RoutinePreview {
@@ -141,6 +148,26 @@ const routineDuplicateWarnings = computed(() => {
   }
 
   return warnings.slice(0, 3)
+})
+
+const previewSuggestionGroups = computed<PreviewSuggestionGroup[]>(() => {
+  const groups = new Map<string, PreviewSuggestionGroup>()
+
+  for (const suggestion of previewAlternatives.value) {
+    const existing = groups.get(suggestion.dayKey)
+    if (existing) {
+      existing.suggestions.push(suggestion)
+      continue
+    }
+
+    groups.set(suggestion.dayKey, {
+      dayKey: suggestion.dayKey,
+      dayLabel: formatSuggestionDay(suggestion.start),
+      suggestions: [suggestion],
+    })
+  }
+
+  return [...groups.values()]
 })
 
 watch(() => props.show, (show) => {
@@ -813,9 +840,12 @@ function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
 function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
   const suggestions: PreviewAlternative[] = []
   const seen = new Set<string>()
+  const perDayCount = new Map<string, number>()
   const baseCandidates = collectSlotCandidates(parsed)
   const primaryCandidate = baseCandidates[0]
   const primaryDay = primaryCandidate ? startOfPreviewDay(primaryCandidate.start) : null
+  const maxSuggestions = 9
+  const maxPerDay = 3
 
   const pushCandidates = (
     candidates: SlotSuggestion[],
@@ -824,16 +854,20 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
     for (const candidate of candidates) {
       const key = `${candidate.start.toISOString()}-${candidate.end.toISOString()}`
       if (seen.has(key)) continue
+      const dayKey = toPreviewDayKey(candidate.start)
+      if ((perDayCount.get(dayKey) || 0) >= maxPerDay) continue
       seen.add(key)
+      perDayCount.set(dayKey, (perDayCount.get(dayKey) || 0) + 1)
       suggestions.push({
         key,
+        dayKey,
         label: `${formatPreview(candidate.start.toISOString())} bis ${formatPreview(candidate.end.toISOString())}`,
         reason: suffixReason ? `${candidate.reason} ${suffixReason}` : candidate.reason,
         start: candidate.start,
         end: candidate.end,
         isPrimary: suggestions.length === 0,
       })
-      if (suggestions.length >= 5) return
+      if (suggestions.length >= maxSuggestions) return
     }
   }
 
@@ -901,7 +935,14 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
     )
   }
 
-  return suggestions.slice(0, Math.max(3, Math.min(5, suggestions.length)))
+  if (primaryDay) {
+    pushCandidates(
+      baseCandidates.filter(candidate => !isSamePreviewDay(candidate.start, primaryDay)),
+      'Weitere Option an einem anderen Tag.',
+    )
+  }
+
+  return suggestions.slice(0, Math.max(3, Math.min(maxSuggestions, suggestions.length)))
 }
 
 function applyAlternativeSuggestion(alternative: PreviewAlternative) {
@@ -958,6 +999,21 @@ function isSamePreviewDay(date: Date, day: Date) {
   return date.getFullYear() === day.getFullYear() &&
     date.getMonth() === day.getMonth() &&
     date.getDate() === day.getDate()
+}
+
+function toPreviewDayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function formatSuggestionDay(date: Date) {
+  const now = new Date()
+  const sameYear = date.getFullYear() === now.getFullYear()
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  })
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
@@ -1413,45 +1469,57 @@ function useExamplePrompt(value: string) {
                   <p v-if="previewUncertainty" class="mt-3 text-xs text-priority-high">
                     Unsicherheit: {{ previewUncertainty }}
                   </p>
-                  <div v-if="previewAlternatives.length > 0" class="mt-4">
+                  <div v-if="previewSuggestionGroups.length > 0" class="mt-4">
                     <div class="flex items-center justify-between gap-2">
                       <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Vorschläge</div>
                       <div class="text-[11px] text-text-muted">{{ previewAlternatives.length }} auswählbar</div>
                     </div>
                     <div class="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
-                      <button
-                        v-for="alternative in previewAlternatives"
-                        :key="alternative.key"
-                        type="button"
-                        class="w-full rounded-xl border px-3 py-2 text-left transition hover:border-border-medium hover:bg-white/[0.06]"
-                        :class="selectedPreviewSuggestionKey === alternative.key
-                          ? 'border-accent-blue/35 bg-accent-blue/12'
-                          : 'border-border-subtle bg-white/[0.04]'"
-                        @click="applyAlternativeSuggestion(alternative)"
+                      <div
+                        v-for="group in previewSuggestionGroups"
+                        :key="group.dayKey"
+                        class="rounded-xl border border-border-subtle bg-white/[0.03] p-3"
                       >
-                        <div class="flex items-start justify-between gap-3">
-                          <div class="min-w-0 flex-1">
-                            <div class="flex flex-wrap items-center gap-2">
-                              <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">{{ group.dayLabel }}</div>
+                          <div class="text-[11px] text-text-muted">{{ group.suggestions.length }} Zeiten</div>
+                        </div>
+                        <div class="mt-3 space-y-2">
+                          <button
+                            v-for="alternative in group.suggestions"
+                            :key="alternative.key"
+                            type="button"
+                            class="w-full rounded-xl border px-3 py-2 text-left transition hover:border-border-medium hover:bg-white/[0.06]"
+                            :class="selectedPreviewSuggestionKey === alternative.key
+                              ? 'border-accent-blue/35 bg-accent-blue/12'
+                              : 'border-border-subtle bg-white/[0.04]'"
+                            @click="applyAlternativeSuggestion(alternative)"
+                          >
+                            <div class="flex items-start justify-between gap-3">
+                              <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                  <div class="text-xs font-medium text-text-primary">{{ alternative.label }}</div>
+                                  <span
+                                    v-if="alternative.isPrimary"
+                                    class="rounded-full border border-accent-green/20 bg-accent-green/10 px-2 py-0.5 text-[10px] font-medium text-accent-green"
+                                  >
+                                    Empfohlen
+                                  </span>
+                                </div>
+                                <div class="mt-1 text-[11px] text-text-muted">{{ alternative.reason }}</div>
+                              </div>
                               <span
-                                v-if="alternative.isPrimary"
-                                class="rounded-full border border-accent-green/20 bg-accent-green/10 px-2 py-0.5 text-[10px] font-medium text-accent-green"
+                                class="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                                :class="selectedPreviewSuggestionKey === alternative.key
+                                  ? 'border-accent-blue/25 bg-accent-blue/15 text-accent-blue'
+                                  : 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue'"
                               >
-                                Empfohlen
+                                {{ selectedPreviewSuggestionKey === alternative.key ? 'Ausgewählt' : 'Übernehmen' }}
                               </span>
                             </div>
-                            <div class="mt-1 text-[11px] text-text-muted">{{ alternative.reason }}</div>
-                          </div>
-                          <span
-                            class="rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                            :class="selectedPreviewSuggestionKey === alternative.key
-                              ? 'border-accent-blue/25 bg-accent-blue/15 text-accent-blue'
-                              : 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue'"
-                          >
-                            {{ selectedPreviewSuggestionKey === alternative.key ? 'Ausgewählt' : 'Übernehmen' }}
-                          </span>
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     </div>
                   </div>
                 </div>
