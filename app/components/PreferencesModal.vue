@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle } from '~/types/task'
@@ -679,8 +679,8 @@ function handleReset() {
           </div>
 
           <div class="glass-card p-4">
-            <h3 class="text-sm font-medium text-gray-700">Planungsstil</h3>
-            <p class="mt-1 text-xs text-gray-500">
+            <h3 class="text-sm font-medium text-text-primary">Planungsstil</h3>
+            <p class="mt-1 text-xs text-text-secondary">
               Beeinflusst, welche freien Slots der Planer bevorzugt und wie stark er deine gelernten Tageszeiten nutzt.
             </p>
             <div class="mt-3 grid gap-2">
@@ -689,44 +689,44 @@ function handleReset() {
                 :key="option.value"
                 class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors"
                 :class="form.planningStyle === option.value
-                  ? 'border-primary-300 bg-white'
-                  : 'border-gray-200 bg-white/80 hover:border-gray-300'"
+                  ? 'border-accent-purple/30 bg-accent-purple/12'
+                  : 'border-border-subtle bg-white/[0.04] hover:border-border-strong hover:bg-white/[0.06]'"
               >
                 <input
                   v-model="form.planningStyle"
                   type="radio"
-                  class="mt-1 border-gray-300 text-primary-600 focus:ring-primary-500"
+                  class="mt-1 border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                   :value="option.value"
                 >
                 <div>
-                  <div class="text-sm font-medium text-gray-900">{{ option.label }}</div>
-                  <div class="mt-1 text-xs text-gray-500">{{ option.description }}</div>
+                  <div class="text-sm font-medium text-text-primary">{{ option.label }}</div>
+                  <div class="mt-1 text-xs text-text-secondary">{{ option.description }}</div>
                 </div>
               </label>
             </div>
           </div>
 
-          <div class="rounded-glass border border-accent-green/20 bg-accent-green/10 p-4">
-            <h3 class="text-sm font-medium text-emerald-800">Gelernt aus deinem Verhalten</h3>
-            <p class="mt-1 text-xs text-emerald-700">
+          <div class="glass-card border border-accent-green/20 p-4">
+            <h3 class="text-sm font-medium text-accent-green">Gelernt aus deinem Verhalten</h3>
+            <p class="mt-1 text-xs text-text-secondary">
               Die App merkt sich lokal, wann Aufgaben eher geschafft oder verschoben werden, und nutzt das für bessere Slot-Vorschläge.
             </p>
             <div class="mt-3 grid grid-cols-3 gap-2 text-center">
               <div class="rounded-glass border border-border-subtle bg-white/[0.05] px-3 py-2">
-                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.completions }}</div>
-                <div class="text-[11px] text-gray-500">Erledigt</div>
+                <div class="text-lg font-semibold text-text-primary">{{ behaviorSummary.completions }}</div>
+                <div class="text-[11px] text-text-muted">Erledigt</div>
               </div>
               <div class="rounded-glass border border-border-subtle bg-white/[0.05] px-3 py-2">
-                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.missed }}</div>
-                <div class="text-[11px] text-gray-500">Nicht geschafft</div>
+                <div class="text-lg font-semibold text-text-primary">{{ behaviorSummary.missed }}</div>
+                <div class="text-[11px] text-text-muted">Nicht geschafft</div>
               </div>
               <div class="rounded-glass border border-border-subtle bg-white/[0.05] px-3 py-2">
-                <div class="text-lg font-semibold text-gray-900">{{ behaviorSummary.rescheduled }}</div>
-                <div class="text-[11px] text-gray-500">Neu geplant</div>
+                <div class="text-lg font-semibold text-text-primary">{{ behaviorSummary.rescheduled }}</div>
+                <div class="text-[11px] text-text-muted">Neu geplant</div>
               </div>
             </div>
             <div class="mt-3">
-              <div class="text-xs font-medium text-emerald-800">Bevorzugte Zeiten</div>
+              <div class="text-xs font-medium text-accent-green">Bevorzugte Zeiten</div>
               <div class="mt-2 flex flex-wrap gap-2">
                 <span
                   v-for="label in behaviorSummary.topHours"
@@ -735,7 +735,7 @@ function handleReset() {
                 >
                   {{ label }}
                 </span>
-                <span v-if="behaviorSummary.topHours.length === 0" class="text-xs text-emerald-700">
+                <span v-if="behaviorSummary.topHours.length === 0" class="text-xs text-text-secondary">
                   Noch nicht genug Daten gesammelt.
                 </span>
               </div>
@@ -744,10 +744,10 @@ function handleReset() {
 
           <!-- Arbeitszeiten -->
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Arbeitszeiten</h3>
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Arbeitszeiten</h3>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Start</label>
+                <label class="mb-1 block text-xs text-text-muted">Start</label>
                 <select
                   v-model.number="form.workStartHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -758,7 +758,7 @@ function handleReset() {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Ende</label>
+                <label class="mb-1 block text-xs text-text-muted">Ende</label>
                 <select
                   v-model.number="form.workEndHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -772,13 +772,13 @@ function handleReset() {
           </div>
 
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Persönliche Terminzeit</h3>
-            <p class="mb-3 text-xs text-gray-500">
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Persönliche Terminzeit</h3>
+            <p class="mb-3 text-xs text-text-secondary">
               Diese Zeiten nutzt der Planungs-Chat für Treffen, private Termine und soziale Verabredungen statt deiner reinen Arbeitszeit.
             </p>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Start</label>
+                <label class="mb-1 block text-xs text-text-muted">Start</label>
                 <select
                   v-model.number="form.personalStartHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -789,7 +789,7 @@ function handleReset() {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Ende</label>
+                <label class="mb-1 block text-xs text-text-muted">Ende</label>
                 <select
                   v-model.number="form.personalEndHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -801,16 +801,16 @@ function handleReset() {
               </div>
             </div>
             <div class="mt-3">
-              <label class="block text-xs text-gray-500 mb-2">Tage für persönliche Termine</label>
+              <label class="mb-2 block text-xs text-text-muted">Tage für persönliche Termine</label>
               <div class="flex gap-1.5">
                 <button
                   v-for="day in 7"
                   :key="`personal-day-${day}`"
                   :class="[
-                    'w-10 h-10 rounded-lg text-xs font-medium transition-colors',
+                    'h-10 w-10 rounded-glass border text-xs font-medium transition-colors',
                     form.personalDays.includes(day % 7)
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      ? 'border-accent-green/25 bg-accent-green/15 text-accent-green'
+                      : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'
                   ]"
                   @click="togglePersonalDay(day % 7)"
                 >
@@ -821,18 +821,18 @@ function handleReset() {
           </div>
 
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Schlafzeiten</h3>
-            <label class="mb-3 flex items-center gap-2 text-sm text-gray-600">
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Schlafzeiten</h3>
+            <label class="mb-3 flex items-center gap-2 text-sm text-text-secondary">
               <input
                 v-model="form.syncSleepSchedule"
                 type="checkbox"
-                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
               >
               Schlafzeiten beim Eintragen als blockierende Termine anlegen
             </label>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Schlafen ab</label>
+                <label class="mb-1 block text-xs text-text-muted">Schlafen ab</label>
                 <select
                   v-model.number="form.sleepStartHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -843,7 +843,7 @@ function handleReset() {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Aufstehen</label>
+                <label class="mb-1 block text-xs text-text-muted">Aufstehen</label>
                 <select
                   v-model.number="form.sleepEndHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -854,17 +854,17 @@ function handleReset() {
                 </select>
               </div>
             </div>
-            <p class="mt-2 text-xs text-gray-500">
+            <p class="mt-2 text-xs text-text-secondary">
               Wenn aktiv, werden Schlafzeiten beim Planen respektiert und können zusätzlich als Kalenderblöcke für die nächsten 4 Wochen eingetragen werden.
             </p>
           </div>
 
           <!-- Mittagspause -->
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Mittagspause</h3>
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Mittagspause</h3>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Von</label>
+                <label class="mb-1 block text-xs text-text-muted">Von</label>
                 <select
                   v-model.number="form.lunchStartHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -875,7 +875,7 @@ function handleReset() {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 mb-1">Bis</label>
+                <label class="mb-1 block text-xs text-text-muted">Bis</label>
                 <select
                   v-model.number="form.lunchEndHour"
                   class="input-dark w-full px-3 py-2 text-sm"
@@ -890,16 +890,16 @@ function handleReset() {
 
           <!-- Arbeitstage -->
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Arbeitstage</h3>
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Arbeitstage</h3>
             <div class="flex gap-1.5">
               <button
                 v-for="day in 7"
                 :key="day"
                 :class="[
-                  'w-10 h-10 rounded-lg text-xs font-medium transition-colors',
+                  'h-10 w-10 rounded-glass border text-xs font-medium transition-colors',
                   form.workDays.includes(day % 7)
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    ? 'border-accent-purple/25 bg-accent-purple/15 text-accent-purple-soft'
+                    : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'
                 ]"
                 @click="toggleWorkDay(day % 7)"
               >
@@ -910,8 +910,8 @@ function handleReset() {
 
           <!-- Deep Work Fenster -->
           <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Deep-Work-Zeiten</h3>
-            <p class="text-xs text-gray-500 mb-3">
+            <h3 class="mb-2 text-sm font-medium text-text-primary">Deep-Work-Zeiten</h3>
+            <p class="mb-3 text-xs text-text-secondary">
               Geschützte Fokuszeiten, in denen nur Deep-Work-Aufgaben eingeplant werden.
             </p>
             <div class="space-y-2">
@@ -924,25 +924,25 @@ function handleReset() {
                   <input
                     type="checkbox"
                     :checked="!!getDeepWorkForDay(day)"
-                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                     @change="toggleDeepWork(day)"
                   >
-                  <span class="text-sm text-gray-700">{{ dayNames[day] }}</span>
+                  <span class="text-sm text-text-primary">{{ dayNames[day] }}</span>
                 </label>
                 <template v-if="getDeepWorkForDay(day)">
                   <select
                     :value="getDeepWorkForDay(day)!.startHour"
-                    class="input-dark px-2 py-1 text-sm"
+                    class="input-dark min-w-0 px-2 py-1 text-sm"
                     @change="updateDeepWorkHour(day, 'startHour', Number(($event.target as HTMLSelectElement).value))"
                   >
                     <option v-for="h in 24" :key="h - 1" :value="h - 1">
                       {{ String(h - 1).padStart(2, '0') }}:00
                     </option>
                   </select>
-                  <span class="text-gray-400">-</span>
+                  <span class="text-text-muted">-</span>
                   <select
                     :value="getDeepWorkForDay(day)!.endHour"
-                    class="input-dark px-2 py-1 text-sm"
+                    class="input-dark min-w-0 px-2 py-1 text-sm"
                     @change="updateDeepWorkHour(day, 'endHour', Number(($event.target as HTMLSelectElement).value))"
                   >
                     <option v-for="h in 24" :key="h" :value="h">
@@ -957,7 +957,7 @@ function handleReset() {
           <!-- Weitere Einstellungen -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Min. Deep-Work-Block</label>
+              <label class="mb-1 block text-sm font-medium text-text-primary">Min. Deep-Work-Block</label>
               <select
                 v-model.number="form.minDeepWorkBlockMinutes"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -969,7 +969,7 @@ function handleReset() {
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Puffer zwischen Aufgaben</label>
+              <label class="mb-1 block text-sm font-medium text-text-primary">Puffer zwischen Aufgaben</label>
               <select
                 v-model.number="form.taskBufferMinutes"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -985,7 +985,7 @@ function handleReset() {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Deadline-Warnung</label>
+              <label class="mb-1 block text-sm font-medium text-text-primary">Deadline-Warnung</label>
               <select
                 v-model.number="form.deadlineWarningDays"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -998,7 +998,7 @@ function handleReset() {
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Weg zur Arbeit</label>
+              <label class="mb-1 block text-sm font-medium text-text-primary">Weg zur Arbeit</label>
               <select
                 v-model.number="form.commuteToWorkMinutes"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -1014,7 +1014,7 @@ function handleReset() {
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Rückweg von der Arbeit</label>
+              <label class="mb-1 block text-sm font-medium text-text-primary">Rückweg von der Arbeit</label>
               <select
                 v-model.number="form.commuteFromWorkMinutes"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -1031,7 +1031,7 @@ function handleReset() {
                 <input
                   v-model="form.syncCommuteSchedule"
                   type="checkbox"
-                  class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                 >
                 Arbeitswege beim Eintragen automatisch rund um deine Arbeitszeiten blocken
               </span>
@@ -1041,13 +1041,13 @@ function handleReset() {
           <div class="space-y-4 glass-card p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
-                <h3 class="text-sm font-medium text-gray-700">Feste Routinen</h3>
-                <p class="text-xs text-gray-500 mt-1">
+                <h3 class="text-sm font-medium text-text-primary">Feste Routinen</h3>
+                <p class="mt-1 text-xs text-text-secondary">
                   Lege wiederkehrende Termine wie Uni, Gym oder Calls als Vorlagen an. Sie zählen sofort als Planungsregeln und können zusätzlich gesammelt in den Kalender eingetragen werden.
                 </p>
               </div>
               <button
-                class="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-black disabled:opacity-50"
+                class="btn-primary px-3 py-2 text-xs disabled:opacity-50"
                 :disabled="isApplyingRoutines"
                 @click="applyRoutineTemplates"
               >
@@ -1059,12 +1059,12 @@ function handleReset() {
               <input
                 v-model="routineDraft.title"
                 type="text"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                class="input-dark w-full px-3 py-2 text-sm"
                 placeholder="z.B. Vorlesung, Gym, Team Call"
               >
               <select
                 v-model="routineDraft.repeatMode"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                class="input-dark w-full px-3 py-2 text-sm"
               >
                 <option value="weekly">Woechentlich</option>
                 <option value="workdays">An Arbeitstagen</option>
@@ -1072,7 +1072,7 @@ function handleReset() {
               <select
                 v-if="routineDraft.repeatMode === 'weekly'"
                 v-model.number="routineDraft.day"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                class="input-dark w-full px-3 py-2 text-sm"
               >
                 <option v-for="(name, index) in dayNames" :key="name" :value="index">
                   {{ name }}
@@ -1086,7 +1086,7 @@ function handleReset() {
               </div>
               <select
                 v-model.number="routineDraft.startHour"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                class="input-dark w-full px-3 py-2 text-sm"
               >
                 <option v-for="h in 24" :key="`start-${h}`" :value="h - 1">
                   Start {{ String(h - 1).padStart(2, '0') }}:00
@@ -1094,7 +1094,7 @@ function handleReset() {
               </select>
               <select
                 v-model.number="routineDraft.endHour"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                class="input-dark w-full px-3 py-2 text-sm"
               >
                 <option v-for="h in 24" :key="`end-${h}`" :value="h">
                   Ende {{ String(h).padStart(2, '0') }}:00
@@ -1105,12 +1105,12 @@ function handleReset() {
             <textarea
               v-model="routineDraft.description"
               rows="2"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+              class="input-dark w-full px-3 py-2 text-sm"
               placeholder="Optionaler Hinweis, z.B. Raum, Link oder was du mitbringen musst"
             />
 
             <button
-              class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-100"
+              class="btn-secondary px-3 py-2 text-sm"
               @click="addRoutine"
             >
               Routine hinzufügen
@@ -1124,25 +1124,25 @@ function handleReset() {
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
-                    <div class="text-sm font-medium text-gray-900">{{ routine.title }}</div>
-                    <div class="mt-1 text-xs text-gray-500">
+                    <div class="text-sm font-medium text-text-primary">{{ routine.title }}</div>
+                    <div class="mt-1 text-xs text-text-secondary">
                       {{ routineRepeatLabel(routine) }}
                     </div>
                     <div v-if="upcomingRoutineLabels(routine).length > 0" class="mt-1 flex flex-wrap gap-1">
                       <span
                         v-for="label in upcomingRoutineLabels(routine)"
                         :key="`${routine.id}-${label}`"
-                        class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600"
+                        class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary"
                       >
                         {{ label }}
                       </span>
                     </div>
-                    <div v-if="routine.description" class="mt-1 text-xs text-gray-400">
+                    <div v-if="routine.description" class="mt-1 text-xs text-text-muted">
                       {{ routine.description }}
                     </div>
                   </div>
                   <button
-                    class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                    class="rounded-lg border border-priority-critical/20 bg-priority-critical/10 px-2 py-1 text-xs text-priority-critical transition hover:border-priority-critical/35 hover:bg-priority-critical/15"
                     @click="form.routineTemplates = form.routineTemplates.filter(entry => entry.id !== routine.id)"
                   >
                     Entfernen
@@ -1151,7 +1151,7 @@ function handleReset() {
                 <div class="mt-3 grid grid-cols-2 gap-2">
                   <select
                     :value="routine.repeatMode || 'weekly'"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    class="input-dark w-full px-3 py-2 text-sm"
                     @change="updateRoutineRepeatMode(routine.id, ($event.target as HTMLSelectElement).value as RoutineRepeatMode)"
                   >
                     <option value="weekly">Woechentlich</option>
@@ -1160,7 +1160,7 @@ function handleReset() {
                   <template v-if="(routine.repeatMode || 'weekly') === 'weekly'">
                     <select
                       :value="routine.day"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                       @change="updateRoutineDay(routine.id, Number(($event.target as HTMLSelectElement).value))"
                     >
                       <option v-for="(name, index) in dayNames" :key="`${routine.id}-day-${name}`" :value="index">
@@ -1178,7 +1178,7 @@ function handleReset() {
                 <div class="mt-2 grid grid-cols-2 gap-2">
                   <select
                     :value="routine.startHour"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    class="input-dark w-full px-3 py-2 text-sm"
                     @change="updateRoutineHour(routine.id, 'startHour', Number(($event.target as HTMLSelectElement).value))"
                   >
                     <option v-for="h in 24" :key="`${routine.id}-start-${h}`" :value="h - 1">
@@ -1187,7 +1187,7 @@ function handleReset() {
                   </select>
                   <select
                     :value="routine.endHour"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    class="input-dark w-full px-3 py-2 text-sm"
                     @change="updateRoutineHour(routine.id, 'endHour', Number(($event.target as HTMLSelectElement).value))"
                   >
                     <option v-for="h in 24" :key="`${routine.id}-end-${h}`" :value="h">
@@ -1196,18 +1196,18 @@ function handleReset() {
                   </select>
                 </div>
                 <div class="mt-3 rounded-glass border border-border-subtle bg-white/[0.04] p-3">
-                  <div class="text-xs font-medium text-gray-700">Ausnahmen</div>
-                  <p class="mt-1 text-xs text-gray-500">
+                  <div class="text-xs font-medium text-text-primary">Ausnahmen</div>
+                  <p class="mt-1 text-xs text-text-secondary">
                     Einzelne Tage, an denen diese Routine die Planung nicht blockieren soll.
                   </p>
                   <div class="mt-2 flex gap-2">
                     <input
                       v-model="routineExceptionDrafts[routine.id]"
                       type="date"
-                      class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark flex-1 px-3 py-2 text-sm"
                     >
                     <button
-                      class="rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm text-primary-700 transition hover:bg-primary-50"
+                      class="btn-secondary px-3 py-2 text-sm"
                       @click="addRoutineException(routine.id)"
                     >
                       Ausnahme hinzufügen
@@ -1217,7 +1217,7 @@ function handleReset() {
                     <button
                       v-for="skipDate in routine.skipDates"
                       :key="`${routine.id}-${skipDate}`"
-                      class="rounded-full bg-white px-2 py-0.5 text-[11px] text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+                      class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary transition hover:border-priority-critical/20 hover:bg-priority-critical/10 hover:text-priority-critical"
                       @click="removeRoutineException(routine.id, skipDate)"
                     >
                       {{ new Date(`${skipDate}T00:00:00`).toLocaleDateString('de-DE') }} entfernen
@@ -1232,11 +1232,11 @@ function handleReset() {
             </div>
           </div>
 
-          <div class="space-y-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
+          <div class="glass-card border border-accent-blue/20 p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
-                <h3 class="text-sm font-medium text-sky-900">Bild-Import vorbereiten</h3>
-                <p class="mt-1 text-xs text-sky-800">
+                <h3 class="text-sm font-medium text-accent-blue">Bild-Import vorbereiten</h3>
+                <p class="mt-1 text-xs text-text-secondary">
                   Lade einen Stundenplan oder Screenshot hoch und übernimm daraus feste Termine oder Routinen nach einer manuellen Review.
                 </p>
               </div>
@@ -1245,12 +1245,12 @@ function handleReset() {
             <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
               <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <div class="text-sm font-medium text-gray-900">1. Bild hochladen</div>
-                  <div class="mt-1 text-xs text-gray-500">
+                  <div class="text-sm font-medium text-text-primary">1. Bild hochladen</div>
+                  <div class="mt-1 text-xs text-text-secondary">
                     Das Bild dient hier bewusst als Referenz. Die App importiert noch nichts automatisch ohne deine Prüfung.
                   </div>
                 </div>
-                <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-200 bg-sky-100 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-200">
+                <label class="btn-secondary inline-flex cursor-pointer items-center justify-center px-3 py-2 text-sm">
                   Bild auswaehlen
                   <input
                     type="file"
@@ -1263,11 +1263,11 @@ function handleReset() {
 
               <div v-if="importImagePreview" class="mt-4 space-y-3">
                 <div class="flex items-center justify-between gap-3">
-                  <div class="text-xs text-gray-500">
-                    Geladen: <span class="font-medium text-gray-700">{{ importImageName }}</span>
+                  <div class="text-xs text-text-secondary">
+                    Geladen: <span class="font-medium text-text-primary">{{ importImageName }}</span>
                   </div>
                   <button
-                    class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                    class="rounded-lg border border-priority-critical/20 bg-priority-critical/10 px-2 py-1 text-xs text-priority-critical transition hover:border-priority-critical/35 hover:bg-priority-critical/15"
                     @click="clearImportImage"
                   >
                     Bild entfernen
@@ -1276,7 +1276,7 @@ function handleReset() {
                 <img
                   :src="importImagePreview"
                   alt="Import-Vorschau"
-                  class="max-h-72 w-full rounded-xl border border-sky-100 object-contain"
+                  class="max-h-72 w-full rounded-xl border border-accent-blue/15 object-contain"
                 >
               </div>
             </div>
@@ -1284,20 +1284,20 @@ function handleReset() {
             <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
               <div class="flex items-start justify-between gap-4">
                 <div>
-                  <div class="text-sm font-medium text-gray-900">2. Eintraege reviewen</div>
-                  <div class="mt-1 text-xs text-gray-500">
+                  <div class="text-sm font-medium text-text-primary">2. Eintraege reviewen</div>
+                  <div class="mt-1 text-xs text-text-secondary">
                     Lege darunter die Einträge an, die du aus dem Bild übernehmen willst. Alles bleibt vor dem Übernehmen editierbar.
                   </div>
                 </div>
                 <button
-                  class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+                  class="btn-secondary px-3 py-2 text-sm"
                   @click="addImportReviewEntry"
                 >
                   Eintrag hinzufügen
                 </button>
               </div>
 
-              <div v-if="importReviewEntries.length === 0" class="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center text-xs text-gray-500">
+              <div v-if="importReviewEntries.length === 0" class="mt-3 rounded-glass border border-dashed border-border-strong bg-white/[0.03] px-4 py-5 text-center text-xs text-text-secondary">
                 Noch keine Import-Einträge angelegt. Lade ein Bild hoch oder füge den ersten Eintrag manuell hinzu.
               </div>
 
@@ -1308,12 +1308,12 @@ function handleReset() {
                   class="rounded-glass border border-border-subtle bg-white/[0.04] p-3"
                 >
                   <div class="flex items-start justify-between gap-3">
-                    <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
-                      <input v-model="entry.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                    <label class="flex items-center gap-2 text-xs font-medium text-text-primary">
+                      <input v-model="entry.enabled" type="checkbox" class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple">
                       Übernehmen
                     </label>
                     <button
-                      class="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50"
+                      class="rounded-lg border border-priority-critical/20 bg-priority-critical/10 px-2 py-1 text-xs text-priority-critical transition hover:border-priority-critical/35 hover:bg-priority-critical/15"
                       @click="removeImportReviewEntry(entry.id)"
                     >
                       Entfernen
@@ -1324,12 +1324,12 @@ function handleReset() {
                     <input
                       v-model="entry.title"
                       type="text"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                       placeholder="Titel aus dem Bild, z.B. Mathe, Team Call"
                     >
                     <select
                       v-model="entry.type"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                     >
                       <option value="routine">Als Routine</option>
                       <option value="fixed-event">Als fester Termin</option>
@@ -1337,7 +1337,7 @@ function handleReset() {
                     <template v-if="entry.type === 'routine'">
                       <select
                         v-model="entry.repeatMode"
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                        class="input-dark w-full px-3 py-2 text-sm"
                       >
                         <option value="weekly">Woechentlich</option>
                         <option value="workdays">An Arbeitstagen</option>
@@ -1345,7 +1345,7 @@ function handleReset() {
                       <select
                         v-if="entry.repeatMode === 'weekly'"
                         v-model.number="entry.day"
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                        class="input-dark w-full px-3 py-2 text-sm"
                       >
                         <option v-for="(name, index) in dayNames" :key="`${entry.id}-import-${name}`" :value="index">
                           {{ name }}
@@ -1362,7 +1362,7 @@ function handleReset() {
                       v-else
                       v-model="entry.date"
                       type="date"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                     >
                     <label
                       v-if="entry.type === 'routine'"
@@ -1371,16 +1371,16 @@ function handleReset() {
                       <input
                         v-model="entry.alsoAddToCalendar"
                         type="checkbox"
-                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
                       >
                       Zusaetzlich in den Kalender eintragen
                     </label>
-                    <div v-else class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
+                    <div v-else class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-2 text-xs text-text-secondary">
                       Feste Termine werden direkt in den Kalender eingetragen.
                     </div>
                     <select
                       v-model.number="entry.startHour"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                     >
                       <option v-for="h in 24" :key="`${entry.id}-import-start-${h}`" :value="h - 1">
                         Start {{ String(h - 1).padStart(2, '0') }}:00
@@ -1388,7 +1388,7 @@ function handleReset() {
                     </select>
                     <select
                       v-model.number="entry.endHour"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                      class="input-dark w-full px-3 py-2 text-sm"
                     >
                       <option v-for="h in 24" :key="`${entry.id}-import-end-${h}`" :value="h">
                         Ende {{ String(h).padStart(2, '0') }}:00
@@ -1399,13 +1399,13 @@ function handleReset() {
                   <textarea
                     v-model="entry.description"
                     rows="2"
-                    class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
+                    class="input-dark mt-2 w-full px-3 py-2 text-sm"
                     placeholder="Optionaler Hinweis, z.B. Raum, Link oder Notiz aus dem Bild"
                   />
 
                   <div class="mt-2 flex flex-wrap gap-2">
                     <span
-                      class="rounded-full bg-white px-2 py-0.5 text-[11px]"
+                      class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px]"
                       :class="importEntryDuplicateHint(entry) ? 'text-amber-700' : 'text-emerald-700'"
                     >
                       {{ importEntryDuplicateHint(entry) || 'Sieht nach einem neuen Eintrag aus' }}
@@ -1428,11 +1428,11 @@ function handleReset() {
             </div>
 
             <div class="flex items-center justify-between gap-3">
-              <p class="text-xs text-sky-800">
+              <p class="text-xs text-text-secondary">
                 3. Übernimm nur die Einträge, die du geprüft hast. Routinen beeinflussen danach direkt das Auto-Planen.
               </p>
               <button
-                class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
+                class="btn-primary px-3 py-2 text-sm disabled:opacity-50"
                 :disabled="isApplyingImport"
                 @click="applyImportEntries"
               >
@@ -1484,6 +1484,7 @@ function handleReset() {
   opacity: 0;
 }
 </style>
+
 
 
 

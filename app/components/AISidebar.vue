@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { PlanningStyle, Task, TaskPriority, UserPreferences } from '~/types/task'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { ScheduledTaskPlan, ScheduleTaskOptions } from '~/composables/useScheduler'
@@ -1926,14 +1926,14 @@ async function restoreArchivedProject(groupId: string) {
         </div>
 
       <div v-if="planningDiagnostics.length > 0" class="px-4 pb-2">
-        <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+        <div class="glass-card border border-priority-high/20 p-3">
           <div class="flex items-center justify-between gap-2">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-amber-800">Planungsanalyse</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-priority-high">Planungsanalyse</h3>
             <div class="flex flex-wrap gap-1">
               <span
                 v-for="code in [...new Set(planningDiagnostics.map(entry => entry.code))]"
                 :key="code"
-                class="rounded-full bg-white px-2 py-0.5 text-[11px] text-amber-700"
+                class="rounded-full border border-priority-high/20 bg-priority-high/10 px-2 py-0.5 text-[11px] text-priority-high"
               >
                 {{ diagnosisLabels[code] }}: {{ planningDiagnostics.filter(entry => entry.code === code).length }}
               </span>
@@ -1944,40 +1944,40 @@ async function restoreArchivedProject(groupId: string) {
             <div
               v-for="entry in planningDiagnostics.slice(0, 5)"
               :key="entry.taskId"
-              class="rounded-lg bg-white px-3 py-2"
+              class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-3"
             >
               <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-medium text-gray-900">{{ entry.title }}</span>
+                <span class="text-xs font-medium text-text-primary">{{ entry.title }}</span>
                 <span class="rounded-full px-2 py-0.5 text-[11px]"
                   :class="entry.severity === 'high'
-                    ? 'bg-red-100 text-red-700'
+                    ? 'border border-priority-critical/20 bg-priority-critical/10 text-priority-critical'
                     : entry.severity === 'medium'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-gray-100 text-gray-600'"
+                      ? 'border border-priority-high/20 bg-priority-high/10 text-priority-high'
+                      : 'border border-border-subtle bg-white/[0.04] text-text-secondary'"
                 >
                   {{ entry.summary }}
                 </span>
               </div>
-              <p class="mt-1 text-xs text-gray-500">{{ entry.detail }}</p>
+              <p class="mt-1 text-xs text-text-secondary">{{ entry.detail }}</p>
 
               <div v-if="schedulingAlternatives[entry.taskId]?.length" class="mt-3 space-y-2">
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Direkte Alternativen</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-green">Direkte Alternativen</div>
                 <div class="space-y-2">
                   <button
                     v-for="alternative in schedulingAlternatives[entry.taskId]"
                     :key="`${entry.taskId}-${alternative.start}`"
                     type="button"
-                    class="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="w-full rounded-glass border border-accent-green/20 bg-accent-green/10 px-3 py-2 text-left transition hover:border-accent-green/35 hover:bg-accent-green/15 disabled:cursor-not-allowed disabled:opacity-50"
                     :disabled="applyingAlternativeTaskId === entry.taskId"
                     @click="applyAlternativeSlot(entry.taskId, alternative)"
                   >
                     <div class="flex items-center justify-between gap-2">
-                      <span class="text-xs font-medium text-emerald-900">{{ alternative.label }}</span>
-                      <span class="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase tracking-wide text-emerald-700">
+                      <span class="text-xs font-medium text-text-primary">{{ alternative.label }}</span>
+                      <span class="rounded-full border border-accent-green/25 bg-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent-green">
                         Diesen Slot nehmen
                       </span>
                     </div>
-                    <p class="mt-1 text-[11px] text-emerald-800">{{ alternative.detail }}</p>
+                    <p class="mt-1 text-[11px] text-text-secondary">{{ alternative.detail }}</p>
                   </button>
                 </div>
               </div>
@@ -1987,13 +1987,13 @@ async function restoreArchivedProject(groupId: string) {
       </div>
 
       <div v-if="planVariants.length > 0" class="px-4 pb-2">
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+        <div class="glass-card border border-accent-green/20 p-3">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h3 class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Planvarianten</h3>
-              <p class="mt-1 text-xs text-emerald-700">Probier direkt eine andere Strategie für die restlichen Aufgaben aus.</p>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-accent-green">Planvarianten</h3>
+              <p class="mt-1 text-xs text-text-secondary">Probier direkt eine andere Strategie für die restlichen Aufgaben aus.</p>
             </div>
-            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-emerald-700">
+            <span class="rounded-full border border-accent-green/20 bg-accent-green/10 px-2 py-0.5 text-[11px] text-accent-green">
               {{ planVariants.length }} Optionen
             </span>
           </div>
@@ -2002,34 +2002,34 @@ async function restoreArchivedProject(groupId: string) {
             <div
               v-for="variant in planVariants"
               :key="variant.style"
-              class="rounded-lg border border-emerald-100 bg-white px-3 py-3"
+              class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-3"
             >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-sm font-medium text-gray-900">{{ variant.label }}</span>
+                    <span class="text-sm font-medium text-text-primary">{{ variant.label }}</span>
                     <span
                       v-if="isRecommendedPlanVariant(variant.style)"
-                      class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800"
+                      class="rounded-full border border-accent-green/25 bg-accent-green/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-green"
                     >
                       Empfohlen
                     </span>
                   </div>
-                  <p class="mt-1 text-xs text-gray-500">{{ variant.description }}</p>
-                  <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
-                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                  <p class="mt-1 text-xs text-text-secondary">{{ variant.description }}</p>
+                  <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-text-secondary">
+                    <span class="rounded-full border border-accent-green/20 bg-accent-green/10 px-2 py-0.5 text-accent-green">
                       +{{ variant.scheduledCount }} weitere Aufgaben
                     </span>
-                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                    <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-text-secondary">
                       {{ variant.remainingCount }} offen
                     </span>
                   </div>
-                  <p class="mt-2 text-xs text-gray-600">{{ variant.highlight }}</p>
+                  <p class="mt-2 text-xs text-text-secondary">{{ variant.highlight }}</p>
                 </div>
 
                 <button
                   type="button"
-                  class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="btn-accent-green px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
                   :disabled="applyingVariantStyle === variant.style"
                   @click="applyPlanVariant(variant.style)"
                 >
@@ -2042,19 +2042,19 @@ async function restoreArchivedProject(groupId: string) {
       </div>
 
       <div v-if="displacementSuggestions.length > 0" class="px-4 pb-2">
-        <div class="rounded-xl border border-violet-200 bg-violet-50 p-3">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-violet-800">Umplan-Vorschau</h3>
-          <p class="mt-1 text-xs text-violet-700">Wichtige Aufgaben können auf Wunsch niedrig priorisierte Slots übernehmen.</p>
+        <div class="glass-card border border-accent-purple/20 p-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-accent-purple-soft">Umplan-Vorschau</h3>
+          <p class="mt-1 text-xs text-text-secondary">Wichtige Aufgaben können auf Wunsch niedrig priorisierte Slots übernehmen.</p>
           <div class="mt-3 space-y-2">
             <button
               v-for="suggestion in displacementSuggestions"
               :key="`${suggestion.incomingTaskId}-${suggestion.displacedTaskId}`"
               type="button"
-              class="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-left transition hover:bg-violet-100"
+              class="w-full rounded-glass border border-accent-purple/20 bg-accent-purple/10 px-3 py-2 text-left transition hover:border-accent-purple/35 hover:bg-accent-purple/15"
               @click="previewDisplacement = suggestion"
             >
-              <div class="text-xs font-medium text-gray-900">{{ suggestion.incomingTitle }}</div>
-              <div class="mt-1 text-[11px] text-violet-800">
+              <div class="text-xs font-medium text-text-primary">{{ suggestion.incomingTitle }}</div>
+              <div class="mt-1 text-[11px] text-text-secondary">
                 würde {{ suggestion.displacedTitle }} am {{ formatTaskDateTime(suggestion.start) }} verdrängen
               </div>
             </button>
@@ -2063,13 +2063,13 @@ async function restoreArchivedProject(groupId: string) {
       </div>
 
       <div v-if="activityEntries.length > 0" class="px-4 pb-2">
-        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div class="glass-card border border-border-subtle p-3">
           <div class="flex items-center justify-between gap-2">
             <div>
-              <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-700">Letzte Änderungen</h3>
-              <p class="mt-1 text-xs text-slate-500">So siehst du, was automatisch oder direkt verändert wurde.</p>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Letzte Änderungen</h3>
+              <p class="mt-1 text-xs text-text-muted">So siehst du, was automatisch oder direkt verändert wurde.</p>
             </div>
-            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-600">
+            <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary">
               {{ activityEntries.length }} Einträge
             </span>
           </div>
@@ -2078,21 +2078,21 @@ async function restoreArchivedProject(groupId: string) {
             <div
               v-for="entry in activityEntries.slice(0, 5)"
               :key="entry.id"
-              class="rounded-lg border border-slate-200 bg-white px-3 py-2"
+              class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-2"
             >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-slate-900">{{ entry.title }}</span>
-                    <span class="text-[11px] text-slate-400">{{ formatActivityTime(entry.createdAt) }}</span>
+                    <span class="text-xs font-medium text-text-primary">{{ entry.title }}</span>
+                    <span class="text-[11px] text-text-muted">{{ formatActivityTime(entry.createdAt) }}</span>
                   </div>
-                  <p class="mt-1 text-xs text-slate-600">{{ entry.detail }}</p>
+                  <p class="mt-1 text-xs text-text-secondary">{{ entry.detail }}</p>
                 </div>
 
                 <button
                   v-if="entry.undo"
                   type="button"
-                  class="rounded-md px-2 py-1 text-[11px] text-primary-700 transition hover:bg-primary-50"
+                  class="rounded-md border border-accent-purple/20 bg-accent-purple/10 px-2 py-1 text-[11px] text-accent-purple-soft transition hover:border-accent-purple/35 hover:bg-accent-purple/15"
                   @click="undoActivity(entry.id)"
                 >
                   {{ entry.undoLabel || 'Rückgängig' }}
@@ -2105,15 +2105,15 @@ async function restoreArchivedProject(groupId: string) {
 
       <!-- Task List -->
       <div class="flex-1 overflow-y-auto px-4 py-3">
-        <div v-if="tasks.length === 0" class="text-center py-8">
-          <p class="text-sm text-gray-500">Keine Aufgaben vorhanden.</p>
-          <p class="text-xs text-gray-400 mt-1">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p>
+        <div v-if="tasks.length === 0" class="py-8 text-center">
+          <div class="glass-card border border-dashed border-border-strong px-4 py-8"><p class="text-sm text-text-secondary">Keine Aufgaben vorhanden.</p><p class="mt-1 text-xs text-text-muted">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p></div>
+          
         </div>
 
         <div v-else class="space-y-4">
           <div v-if="filteredTaskGroups.length > 0" class="space-y-4">
             <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
-              <div class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+              <div class="glass-card p-3">
                 <div class="flex items-start justify-between gap-3">
                   <button
                     type="button"
@@ -2121,7 +2121,7 @@ async function restoreArchivedProject(groupId: string) {
                     @click="toggleGroup(group.id)"
                   >
                     <svg
-                      class="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400 transition-transform"
+                      class="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted transition-transform"
                       :class="{ 'rotate-90': !isGroupCollapsed(group.id) }"
                       fill="none"
                       stroke="currentColor"
@@ -2131,54 +2131,54 @@ async function restoreArchivedProject(groupId: string) {
                     </svg>
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">
-                        <h3 class="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">{{ group.name }}</h3>
-                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                        <h3 class="truncate text-xs font-semibold uppercase tracking-wide text-text-muted">{{ group.name }}</h3>
+                        <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary">
                           {{ projectProgress(group).done }}/{{ projectProgress(group).total }}
                         </span>
                       </div>
-                      <div class="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                      <div class="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.05]">
                         <div
-                          class="h-full rounded-full bg-primary-500 transition-all"
+                          class="h-full rounded-full bg-gradient-to-r from-accent-purple to-accent-blue transition-all"
                           :style="{ width: `${projectProgress(group).percent}%` }"
                         />
                       </div>
-                      <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                      <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-text-secondary">
                         <span>{{ projectProgress(group).percent }}% erledigt</span>
                         <span>{{ projectRemainingHours(group) }} h Restaufwand</span>
                         <span>{{ getGroupTasks(group).length }} Aufgaben</span>
                       </div>
-                      <p v-if="projectNextStep(group)" class="mt-2 text-xs text-gray-600">
-                        Nächster Schritt: <span class="font-medium text-gray-800">{{ projectNextStep(group)?.title }}</span>
+                      <p v-if="projectNextStep(group)" class="mt-2 text-xs text-text-secondary">
+                        Nächster Schritt: <span class="font-medium text-text-primary">{{ projectNextStep(group)?.title }}</span>
                       </p>
-                      <p v-else class="mt-2 text-xs text-green-700">
+                      <p v-else class="mt-2 text-xs text-accent-green">
                         Projekt abgeschlossen und bereit zum Archivieren.
                       </p>
                       <div
                         v-if="isProjectReviewDue(group) || projectReviewLabel(group.reviewStatus)"
-                        class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2"
+                        class="mt-3 rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-3 py-2"
                       >
-                        <p class="text-[11px] font-semibold uppercase tracking-wide text-sky-800">Projekt-Review</p>
-                        <p v-if="projectReviewLabel(group.reviewStatus)" class="mt-1 text-xs text-sky-700">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Projekt-Review</p>
+                        <p v-if="projectReviewLabel(group.reviewStatus)" class="mt-1 text-xs text-text-secondary">
                           {{ projectReviewLabel(group.reviewStatus) }}
                         </p>
                         <div v-else class="mt-2 flex flex-wrap gap-1.5">
                           <button
                             type="button"
-                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            class="rounded-full border border-accent-blue/20 bg-white/[0.05] px-2 py-1 text-[11px] text-accent-blue"
                             @click.stop="applyProjectReview(group.id, 'too-big')"
                           >
                             Zu groß
                           </button>
                           <button
                             type="button"
-                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            class="rounded-full border border-accent-blue/20 bg-white/[0.05] px-2 py-1 text-[11px] text-accent-blue"
                             @click.stop="applyProjectReview(group.id, 'fit')"
                           >
                             Passend
                           </button>
                           <button
                             type="button"
-                            class="rounded-full bg-white px-2 py-1 text-[11px] text-sky-700"
+                            class="rounded-full border border-accent-blue/20 bg-white/[0.05] px-2 py-1 text-[11px] text-accent-blue"
                             @click.stop="applyProjectReview(group.id, 'too-small')"
                           >
                             Zu klein
@@ -2191,7 +2191,7 @@ async function restoreArchivedProject(groupId: string) {
                     <button
                       v-if="group.id !== 'inbox' && isProjectCompleted(group)"
                       type="button"
-                      class="rounded-md px-2 py-1 text-[11px] text-amber-700 transition hover:bg-amber-50"
+                      class="rounded-md border border-priority-high/20 bg-priority-high/10 px-2 py-1 text-[11px] text-priority-high transition hover:border-priority-high/35 hover:bg-priority-high/15"
                       @click="archiveProjectGroup(group.id)"
                     >
                       Archivieren
@@ -2199,7 +2199,7 @@ async function restoreArchivedProject(groupId: string) {
                     <button
                       v-if="group.id !== 'inbox'"
                       type="button"
-                      class="rounded-md px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
+                      class="rounded-md border border-priority-critical/20 bg-priority-critical/10 px-2 py-1 text-[11px] text-priority-critical transition hover:border-priority-critical/35 hover:bg-priority-critical/15"
                       @click="removeProject(group.id)"
                     >
                       Löschen
@@ -2212,34 +2212,34 @@ async function restoreArchivedProject(groupId: string) {
                 <div
                   v-for="task in group.tasks"
                   :key="task.id"
-                  class="rounded-lg border border-gray-200 p-3 transition-colors hover:border-gray-300 cursor-pointer"
+                  class="cursor-pointer rounded-glass border border-border-subtle bg-white/[0.03] p-3 transition hover:-translate-y-0.5 hover:border-border-strong hover:bg-white/[0.05]"
                   :class="{ 'opacity-50': task.status === 'done' }"
                   @click="emit('edit-task', task)"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
                       <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-sm font-medium text-gray-900 truncate">{{ task.title }}</span>
+                        <span class="text-sm font-medium text-text-primary truncate">{{ task.title }}</span>
                         <span
                           class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
                           :class="priorityColors[task.priority]"
                         >
                           {{ task.priority }}
                         </span>
-                        <span class="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <span class="rounded-full border border-border-subtle bg-white/[0.04] px-1.5 py-0.5 text-xs text-text-secondary">
                           {{ taskStatusLabel(task) }}
                         </span>
                       </div>
 
-                      <div class="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
+                      <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                         <span>{{ task.estimatedMinutes }} Min.</span>
                         <span v-if="task.deadline">
                           Deadline: {{ new Date(task.deadline).toLocaleDateString('de-DE') }}
                         </span>
-                        <span v-if="task.isDeepWork" class="text-purple-500">Deep Work</span>
-                        <span v-if="task.prioritySource === 'ai'" class="text-indigo-500">KI-Vorschlag</span>
-                        <span v-else-if="task.prioritySource === 'system'" class="text-red-500">Deadline-Druck</span>
-                        <span v-else-if="task.prioritySource === 'manual'" class="text-gray-500">Manuell</span>
+                        <span v-if="task.isDeepWork" class="text-accent-purple-soft">Deep Work</span>
+                        <span v-if="task.prioritySource === 'ai'" class="text-accent-blue">KI-Vorschlag</span>
+                        <span v-else-if="task.prioritySource === 'system'" class="text-priority-critical">Deadline-Druck</span>
+                        <span v-else-if="task.prioritySource === 'manual'" class="text-text-secondary">Manuell</span>
                       </div>
 
                       <div
@@ -2249,34 +2249,34 @@ async function restoreArchivedProject(groupId: string) {
                         <span
                           v-for="riskLabel in getTaskInsight(task)?.riskLabels"
                           :key="`${task.id}-${riskLabel}`"
-                          class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] text-rose-700"
+                          class="rounded-full border border-priority-critical/20 bg-priority-critical/10 px-2 py-0.5 text-[11px] text-priority-critical"
                         >
                           {{ riskLabel }}
                         </span>
                       </div>
 
-                      <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-blue-500">
+                      <div v-if="taskScheduleSummary(task)" class="mt-1 text-xs text-accent-blue">
                         Geplant: {{ taskScheduleSummary(task) }}
                       </div>
 
-                      <div v-if="task.priorityReason" class="mt-1 text-xs text-gray-500">
+                      <div v-if="task.priorityReason" class="mt-1 text-xs text-text-secondary">
                         Grund: {{ task.priorityReason }}
                       </div>
 
-                      <div v-if="taskProgressLabel(task)" class="mt-1 text-xs text-sky-600">
+                      <div v-if="taskProgressLabel(task)" class="mt-1 text-xs text-accent-blue">
                         {{ taskProgressLabel(task) }}
                       </div>
 
                       <div
                         v-if="task.aiSuggestedPriority && task.aiSuggestedPriority !== task.priority"
-                        class="mt-1 text-xs text-gray-500"
+                        class="mt-1 text-xs text-text-secondary"
                       >
                         KI wollte {{ task.aiSuggestedPriority }}, lokal jetzt {{ task.priority }}.
                       </div>
 
                       <div
                         v-if="getTaskInsight(task)?.headline && getTaskInsight(task)?.headline !== task.priorityReason"
-                        class="mt-1 text-xs text-gray-500"
+                        class="mt-1 text-xs text-text-secondary"
                       >
                         Kontext: {{ getTaskInsight(task)?.headline }}
                       </div>
@@ -2287,8 +2287,8 @@ async function restoreArchivedProject(groupId: string) {
                           :key="priorityOption"
                           class="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
                           :class="task.priority === priorityOption
-                            ? 'border-primary-300 bg-primary-50 text-primary-700'
-                            : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                            ? 'border-accent-purple/30 bg-accent-purple/15 text-accent-purple-soft'
+                            : 'border-border-subtle bg-white/[0.03] text-text-secondary hover:border-border-strong hover:text-text-primary'"
                           @click="changePriority(task, priorityOption)"
                         >
                           {{ priorityOption }}
@@ -2299,7 +2299,7 @@ async function restoreArchivedProject(groupId: string) {
                     <div class="flex items-center gap-1" @click.stop>
                       <button
                         v-if="task.status === 'scheduled'"
-                        class="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                        class="rounded border border-priority-high/20 bg-priority-high/10 px-2 py-1 text-xs text-priority-high transition hover:border-priority-high/35 hover:bg-priority-high/15"
                         title="Nicht geschafft, neu einplanen"
                         @click="openRescheduleDialog(task)"
                       >
@@ -2307,7 +2307,7 @@ async function restoreArchivedProject(groupId: string) {
                       </button>
                       <button
                         v-if="task.status !== 'done'"
-                        class="p-1 text-gray-400 hover:text-green-600 rounded"
+                        class="rounded p-1 text-text-muted transition hover:bg-accent-green/10 hover:text-accent-green"
                         title="Als erledigt markieren"
                         @click="markDone(task)"
                       >
@@ -2324,12 +2324,12 @@ async function restoreArchivedProject(groupId: string) {
 
           <div
             v-else
-            class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center"
+            class="glass-card border border-dashed border-border-strong px-4 py-8 text-center"
           >
-            <p class="text-sm text-gray-500">Keine Aufgaben für den aktuellen Filter gefunden.</p>
+            <p class="text-sm text-text-secondary">Keine Aufgaben für den aktuellen Filter gefunden.</p>
           </div>
 
-          <section v-if="archivedTaskGroups.length > 0" class="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <section v-if="archivedTaskGroups.length > 0" class="glass-card p-3">
             <div class="flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -2337,7 +2337,7 @@ async function restoreArchivedProject(groupId: string) {
                 @click="showArchivedProjects = !showArchivedProjects"
               >
                 <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform"
+                  class="h-4 w-4 flex-shrink-0 text-text-muted transition-transform"
                   :class="{ 'rotate-90': showArchivedProjects }"
                   fill="none"
                   stroke="currentColor"
@@ -2346,8 +2346,8 @@ async function restoreArchivedProject(groupId: string) {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
                 <div>
-                  <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Archivierte Projekte</h3>
-                  <p class="mt-1 text-[11px] text-gray-400">{{ archivedTaskGroups.length }} archiviert</p>
+                  <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">Archivierte Projekte</h3>
+                  <p class="mt-1 text-[11px] text-text-muted">{{ archivedTaskGroups.length }} archiviert</p>
                 </div>
               </button>
             </div>
@@ -2356,31 +2356,31 @@ async function restoreArchivedProject(groupId: string) {
               <div
                 v-for="group in archivedTaskGroups"
                 :key="group.id"
-                class="rounded-lg border border-gray-200 bg-white p-3"
+                class="rounded-glass border border-border-subtle bg-white/[0.03] p-3"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
-                      <h4 class="text-sm font-medium text-gray-900">{{ group.name }}</h4>
-                      <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                      <h4 class="text-sm font-medium text-text-primary">{{ group.name }}</h4>
+                      <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary">
                         {{ projectProgress(group).done }}/{{ projectProgress(group).total }}
                       </span>
                     </div>
-                    <div class="mt-1 text-xs text-gray-500">
+                    <div class="mt-1 text-xs text-text-secondary">
                       Archiviert am {{ formatArchivedDate(group.archivedAt) || 'unbekannt' }}
                     </div>
-                    <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                    <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-text-secondary">
                       <span>{{ projectProgress(group).percent }}% erledigt</span>
                       <span>{{ projectRemainingHours(group) }} h Restaufwand</span>
                     </div>
-                    <p v-if="projectNextStep(group)" class="mt-2 text-xs text-gray-600">
-                      Beim Wiederherstellen zuerst: <span class="font-medium text-gray-800">{{ projectNextStep(group)?.title }}</span>
+                    <p v-if="projectNextStep(group)" class="mt-2 text-xs text-text-secondary">
+                      Beim Wiederherstellen zuerst: <span class="font-medium text-text-primary">{{ projectNextStep(group)?.title }}</span>
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    class="rounded-md px-2 py-1 text-[11px] text-primary-700 transition hover:bg-primary-50"
+                    class="rounded-md border border-accent-purple/20 bg-accent-purple/10 px-2 py-1 text-[11px] text-accent-purple-soft transition hover:border-accent-purple/35 hover:bg-accent-purple/15"
                     @click="restoreArchivedProject(group.id)"
                   >
                     Wiederherstellen
@@ -2414,7 +2414,7 @@ async function restoreArchivedProject(groupId: string) {
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Neu einplanen</p>
               <h3 class="mt-2 text-lg font-semibold text-text-primary">Neu einplanen</h3>
               <p class="mt-1 text-sm text-text-secondary">
-                Wähle, wie <span class="font-medium text-gray-700">{{ rescheduleTask.title }}</span> neu geplant werden soll.
+                Wähle, wie <span class="font-medium text-text-primary">{{ rescheduleTask.title }}</span> neu geplant werden soll.
               </p>
               <p v-if="formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start)" class="mt-2 text-xs text-text-muted">
                 Bisher: {{ formatTaskDateTime(rescheduleTask.scheduledStart || rescheduleTask.scheduleBlocks?.[0]?.start) }}
@@ -2543,3 +2543,6 @@ async function restoreArchivedProject(groupId: string) {
   opacity: 0;
 }
 </style>
+
+
+
