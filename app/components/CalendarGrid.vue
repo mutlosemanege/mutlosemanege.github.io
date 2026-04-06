@@ -74,55 +74,50 @@ function getEventsForDate(dateStr: string): CalendarEvent[] {
   })
 }
 
-const monthLabel = computed(() => {
-  return props.currentDate.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
-})
 </script>
 
 <template>
-  <div>
-    <!-- Header -->
-    <div class="text-center mb-4">
-      <h2 class="text-xl font-semibold text-gray-900 capitalize">{{ monthLabel }}</h2>
-    </div>
-
-    <!-- Grid -->
-    <div class="border border-gray-200 rounded-lg overflow-hidden">
-      <!-- Weekday headers -->
-      <div class="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+  <div class="glass-card ambient-glow-purple overflow-hidden">
+    <div class="grid grid-cols-7 border-b border-border-subtle bg-white/[0.03] px-2 py-3">
         <div
           v-for="day in WEEKDAYS"
           :key="day"
-          class="py-2 text-center text-xs font-semibold text-gray-600 uppercase"
+          class="py-2 text-center text-xs font-medium uppercase tracking-[0.24em] text-text-muted"
         >
           {{ day }}
         </div>
       </div>
 
-      <!-- Day cells -->
-      <div class="grid grid-cols-7">
+    <div class="grid grid-cols-7">
         <div
           v-for="(cell, idx) in days"
           :key="idx"
           :class="[
-            'min-h-[80px] sm:min-h-[100px] p-1 border-b border-r border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors',
-            !cell.isCurrentMonth && 'bg-gray-50/50'
+            'min-h-[104px] border-b border-r border-border-subtle/70 p-2 transition hover:bg-white/[0.03] sm:min-h-[132px]',
+            !cell.isCurrentMonth && 'text-text-muted/40',
+            cell.isToday && 'bg-accent-purple/5 ring-1 ring-inset ring-accent-purple/20'
           ]"
           @click="emit('select-date', cell.dateStr)"
         >
-          <div class="flex items-center justify-center mb-1">
+          <div class="mb-2 flex items-center justify-between">
             <span
               :class="[
-                'inline-flex items-center justify-center w-7 h-7 text-sm rounded-full',
-                cell.isToday && 'bg-primary-600 text-white font-bold',
-                !cell.isToday && cell.isCurrentMonth && 'text-gray-900',
-                !cell.isToday && !cell.isCurrentMonth && 'text-gray-400'
+                'inline-flex h-8 w-8 items-center justify-center rounded-full text-sm',
+                cell.isToday && 'bg-accent-purple text-white font-bold shadow-glow-purple',
+                !cell.isToday && cell.isCurrentMonth && 'text-text-primary',
+                !cell.isToday && !cell.isCurrentMonth && 'text-text-muted/50'
               ]"
             >
               {{ cell.day }}
             </span>
+            <span
+              v-if="cell.events.length > 0"
+              class="rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-muted"
+            >
+              {{ cell.events.length }}
+            </span>
           </div>
-          <div class="space-y-0.5">
+          <div class="space-y-1">
             <EventItem
               v-for="ev in cell.events.slice(0, 3)"
               :key="ev.id"
@@ -132,13 +127,12 @@ const monthLabel = computed(() => {
             />
             <div
               v-if="cell.events.length > 3"
-              class="text-xs text-gray-500 text-center"
+              class="px-1 text-xs text-text-muted"
             >
-              +{{ cell.events.length - 3 }} weitere
+              +{{ cell.events.length - 3 }} mehr
             </div>
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>

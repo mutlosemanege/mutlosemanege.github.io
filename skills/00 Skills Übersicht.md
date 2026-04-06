@@ -1,0 +1,72 @@
+# Skills & Wissen — Übersicht
+
+> ⬆ [[../_INDEX]] · [[../Architektur & Entwicklung]]
+
+Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentiert ein konkretes Problem, die gewählte Lösung und die dabei gelernten Muster.
+
+---
+
+## Scheduling & Planung
+
+```
+[[Greedy-Scheduler]]         Kern-Algorithmus: Tasks in freie Slots einplanen
+  ├── [[Multi-Block-Scheduling]]   Große Tasks aufteilen (> 2h)
+  └── [[Rescheduling-Modi]]        4 Strategien für "Nicht geschafft"
+```
+
+## KI-Integration
+
+```
+[[KI-Priorisierung]]         Claude Haiku + tool_use → strukturiertes Ranking
+  └── [[Nuxt-Serverless-KI]] Server Routes als Netlify Functions (API-Key sicher)
+```
+
+## Natürliche Sprache
+
+```
+[[Planungs-Chat-NLP]]        Regex-Parser: Deutsch → Termin/Aufgabe
+  └── (nutzt [[Greedy-Scheduler]] für Slot-Suche)
+```
+
+## Daten & Persistenz
+
+```
+[[IndexedDB-Vue3]]           idb-keyval + Singleton-Pattern + readonly()
+[[Deadline-Watcher]]         Reaktiver computed, Arbeitsstunden-Berechnung
+```
+
+## Authentifizierung
+
+```
+[[Google-OAuth2-Browser]]    PKCE-Flow, Script-Polling, Token im Memory
+  └── Anleitung: [[../GOOGLE_SETUP]]
+```
+
+## Design
+
+```
+[[Glassmorphism-Redesign]]   Farbpalette, Glass-CSS, Layout-Architektur
+  └── [[Tailwind-Design-System]]  Design Tokens, Breakpoints, Event-Farben
+```
+
+---
+
+## Alle Skills
+
+| Skill | Kategorie | Verknüpfte Dateien |
+|-------|-----------|-------------------|
+| [[Greedy-Scheduler]] | Scheduling | CLAUDE, AI_FEATURE_ROADMAP |
+| [[Multi-Block-Scheduling]] | Scheduling | Greedy-Scheduler, Rescheduling-Modi |
+| [[Rescheduling-Modi]] | Scheduling | Greedy-Scheduler, Multi-Block |
+| [[KI-Priorisierung]] | KI | Nuxt-Serverless-KI, CLAUDE |
+| [[Nuxt-Serverless-KI]] | KI | NETLIFY_SETUP, KI-Priorisierung |
+| [[Planungs-Chat-NLP]] | NLP | Greedy-Scheduler, AI_FEATURE_ROADMAP |
+| [[IndexedDB-Vue3]] | Daten | CLAUDE, Greedy-Scheduler |
+| [[Deadline-Watcher]] | Daten | IndexedDB-Vue3, Greedy-Scheduler |
+| [[Google-OAuth2-Browser]] | Auth | GOOGLE_SETUP, NETLIFY_SETUP |
+| [[Glassmorphism-Redesign]] | Design | REDESIGN-PROMPT, Tailwind-Design-System |
+| [[Tailwind-Design-System]] | Design | REDESIGN-PROMPT, Glassmorphism-Redesign |
+
+---
+
+*Übergeordnet: [[../_INDEX]]*

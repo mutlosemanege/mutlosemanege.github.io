@@ -1,3 +1,11 @@
+# Kalender Web App — Ursprünglicher Build-Prompt (Archiv)
+
+> ⬆ [[Archiv]] · [[_INDEX]]
+> **Historisches Dokument.** Spiegelt nicht den aktuellen Projektzustand wider.
+> Aktueller Stand: [[CLAUDE]] · [[Setup & Deployment]] · [[AI_FEATURE_ROADMAP]]
+
+---
+
 # Kalender Web App – Nuxt + Google Calendar API → GitHub Pages
 
 Du bist ein erfahrener Full-Stack-Entwickler. Baue eine vollständige Kalender-Web-App mit Nuxt als statisches Frontend, das die **Google Calendar API** per CRUD nutzt und auf **GitHub Pages** deployed wird.

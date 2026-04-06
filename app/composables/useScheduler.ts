@@ -1,5 +1,6 @@
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { Task, UserPreferences, DeepWorkWindow } from '~/types/task'
+import type { Task, UserPreferences, DeepWorkWindow, RoutineTemplate } from '~/types/task'
+import { getGermanHolidayEntriesForRange } from '../utils/germanHolidays.ts'
 
 type ReadonlyUserPreferences = Readonly<UserPreferences>
 
@@ -9,8 +10,22 @@ export interface TimeSlot {
   isDeepWork: boolean
 }
 
+export interface ScheduledTaskPlan {
+  blocks: Array<{ start: Date; end: Date }>
+}
+
+export interface ScheduleTaskOptions {
+  preferredStartByTaskId?: Record<string, string | undefined>
+  rescheduleModeByTaskId?: Record<string, 'same-time' | 'today' | 'next' | 'redistribute' | undefined>
+}
+
+interface FindFreeSlotsOptions {
+  ignoreSoftBlockers?: boolean
+}
+
 export function useScheduler() {
   const { preferences } = usePreferences()
+  const slotCache = new Map<string, TimeSlot[]>()
 
   /**
    * Findet alle freien Zeitslots in einem Zeitraum unter Beruecksichtigung
@@ -21,8 +36,16 @@ export function useScheduler() {
     to: Date,
     existingEvents: readonly CalendarEvent[],
     prefs: ReadonlyUserPreferences = preferences.value,
+    options: FindFreeSlotsOptions = {},
   ): TimeSlot[] {
+    const cacheKey = buildSlotsCacheKey(from, to, existingEvents, prefs, options)
+    const cachedSlots = slotCache.get(cacheKey)
+    if (cachedSlots) {
+      return cloneTimeSlots(cachedSlots)
+    }
+
     const slots: TimeSlot[] = []
+    const planningConstraintEvents = [...existingEvents, ...buildPreferenceBlockers(from, to, prefs)]
     const current = new Date(from)
     current.setHours(0, 0, 0, 0)
 
@@ -35,12 +58,20 @@ export function useScheduler() {
 
       // Nur an Arbeitstagen
       if (prefs.workDays.includes(dayOfWeek)) {
-        const daySlots = getDaySlotsWithGaps(current, existingEvents, prefs)
+        const daySlots = getDaySlotsWithGaps(current, planningConstraintEvents, prefs, options.ignoreSoftBlockers)
         slots.push(...daySlots)
       }
 
       current.setDate(current.getDate() + 1)
     }
+
+    if (slotCache.size >= 40) {
+      const oldestKey = slotCache.keys().next().value
+      if (oldestKey) {
+        slotCache.delete(oldestKey)
+      }
+    }
+    slotCache.set(cacheKey, cloneTimeSlots(slots))
 
     return slots
   }
@@ -52,7 +83,9 @@ export function useScheduler() {
     day: Date,
     existingEvents: readonly CalendarEvent[],
     prefs: UserPreferences,
+    ignoreSoftBlockers = false,
   ): TimeSlot[] {
+    const bufferMs = prefs.taskBufferMinutes * 60 * 1000
     const dayStart = new Date(day)
     dayStart.setHours(prefs.workStartHour, 0, 0, 0)
 
@@ -66,9 +99,11 @@ export function useScheduler() {
     lunchEnd.setHours(prefs.lunchEndHour, 0, 0, 0)
 
     // Belegte Zeiten sammeln (Events + Mittagspause)
-    const busyPeriods: { start: Date; end: Date }[] = [
-      { start: lunchStart, end: lunchEnd },
-    ]
+    const busyPeriods: { start: Date; end: Date }[] = []
+
+    if (!ignoreSoftBlockers) {
+      busyPeriods.push({ start: lunchStart, end: lunchEnd })
+    }
 
     for (const event of existingEvents) {
       const eventStart = getEventStart(event)
@@ -78,8 +113,8 @@ export function useScheduler() {
       // Nur Events die an diesem Tag liegen
       if (eventEnd > dayStart && eventStart < dayEnd) {
         busyPeriods.push({
-          start: new Date(Math.max(eventStart.getTime(), dayStart.getTime())),
-          end: new Date(Math.min(eventEnd.getTime(), dayEnd.getTime())),
+          start: new Date(Math.max(eventStart.getTime() - bufferMs, dayStart.getTime())),
+          end: new Date(Math.min(eventEnd.getTime() + bufferMs, dayEnd.getTime())),
         })
       }
     }
@@ -99,10 +134,12 @@ export function useScheduler() {
         const slotStart = new Date(cursor)
         const slotEnd = new Date(busy.start)
         if (slotEnd.getTime() - slotStart.getTime() >= 15 * 60 * 1000) { // Min. 15 Min.
+          const slotDurationMinutes = (slotEnd.getTime() - slotStart.getTime()) / 60000
           freeSlots.push({
             start: slotStart,
             end: slotEnd,
-            isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork),
+            isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork) &&
+              slotDurationMinutes >= prefs.minDeepWorkBlockMinutes,
           })
         }
       }
@@ -114,10 +151,12 @@ export function useScheduler() {
       const slotStart = new Date(cursor)
       const slotEnd = new Date(dayEnd)
       if (slotEnd.getTime() - slotStart.getTime() >= 15 * 60 * 1000) {
+        const slotDurationMinutes = (slotEnd.getTime() - slotStart.getTime()) / 60000
         freeSlots.push({
           start: slotStart,
           end: slotEnd,
-          isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork),
+          isDeepWork: isInDeepWorkWindow(slotStart, slotEnd, deepWork) &&
+            slotDurationMinutes >= prefs.minDeepWorkBlockMinutes,
         })
       }
     }
@@ -143,8 +182,9 @@ export function useScheduler() {
     tasksToSchedule: readonly Task[],
     existingEvents: readonly CalendarEvent[],
     prefs: ReadonlyUserPreferences = preferences.value,
-  ): Map<string, { start: Date; end: Date }> {
-    const result = new Map<string, { start: Date; end: Date }>()
+    options: ScheduleTaskOptions = {},
+  ): Map<string, ScheduledTaskPlan> {
+    const result = new Map<string, ScheduledTaskPlan>()
 
     // Tasks sortieren: Prioritaet absteigend, Deadline aufsteigend
     const sorted = [...tasksToSchedule].sort((a, b) => {
@@ -152,117 +192,282 @@ export function useScheduler() {
       const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
       if (pDiff !== 0) return pDiff
 
-      // Bei gleicher Prioritaet: fruehere Deadline zuerst
+      // Bei gleicher Prioritaet: hoehster Deadline-Druck zuerst
+      const aPressure = getDeadlinePressureScore(a)
+      const bPressure = getDeadlinePressureScore(b)
+      if (aPressure !== bPressure) return bPressure - aPressure
+
+      // Danach fruehere Deadline zuerst
       const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
       const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
-      return aDeadline - bDeadline
+      if (aDeadline !== bDeadline) return aDeadline - bDeadline
+
+      return b.estimatedMinutes - a.estimatedMinutes
     })
 
-    // Planungszeitraum: ab jetzt, 14 Tage voraus
+    // Planungszeitraum: ab jetzt, bis zur spaetesten Deadline oder max. 180 Tage
     const now = new Date()
-    const planEnd = new Date(now)
-    planEnd.setDate(planEnd.getDate() + 14)
+    const latestDeadline = sorted.reduce<number>((max, task) => {
+      if (!task.deadline) return max
+      return Math.max(max, new Date(task.deadline).getTime())
+    }, now.getTime())
+
+    const planEnd = new Date(Math.max(
+      latestDeadline + 7 * 24 * 60 * 60 * 1000,
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
+    ))
+    const maxEnd = new Date(now)
+    maxEnd.setDate(maxEnd.getDate() + 180)
+    if (planEnd > maxEnd) {
+      planEnd.setTime(maxEnd.getTime())
+    }
 
     // Alle freien Slots finden
     let freeSlots = findFreeSlots(now, planEnd, existingEvents, prefs)
+    let madeProgress = true
 
-    // Bereits eingeplante Tasks als "belegt" beruecksichtigen
-    const virtualBusy: CalendarEvent[] = [...existingEvents]
+    while (madeProgress) {
+      madeProgress = false
 
-    for (const task of sorted) {
-      if (task.status === 'done') continue
+      for (const task of sorted) {
+        if (result.has(task.id) || task.status === 'done') continue
 
-      // Dependencies pruefen: alle Abhaengigkeiten muessen eingeplant sein
-      if (task.dependencies.length > 0) {
-        const allDepsScheduled = task.dependencies.every(depId => result.has(depId))
-        if (!allDepsScheduled) continue // Spaeter nochmal versuchen
-      }
+        const allDepsScheduled = task.dependencies.every(depId => {
+          const dependencyTask = tasksToSchedule.find(candidate => candidate.id === depId)
+          if (!dependencyTask) return true
 
-      const durationMs = task.estimatedMinutes * 60 * 1000
+          return dependencyTask.status === 'done' ||
+            dependencyTask.status === 'scheduled' ||
+            result.has(depId)
+        })
+        if (!allDepsScheduled) continue
 
-      // Frueheste Startzeit (nach Dependencies)
-      let earliestStart = now
-      for (const depId of task.dependencies) {
-        const depSlot = result.get(depId)
-        if (depSlot && depSlot.end > earliestStart) {
-          earliestStart = depSlot.end
+        const durationMs = task.estimatedMinutes * 60 * 1000
+        let earliestStart = now
+
+        for (const depId of task.dependencies) {
+          const depPlan = result.get(depId)
+          const depEnd = depPlan?.blocks[depPlan.blocks.length - 1]?.end
+          if (depEnd && depEnd > earliestStart) {
+            earliestStart = depEnd
+            continue
+          }
+
+          const dependencyTask = tasksToSchedule.find(candidate => candidate.id === depId)
+          if (!dependencyTask) continue
+
+          const persistedDependencyEnd = dependencyTask.scheduleBlocks?.[dependencyTask.scheduleBlocks.length - 1]?.end ||
+            dependencyTask.scheduledEnd
+          if (persistedDependencyEnd) {
+            const scheduledEnd = new Date(persistedDependencyEnd)
+            if (scheduledEnd > earliestStart) {
+              earliestStart = scheduledEnd
+            }
+          }
         }
-      }
 
-      // Passenden Slot finden
-      const slot = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs)
-      if (slot) {
-        const scheduledStart = new Date(slot.start)
-        const scheduledEnd = new Date(scheduledStart.getTime() + durationMs)
-        result.set(task.id, { start: scheduledStart, end: scheduledEnd })
+        const allocation = allocateTaskAcrossSlots(
+          freeSlots,
+          durationMs,
+          task.isDeepWork,
+          earliestStart,
+          prefs.taskBufferMinutes,
+          prefs,
+          task.deadline ? new Date(task.deadline) : undefined,
+          options.preferredStartByTaskId?.[task.id] ? new Date(options.preferredStartByTaskId[task.id]!) : undefined,
+          options.rescheduleModeByTaskId?.[task.id],
+        )
+        if (allocation.blocks.length === 0 || allocation.scheduledMs < durationMs) continue
 
-        // Slot aufteilen (verbleibender Rest bleibt frei)
-        freeSlots = splitSlotAfterBooking(freeSlots, slot, scheduledStart, scheduledEnd)
-      }
-    }
-
-    // Zweiter Durchlauf fuer Tasks die wegen Dependencies uebersprungen wurden
-    for (const task of sorted) {
-      if (result.has(task.id) || task.status === 'done') continue
-
-      const allDepsScheduled = task.dependencies.every(depId => result.has(depId))
-      if (!allDepsScheduled) continue
-
-      const durationMs = task.estimatedMinutes * 60 * 1000
-      let earliestStart = now
-      for (const depId of task.dependencies) {
-        const depSlot = result.get(depId)
-        if (depSlot && depSlot.end > earliestStart) {
-          earliestStart = depSlot.end
+        const normalizedBlocks = normalizePlannedBlocks(allocation.blocks)
+        if (!hasValidPlannedBlocks(normalizedBlocks)) {
+          console.warn(`Ungueltiger Plan fuer Task "${task.title}" wurde verworfen.`)
+          continue
         }
-      }
 
-      const slot = findSlotForTask(freeSlots, durationMs, task.isDeepWork, earliestStart, prefs)
-      if (slot) {
-        const scheduledStart = new Date(slot.start)
-        const scheduledEnd = new Date(scheduledStart.getTime() + durationMs)
-        result.set(task.id, { start: scheduledStart, end: scheduledEnd })
-        freeSlots = splitSlotAfterBooking(freeSlots, slot, scheduledStart, scheduledEnd)
+        result.set(task.id, { blocks: normalizedBlocks })
+        freeSlots = allocation.remainingSlots
+        madeProgress = true
       }
     }
 
     return result
   }
 
-  /**
-   * Findet den ersten passenden Slot fuer einen Task.
-   */
-  function findSlotForTask(
+  function allocateTaskAcrossSlots(
     slots: TimeSlot[],
     durationMs: number,
     needsDeepWork: boolean,
     earliestStart: Date,
+    bufferMinutes: number,
     prefs: ReadonlyUserPreferences,
-  ): TimeSlot | null {
-    for (const slot of slots) {
-      // Slot muss nach earliestStart beginnen
-      const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
-      const availableMs = slot.end.getTime() - effectiveStart.getTime()
+    latestEnd?: Date,
+    preferredStart?: Date,
+    rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
+  ): {
+    blocks: Array<{ start: Date; end: Date }>
+    remainingSlots: TimeSlot[]
+    scheduledMs: number
+  } {
+    let remainingMs = durationMs
+    let currentEarliest = earliestStart
+    let workingSlots = [...slots]
+    const blocks: Array<{ start: Date; end: Date }> = []
 
-      if (availableMs < durationMs) continue
+    const passes = [
+      (slot: TimeSlot) => needsDeepWork ? slot.isDeepWork : !slot.isDeepWork,
+      (_slot: TimeSlot) => true,
+    ]
 
-      // Deep-Work-Tasks nur in Deep-Work-Slots
-      if (needsDeepWork && !slot.isDeepWork) continue
+    for (const slotFilter of passes) {
+      const orderedSlots = orderSlotsForTask(
+        workingSlots,
+        durationMs,
+        currentEarliest,
+        prefs,
+        needsDeepWork,
+        latestEnd,
+        preferredStart,
+        rescheduleMode,
+      )
 
-      // Nicht-Deep-Work-Tasks NICHT in Deep-Work-Slots (schuetzt Fokuszeit)
-      if (!needsDeepWork && slot.isDeepWork) continue
+      for (const slot of orderedSlots) {
+        if (remainingMs <= 0) break
+        if (!slotFilter(slot)) continue
 
-      return slot
+        let effectiveStart = new Date(Math.max(slot.start.getTime(), currentEarliest.getTime()))
+        const effectiveSlotEnd = latestEnd
+          ? new Date(Math.min(slot.end.getTime(), latestEnd.getTime()))
+          : slot.end
+        if (
+          preferredStart &&
+          rescheduleMode === 'same-time' &&
+          preferredStart >= effectiveStart &&
+          preferredStart < effectiveSlotEnd
+        ) {
+          effectiveStart = new Date(preferredStart)
+        }
+        const availableMs = effectiveSlotEnd.getTime() - effectiveStart.getTime()
+        if (availableMs < 15 * 60 * 1000) continue
+
+        const bookedMs = Math.min(remainingMs, availableMs)
+        const bookEnd = new Date(effectiveStart.getTime() + bookedMs)
+        const slotRelease = new Date(bookEnd.getTime() + bufferMinutes * 60 * 1000)
+
+        blocks.push({ start: effectiveStart, end: bookEnd })
+        workingSlots = splitSlotAfterBooking(workingSlots, slot, effectiveStart, slotRelease)
+        remainingMs -= bookedMs
+        currentEarliest = slotRelease
+      }
     }
 
-    // Fallback: Wenn kein passender Slot, auch "falsche" Slots akzeptieren
-    for (const slot of slots) {
-      const effectiveStart = new Date(Math.max(slot.start.getTime(), earliestStart.getTime()))
-      const availableMs = slot.end.getTime() - effectiveStart.getTime()
-      if (availableMs >= durationMs) return slot
+    return {
+      blocks,
+      remainingSlots: workingSlots,
+      scheduledMs: durationMs - remainingMs,
     }
+  }
 
-    return null
+  function orderSlotsForTask(
+    slots: TimeSlot[],
+    durationMs: number,
+    earliestStart: Date,
+    prefs: ReadonlyUserPreferences,
+    needsDeepWork: boolean,
+    latestEnd?: Date,
+    preferredStart?: Date,
+    rescheduleMode?: 'same-time' | 'today' | 'next' | 'redistribute',
+  ): TimeSlot[] {
+    const oneHourMs = 60 * 60 * 1000
+    const isShortTask = durationMs <= oneHourMs
+    const isLargeTask = durationMs >= 2 * oneHourMs
+
+    return [...slots].sort((a, b) => {
+      const aEffectiveStart = Math.max(a.start.getTime(), earliestStart.getTime())
+      const bEffectiveStart = Math.max(b.start.getTime(), earliestStart.getTime())
+      const aAvailable = a.end.getTime() - aEffectiveStart
+      const bAvailable = b.end.getTime() - bEffectiveStart
+      const todayKey = new Date()
+      todayKey.setHours(0, 0, 0, 0)
+
+      if (rescheduleMode === 'today') {
+        const aIsToday = isSameCalendarDay(new Date(aEffectiveStart), todayKey)
+        const bIsToday = isSameCalendarDay(new Date(bEffectiveStart), todayKey)
+        if (aIsToday !== bIsToday) {
+          return aIsToday ? -1 : 1
+        }
+      }
+
+      if (preferredStart && rescheduleMode === 'same-time') {
+        const aDistance = Math.abs(aEffectiveStart - preferredStart.getTime())
+        const bDistance = Math.abs(bEffectiveStart - preferredStart.getTime())
+        if (aDistance !== bDistance) {
+          return aDistance - bDistance
+        }
+      }
+
+      const aFits = aAvailable >= durationMs
+      const bFits = bAvailable >= durationMs
+      if (aFits !== bFits) return aFits ? -1 : 1
+
+      if (latestEnd) {
+        if (aEffectiveStart !== bEffectiveStart) {
+          return aEffectiveStart - bEffectiveStart
+        }
+      }
+
+      if (rescheduleMode === 'redistribute') {
+        if (aAvailable !== bAvailable) {
+          return bAvailable - aAvailable
+        }
+      }
+
+      if (isShortTask) {
+        if (aFits && bFits && aAvailable !== bAvailable) {
+          return aAvailable - bAvailable
+        }
+      }
+
+      if (isLargeTask) {
+        if (aAvailable !== bAvailable) {
+          return bAvailable - aAvailable
+        }
+      }
+
+      if (preferredStart) {
+        const aDistance = Math.abs(aEffectiveStart - preferredStart.getTime())
+        const bDistance = Math.abs(bEffectiveStart - preferredStart.getTime())
+        if (aDistance !== bDistance) {
+          return aDistance - bDistance
+        }
+      }
+
+      const behaviorScoreDiff = getBehaviorSlotScore(new Date(bEffectiveStart), prefs, needsDeepWork) -
+        getBehaviorSlotScore(new Date(aEffectiveStart), prefs, needsDeepWork)
+      if (behaviorScoreDiff !== 0) {
+        return behaviorScoreDiff
+      }
+
+      const stylePenaltyDiff = getPlanningStylePenalty(new Date(aEffectiveStart), prefs) -
+        getPlanningStylePenalty(new Date(bEffectiveStart), prefs)
+      if (stylePenaltyDiff !== 0) {
+        return stylePenaltyDiff
+      }
+
+      return aEffectiveStart - bEffectiveStart
+    })
+  }
+
+  function getDeadlinePressureScore(task: Task): number {
+    if (!task.deadline) return 0
+
+    const deadlineMs = new Date(task.deadline).getTime()
+    const nowMs = Date.now()
+    const remainingMs = Math.max(deadlineMs - nowMs, 60 * 60 * 1000)
+    const remainingHours = remainingMs / (60 * 60 * 1000)
+    const taskHours = Math.max(task.estimatedMinutes / 60, 0.25)
+
+    return taskHours / remainingHours
   }
 
   /**
@@ -308,6 +513,87 @@ export function useScheduler() {
 
 // --- Hilfsfunktionen ---
 
+function buildPreferenceBlockers(
+  from: Date,
+  to: Date,
+  prefs: ReadonlyUserPreferences,
+): CalendarEvent[] {
+  const blockers: CalendarEvent[] = []
+  const cursor = new Date(from)
+  cursor.setHours(0, 0, 0, 0)
+  const endDate = new Date(to)
+  endDate.setHours(23, 59, 59, 999)
+
+  while (cursor <= endDate) {
+    const holidaysToday = prefs.respectPublicHolidays
+      ? getGermanHolidayEntriesForRange(cursor, cursor, prefs.publicHolidayRegion)
+      : []
+    const isPublicHoliday = holidaysToday.length > 0
+
+    if (prefs.respectPublicHolidays) {
+      for (const holiday of holidaysToday) {
+        const holidayStart = new Date(cursor)
+        holidayStart.setHours(0, 0, 0, 0)
+        const holidayEnd = new Date(cursor)
+        holidayEnd.setHours(23, 59, 59, 999)
+        blockers.push(createSyntheticEvent(holiday.name, holidayStart, holidayEnd))
+      }
+    }
+
+    if (prefs.syncSleepSchedule) {
+      const sleepStart = new Date(cursor)
+      sleepStart.setHours(prefs.sleepStartHour, 0, 0, 0)
+      const sleepEnd = new Date(cursor)
+      sleepEnd.setHours(prefs.sleepEndHour, 0, 0, 0)
+      if (prefs.sleepEndHour <= prefs.sleepStartHour) {
+        sleepEnd.setDate(sleepEnd.getDate() + 1)
+      }
+
+      blockers.push(createSyntheticEvent('Schlaf', sleepStart, sleepEnd))
+    }
+
+    if (prefs.syncCommuteSchedule && prefs.workDays.includes(cursor.getDay()) && !isPublicHoliday) {
+      if (prefs.commuteToWorkMinutes > 0) {
+        const commuteStart = new Date(cursor)
+        commuteStart.setHours(prefs.workStartHour, 0, 0, 0)
+        commuteStart.setMinutes(commuteStart.getMinutes() - prefs.commuteToWorkMinutes)
+        const commuteEnd = new Date(cursor)
+        commuteEnd.setHours(prefs.workStartHour, 0, 0, 0)
+        blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
+      }
+
+      if (prefs.commuteFromWorkMinutes > 0) {
+        const commuteStart = new Date(cursor)
+        commuteStart.setHours(prefs.workEndHour, 0, 0, 0)
+        const commuteEnd = new Date(cursor)
+        commuteEnd.setHours(prefs.workEndHour, 0, 0, 0)
+        commuteEnd.setMinutes(commuteEnd.getMinutes() + prefs.commuteFromWorkMinutes)
+        blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
+      }
+    }
+
+    for (const routine of prefs.routineTemplates) {
+      if (isPublicHoliday && (routine.repeatMode || 'weekly') === 'workdays') continue
+      if (!routineAppliesOnDate(routine, cursor, prefs.workDays)) continue
+      if (routine.skipDates?.includes(toDateKey(cursor))) continue
+
+      const start = new Date(cursor)
+      start.setHours(routine.startHour, 0, 0, 0)
+      const end = new Date(cursor)
+      end.setHours(routine.endHour, 0, 0, 0)
+      if (routine.endHour <= routine.startHour) {
+        end.setDate(end.getDate() + 1)
+      }
+
+      blockers.push(createSyntheticEvent(routine.title, start, end))
+    }
+
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  return blockers
+}
+
 function getEventStart(event: CalendarEvent): Date | null {
   if (event.start.dateTime) return new Date(event.start.dateTime)
   if (event.start.date) return new Date(event.start.date)
@@ -318,4 +604,161 @@ function getEventEnd(event: CalendarEvent): Date | null {
   if (event.end.dateTime) return new Date(event.end.dateTime)
   if (event.end.date) return new Date(event.end.date)
   return null
+}
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+}
+
+function getBehaviorSlotScore(
+  start: Date,
+  prefs: ReadonlyUserPreferences,
+  needsDeepWork: boolean,
+) {
+  const hourKey = String(start.getHours()).padStart(2, '0')
+  const signals = prefs.behaviorSignals
+  const completed = needsDeepWork
+    ? signals.deepWorkCompletedByHour[hourKey] || 0
+    : signals.completedByHour[hourKey] || 0
+  const missed = signals.missedByHour[hourKey] || 0
+  const styleMultiplier = prefs.planningStyle === 'focus-first' && needsDeepWork ? 2 : 1
+  return (completed * styleMultiplier) - missed
+}
+
+function getPlanningStylePenalty(start: Date, prefs: ReadonlyUserPreferences) {
+  const hour = start.getHours() + (start.getMinutes() / 60)
+
+  if (prefs.planningStyle === 'aggressiv') {
+    return hour
+  }
+
+  if (prefs.planningStyle === 'deadline-first') {
+    return hour * 0.8
+  }
+
+  if (prefs.planningStyle === 'entspannt') {
+    if (hour < prefs.workStartHour + 1) return 10
+    if (hour >= 15) return -2
+    return 2
+  }
+
+  if (prefs.planningStyle === 'focus-first') {
+    if (hour >= 9 && hour <= 13) return -2
+    return 1
+  }
+
+  return 0
+}
+
+function createSyntheticEvent(summary: string, start: Date, end: Date): CalendarEvent {
+  return {
+    summary,
+    description: '[KALENDER-AI-RULE]',
+    start: { dateTime: start.toISOString() },
+    end: { dateTime: end.toISOString() },
+  }
+}
+
+function routineAppliesOnDate(
+  routine: RoutineTemplate,
+  date: Date,
+  workDays: readonly number[],
+) {
+  if ((routine.repeatMode || 'weekly') === 'workdays') {
+    return workDays.includes(date.getDay())
+  }
+
+  return routine.day === date.getDay()
+}
+
+function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function normalizePlannedBlocks(blocks: ReadonlyArray<{ start: Date; end: Date }>) {
+  return [...blocks].sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+function hasValidPlannedBlocks(blocks: ReadonlyArray<{ start: Date; end: Date }>) {
+  if (blocks.length === 0) return false
+
+  for (let index = 0; index < blocks.length; index++) {
+    const current = blocks[index]
+    if (current.start >= current.end) {
+      return false
+    }
+
+    const previous = blocks[index - 1]
+    if (previous && current.start < previous.end) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function buildSlotsCacheKey(
+  from: Date,
+  to: Date,
+  existingEvents: readonly CalendarEvent[],
+  prefs: ReadonlyUserPreferences,
+  options: FindFreeSlotsOptions,
+) {
+  const eventSignature = existingEvents
+    .map(event => [
+      event.summary || '',
+      event.start.dateTime || event.start.date || '',
+      event.end.dateTime || event.end.date || '',
+      event.colorId || '',
+    ].join('|'))
+    .join('~')
+
+  const routineSignature = prefs.routineTemplates
+    .map(routine => [
+      routine.id,
+      routine.title,
+      routine.repeatMode || 'weekly',
+      typeof routine.day === 'number' ? routine.day : '',
+      routine.startHour,
+      routine.endHour,
+      (routine.skipDates || []).join(','),
+    ].join('|'))
+    .join('~')
+
+  return JSON.stringify({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    ignoreSoftBlockers: Boolean(options.ignoreSoftBlockers),
+    eventSignature,
+    prefs: {
+      workDays: prefs.workDays,
+      workStartHour: prefs.workStartHour,
+      workEndHour: prefs.workEndHour,
+      lunchStartHour: prefs.lunchStartHour,
+      lunchEndHour: prefs.lunchEndHour,
+      taskBufferMinutes: prefs.taskBufferMinutes,
+      minDeepWorkBlockMinutes: prefs.minDeepWorkBlockMinutes,
+      deepWorkWindows: prefs.deepWorkWindows,
+      planningStyle: prefs.planningStyle,
+      respectPublicHolidays: prefs.respectPublicHolidays,
+      publicHolidayRegion: prefs.publicHolidayRegion,
+      syncSleepSchedule: prefs.syncSleepSchedule,
+      sleepStartHour: prefs.sleepStartHour,
+      sleepEndHour: prefs.sleepEndHour,
+      syncCommuteSchedule: prefs.syncCommuteSchedule,
+      commuteToWorkMinutes: prefs.commuteToWorkMinutes,
+      commuteFromWorkMinutes: prefs.commuteFromWorkMinutes,
+      routineSignature,
+    },
+  })
+}
+
+function cloneTimeSlots(slots: readonly TimeSlot[]) {
+  return slots.map(slot => ({
+    start: new Date(slot.start),
+    end: new Date(slot.end),
+    isDeepWork: slot.isDeepWork,
+  }))
 }

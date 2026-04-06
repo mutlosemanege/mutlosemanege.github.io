@@ -10,25 +10,54 @@ interface GeneratedTask {
   suggestedPriority: 'critical' | 'high' | 'medium' | 'low'
 }
 
+const MAX_DESCRIPTION_LENGTH = 2000
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Entfernt Steuerzeichen (inkl. Zeilenumbrüche) und kürzt auf maxLength. */
+function sanitizeForPrompt(text: string, maxLength: number): string {
+  return text
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function isValidISODate(value: string): boolean {
+  return ISO_DATE_RE.test(value) && !isNaN(new Date(value).getTime())
+}
+
 export default defineEventHandler(async (event) => {
   const apiKey = process.env.ANTHROPIC_API_KEY
 
   if (!apiKey) {
-    throw createError({ statusCode: 500, message: 'ANTHROPIC_API_KEY nicht konfiguriert' })
+    throw createError({ statusCode: 500, message: 'KI-Dienst nicht konfiguriert' })
   }
 
   const body = await readBody<{ description: string; deadline?: string }>(event)
 
-  if (!body.description?.trim()) {
+  if (typeof body?.description !== 'string' || !body.description.trim()) {
     throw createError({ statusCode: 400, message: 'Projektbeschreibung fehlt' })
+  }
+
+  if (body.description.length > MAX_DESCRIPTION_LENGTH) {
+    throw createError({ statusCode: 400, message: `Projektbeschreibung darf maximal ${MAX_DESCRIPTION_LENGTH} Zeichen lang sein` })
+  }
+
+  if (body.deadline !== undefined) {
+    if (typeof body.deadline !== 'string' || !isValidISODate(body.deadline)) {
+      throw createError({ statusCode: 400, message: 'deadline muss ein gültiges Datum im Format YYYY-MM-DD sein' })
+    }
   }
 
   const client = new Anthropic({ apiKey })
 
-  let userMessage = `Erstelle ein Projekt fuer: "${body.description}"`
+  const safeDescription = sanitizeForPrompt(body.description, MAX_DESCRIPTION_LENGTH)
+  let userMessage = `Erstelle ein Projekt fuer: "${safeDescription}"`
+
+  // deadline ist bereits als ISO-Datum validiert
   if (body.deadline) {
     userMessage += `\nDeadline: ${body.deadline}`
   }
+
   userMessage += '\nErstelle 3-12 sinnvolle Tasks mit realistischen Zeitschaetzungen und Abhaengigkeiten.'
 
   try {
@@ -83,7 +112,7 @@ export default defineEventHandler(async (event) => {
 
     const toolBlock = response.content.find(block => block.type === 'tool_use')
     if (!toolBlock || toolBlock.type !== 'tool_use') {
-      throw createError({ statusCode: 500, message: 'Unerwartete AI-Antwort: Kein Tool-Use-Block' })
+      throw createError({ statusCode: 500, message: 'Unerwartete KI-Antwort' })
     }
 
     const result = toolBlock.input as { projectName: string; tasks: GeneratedTask[] }
@@ -91,16 +120,14 @@ export default defineEventHandler(async (event) => {
     return {
       projectName: result.projectName,
       tasks: result.tasks,
-      usage: {
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-      },
+      // Token-Usage wird nicht zurückgegeben (verhindert Cost-Reconnaissance)
     }
   } catch (e: any) {
-    // Anthropic API Fehler weiterleiten
+    if (e.statusCode) throw e  // H3-Fehler (inkl. 403/429 aus Middleware) durchleiten
     if (e.status) {
-      throw createError({ statusCode: e.status, message: `Anthropic API: ${e.message}` })
+      // Anthropic API-Fehler: keinen internen Fehlertext leaken
+      throw createError({ statusCode: 502, message: 'KI-Dienst nicht erreichbar' })
     }
-    throw e
+    throw createError({ statusCode: 500, message: 'Interner Serverfehler' })
   }
 })

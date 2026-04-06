@@ -1,5 +1,8 @@
 # Netlify Deployment Einrichtung fuer kalender-ai
 
+> ⬆ [[Setup & Deployment]] · [[_INDEX]]
+> Geschwister: [[README]] · [[GOOGLE_SETUP]]
+
 Diese Anleitung beschreibt Schritt fuer Schritt, wie du die App von GitHub Pages auf Netlify umstellst. Netlify wird benoetigt, weil die KI-Features Server Routes (Serverless Functions) verwenden, die auf GitHub Pages nicht laufen.
 
 > **Kosten:** Der kostenlose Netlify-Tarif ("Starter") reicht voellig aus. Er beinhaltet 100 GB Bandbreite/Monat, 300 Build-Minuten/Monat und 125.000 Serverless-Function-Aufrufe/Monat.
