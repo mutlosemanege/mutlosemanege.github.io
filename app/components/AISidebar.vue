@@ -1488,6 +1488,59 @@ function inferLifeArea(task: Task): LifeArea {
   return 'arbeit'
 }
 
+function formatHourLabel(hour: number) {
+  return `${hour.toString().padStart(2, '0')}:00`
+}
+
+function getTaskPersonalHint(task: Task) {
+  const preferredHours = getPreferredHours(task.isDeepWork)
+  if (preferredHours.length === 0) return null
+
+  const firstHour = preferredHours[0]
+  const scheduledHour = task.scheduledStart ? new Date(task.scheduledStart).getHours() : null
+
+  if (scheduledHour !== null && preferredHours.includes(scheduledHour)) {
+    return `Persönlich: Dieser Slot liegt in deiner starken Zeit rund um ${formatHourLabel(scheduledHour)}.`
+  }
+
+  if (task.isDeepWork) {
+    return `Persönlich: Fokusaufgaben gelingen dir oft rund um ${formatHourLabel(firstHour)}.`
+  }
+
+  return `Persönlich: Abschlüsse gelingen dir aktuell häufig rund um ${formatHourLabel(firstHour)}.`
+}
+
+const sidebarPersonalGuidance = computed(() => {
+  const preferredHours = getPreferredHours(false)
+  const deepHours = getPreferredHours(true)
+  const visibleTasks = getPendingTasks().filter(task => task.status !== 'done')
+  const grouped = new Map<LifeArea, number>()
+
+  for (const task of visibleTasks) {
+    const area = inferLifeArea(task)
+    grouped.set(area, (grouped.get(area) || 0) + (task.priority === 'critical' || task.priority === 'high' ? 2 : 1))
+  }
+
+  const leadArea = [...grouped.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
+
+  if (!leadArea && preferredHours.length === 0 && deepHours.length === 0) {
+    return null
+  }
+
+  const parts: string[] = []
+  if (leadArea) {
+    parts.push(`${resolveLifeAreaLabel(leadArea)} zieht heute sichtbar mehr Aufmerksamkeit.`)
+  }
+  if (preferredHours[0] !== undefined) {
+    parts.push(`Starke Abschlusszeit: ${formatHourLabel(preferredHours[0])}.`)
+  }
+  if (deepHours[0] !== undefined) {
+    parts.push(`Deep Work eher bei ${formatHourLabel(deepHours[0])}.`)
+  }
+
+  return parts.join(' ')
+})
+
 function getDailyCommitRank(task: Task) {
   if (todayCommit.value.committedTaskIds.includes(task.id)) return 0
   if (todayCommit.value.deferredTaskIds.includes(task.id)) return 2
@@ -2722,6 +2775,14 @@ async function handleRetryCalendarAction() {
                 </span>
               </div>
             </div>
+
+            <div
+              v-if="sidebarPersonalGuidance"
+              class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3 text-xs text-text-secondary"
+            >
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Persönlicher Hinweis</div>
+              <div class="mt-1 leading-5">{{ sidebarPersonalGuidance }}</div>
+            </div>
           </div>
         </div>
 
@@ -2996,7 +3057,7 @@ async function handleRetryCalendarAction() {
       </div>
 
       <!-- Task List -->
-      <div class="flex-1 overflow-y-auto px-4 py-3">
+      <div class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
         <div v-if="tasks.length === 0" class="py-8 text-center">
           <div class="glass-card border border-dashed border-border-strong px-4 py-8"><p class="text-sm text-text-secondary">Keine Aufgaben vorhanden.</p><p class="mt-1 text-xs text-text-muted">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p></div>
           
@@ -3177,6 +3238,10 @@ async function handleRetryCalendarAction() {
 
                       <div v-if="task.priorityReason" class="mt-1 text-xs text-text-secondary">
                         Grund: {{ task.priorityReason }}
+                      </div>
+
+                      <div v-if="getTaskPersonalHint(task)" class="mt-1 text-xs text-accent-blue">
+                        {{ getTaskPersonalHint(task) }}
                       </div>
 
                       <div v-if="taskProgressLabel(task)" class="mt-1 text-xs text-accent-blue">
