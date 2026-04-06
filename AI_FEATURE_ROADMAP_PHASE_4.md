@@ -29,9 +29,9 @@ Rahmen:
 - [x] Wiederherstellbare Aenderungen zeitlich und thematisch gruppieren
 
 ## 27. End-to-End-Absicherung der KI-Flows
-- [ ] Komplette KI-Hauptpfade als szenariobasierte Ablauf-Checks dokumentieren
-- [ ] Kritische Flows wie Chat -> Termin, Auto-Planen -> Review -> Anwenden, Reschedule -> Review -> Undo absichern
-- [ ] Testbare Smoke-Flows fuer den Browser vorbereiten
+- [x] Komplette KI-Hauptpfade als szenariobasierte Ablauf-Checks dokumentieren
+- [x] Kritische Flows wie Chat -> Termin, Auto-Planen -> Review -> Anwenden, Reschedule -> Review -> Undo absichern
+- [x] Testbare Smoke-Flows fuer den Browser vorbereiten
 
 ## Startpunkt
 

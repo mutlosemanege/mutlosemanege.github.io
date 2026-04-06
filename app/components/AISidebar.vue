@@ -255,7 +255,7 @@ interface TaskRestoreSnapshot {
   originalEstimatedMinutes?: number
   progressPercent?: number
   status: Task['status']
-  scheduleBlocks?: readonly Task['scheduleBlocks']
+  scheduleBlocks?: Task['scheduleBlocks']
   scheduledStart?: string
   scheduledEnd?: string
   calendarEventId?: string
