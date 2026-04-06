@@ -90,6 +90,46 @@ const nextBestTaskReason = computed(() => {
   if (task.priorityReason) return task.priorityReason
   return 'Aktuell die wichtigste offene Aufgabe.'
 })
+const todayDecisionWhy = computed(() => {
+  const task = nextBestTask.value
+  const reasons: string[] = []
+
+  if (!task) {
+    reasons.push('Gerade ist keine offene Aufgabe so dringend, dass sie deinen Tagesfokus dominieren muss.')
+    return reasons
+  }
+
+  reasons.push(`"${task.title}" steht gerade vorne, weil Priorität, Deadline und aktuelle Planbarkeit zusammen am stärksten wirken.`)
+  reasons.push(nextBestTaskReason.value)
+
+  if (task.isDeepWork) {
+    reasons.push('Die Aufgabe braucht Fokuszeit und profitiert besonders von einem ruhigen Block.')
+  }
+
+  return reasons
+})
+
+const todayDecisionAlternatives = computed(() => {
+  if (!nextBestTask.value) {
+    return [
+      'Über den Planungs-Chat direkt einen neuen Termin oder eine Aufgabe anlegen.',
+      'In der Aufgabenleiste per KI-Priorisierung neue Schwerpunkte setzen.',
+    ]
+  }
+
+  return [
+    'Heute neu planen, wenn du die Aufgabe noch aktiv angehen willst.',
+    'Kleinere Lücke finden, wenn nur ein kurzer Slot realistisch ist.',
+    'Für morgen schieben, wenn heute bewusst entlastet werden soll.',
+  ]
+})
+
+const todayDecisionNextStep = computed(() => {
+  if (!nextBestTask.value) return 'Nutze den Chat oder den Aufgabenbereich, um einen neuen klaren Fokus für die nächsten Tage anzulegen.'
+  return nextBestTask.value.scheduledStart
+    ? 'Öffne die Aufgabe und prüfe, ob der bestehende Termin noch passt oder heute bewusst angepasst werden soll.'
+    : 'Entscheide jetzt bewusst, ob die Aufgabe heute neu eingeplant, in eine kleine Lücke gelegt oder auf morgen verschoben wird.'
+})
 
 const todayPressure = computed(() => {
   if (criticalCount.value > 0) {
@@ -218,6 +258,68 @@ const weekForecastSummary = computed(() => {
   }
 
   return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
+})
+const reviewWindowStart = computed(() => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - 6)
+  return start
+})
+
+const learningReview = computed(() => {
+  const recentTasks = tasks.value.filter(task => new Date(task.updatedAt) >= reviewWindowStart.value)
+  const doneCount = recentTasks.filter(task => task.status === 'done').length
+  const missedCount = recentTasks.filter(task => task.status === 'missed').length
+  const scheduledCount = recentTasks.filter(task => task.status === 'scheduled').length
+  const topHours = Object.entries(preferences.value.behaviorSignals.completedByHour)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour]) => `${hour}:00`)
+  const deepWorkHours = Object.entries(preferences.value.behaviorSignals.deepWorkCompletedByHour)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([hour]) => `${hour}:00`)
+
+  const why = [
+    `${doneCount} Aufgaben wurden in den letzten 7 Tagen abgeschlossen, ${missedCount} landeten als verpasst oder mussten neu bewertet werden.`,
+    `Insgesamt wurden bisher ${preferences.value.behaviorSignals.completionCount} Abschlüsse und ${preferences.value.behaviorSignals.rescheduledCount} Neuplanungen gelernt.`,
+  ]
+
+  if (topHours.length > 0) {
+    why.push(`Deine stärksten Abschlusszeiten liegen aktuell vor allem bei ${topHours.join(', ')}.`)
+  }
+
+  const alternatives = [
+    scheduledCount > 0
+      ? 'Behalte die geplanten Blöcke im Blick und markiere ehrlich, was wirklich geschafft wurde.'
+      : 'Nutze heute wieder bewusste Commit-Entscheidungen statt alles gleichzeitig zu planen.',
+    deepWorkHours.length > 0
+      ? `Lege Deep-Work-Aufgaben bevorzugt in ${deepWorkHours.join(' oder ')}.`
+      : 'Sammle weiter ein paar Fokusabschlüsse, damit die Planung bessere Deep-Work-Zeiten lernen kann.',
+  ]
+
+  let uncertainty: string | null = null
+  if (preferences.value.behaviorSignals.completionCount < 5) {
+    uncertainty = 'Es sind noch wenig echte Verhaltensdaten vorhanden. Die Lernsignale werden mit den nächsten Tagen stabiler.'
+  } else if (missedCount > doneCount) {
+    uncertainty = 'Die letzte Woche war unruhig. Einzelne Lernsignale können daher stärker schwanken als sonst.'
+  }
+
+  const nextStep = missedCount > doneCount
+    ? 'Plane heute bewusst nur wenige Aufgaben fest ein und nutze den Rest als flexible Optionen.'
+    : 'Nutze die gelernten Uhrzeiten als Leitplanke und bestätige nur die Aufgaben, die du heute realistisch schaffen willst.'
+
+  return {
+    doneCount,
+    missedCount,
+    scheduledCount,
+    topHours,
+    deepWorkHours,
+    why,
+    alternatives,
+    uncertainty,
+    nextStep,
+  }
 })
 
 let desktopSidebarQuery: MediaQueryList | null = null
@@ -659,6 +761,15 @@ function isSameCalendarDay(a: Date, b: Date) {
                 <button class="btn-secondary mt-4 px-4 py-2 text-sm" @click="onEditTask(nextBestTask)">
                   Aufgabe öffnen
                 </button>
+                <DecisionSummaryCard
+                  class="mt-4"
+                  title="Warum dieser Fokus?"
+                  mode-label="Empfehlung"
+                  tone="neutral"
+                  :why="todayDecisionWhy"
+                  :alternatives="todayDecisionAlternatives"
+                  :next-step="todayDecisionNextStep"
+                />
                 <div class="mt-4 flex flex-wrap gap-2">
                   <button class="btn-primary px-4 py-2 text-sm disabled:opacity-50" :disabled="isRunningTodayAction" @click="runTodayAction(planNextTaskToday)">
                     Heute neu planen
@@ -674,6 +785,16 @@ function isSameCalendarDay(a: Date, b: Date) {
               <p v-else class="mt-4 text-sm leading-6 text-text-secondary">
                 Gerade ist nichts offen. Du kannst entspannt neue Aufgaben oder Termine planen.
               </p>
+              <DecisionSummaryCard
+                v-if="!nextBestTask"
+                class="mt-4"
+                title="Warum gerade kein Fokus?"
+                mode-label="Empfehlung"
+                tone="success"
+                :why="todayDecisionWhy"
+                :alternatives="todayDecisionAlternatives"
+                :next-step="todayDecisionNextStep"
+              />
             </section>
 
             <section class="glass-card p-5">
@@ -760,6 +881,49 @@ function isSameCalendarDay(a: Date, b: Date) {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section class="glass-card mt-4 p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Rückblick</p>
+                <h2 class="mt-2 text-xl font-semibold text-text-primary">Lernen aus den letzten Tagen</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
+                  So wird sichtbar, was die App aus echten Abschlüssen, Verschiebungen und Fokuszeiten gelernt hat.
+                </p>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                Verhalten
+              </div>
+            </div>
+
+            <div class="mt-5 grid gap-3 md:grid-cols-3">
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                <div class="text-lg font-semibold text-text-primary">{{ learningReview.doneCount }}</div>
+                <div class="text-xs text-text-muted">Diese Woche erledigt</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                <div class="text-lg font-semibold" :class="learningReview.missedCount > learningReview.doneCount ? 'text-priority-high' : 'text-text-primary'">
+                  {{ learningReview.missedCount }}
+                </div>
+                <div class="text-xs text-text-muted">Diese Woche verpasst</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                <div class="text-lg font-semibold text-text-primary">{{ learningReview.topHours[0] || 'noch offen' }}</div>
+                <div class="text-xs text-text-muted">Stärkste Abschlusszeit</div>
+              </div>
+            </div>
+
+            <DecisionSummaryCard
+              class="mt-5"
+              title="Was die Planung gerade über dich lernt"
+              mode-label="Rückblick"
+              :tone="learningReview.missedCount > learningReview.doneCount ? 'warning' : 'success'"
+              :why="learningReview.why"
+              :uncertainty="learningReview.uncertainty"
+              :alternatives="learningReview.alternatives"
+              :next-step="learningReview.nextStep"
+            />
           </section>
 
           <div class="mt-6 flex items-center justify-between gap-3">

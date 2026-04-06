@@ -97,6 +97,38 @@ export function useCalendar() {
     lastFailedAction.value = null
   }
 
+  function toSafeCalendarMessage(
+    action: CalendarSyncStatus['action'],
+    rawMessage: string | undefined,
+  ) {
+    const normalized = (rawMessage || '').toLowerCase()
+
+    if (normalized.includes('insufficient authentication') || normalized.includes('invalid credentials') || normalized.includes('unauthenticated')) {
+      return 'Die Kalenderverbindung ist abgelaufen. Bitte verbinde dein Google-Konto erneut.'
+    }
+
+    if (normalized.includes('forbidden') || normalized.includes('not have permission')) {
+      return 'Der Kalender verweigert diese Aktion gerade. Bitte prüfe Freigaben und verbundenes Konto.'
+    }
+
+    if (normalized.includes('rate limit') || normalized.includes('quota')) {
+      return 'Zu viele Kalenderanfragen in kurzer Zeit. Bitte versuche es gleich noch einmal.'
+    }
+
+    if (normalized.includes('network') || normalized.includes('failed to fetch')) {
+      return 'Die Kalenderverbindung ist gerade instabil. Bitte versuche es erneut.'
+    }
+
+    const fallbackByAction: Record<CalendarSyncStatus['action'], string> = {
+      fetch: 'Kalender konnte nicht synchronisiert werden.',
+      create: 'Kalendereintrag konnte nicht erstellt werden.',
+      update: 'Kalendereintrag konnte nicht aktualisiert werden.',
+      delete: 'Kalendereintrag konnte nicht entfernt werden.',
+    }
+
+    return fallbackByAction[action]
+  }
+
   function getEventStart(event: CalendarEvent): Date | null {
     if (event.start.dateTime) return new Date(event.start.dateTime)
     if (event.start.date) return new Date(event.start.date)
@@ -179,9 +211,10 @@ export function useCalendar() {
       clearFailedAction()
       return true
     } catch (e: any) {
-      error.value = e.message
+      const safeMessage = toSafeCalendarMessage('fetch', e.message)
+      error.value = safeMessage
       events.value = []
-      setSyncStatus('error', 'fetch', e.message || 'Kalender konnte nicht synchronisiert werden.')
+      setSyncStatus('error', 'fetch', safeMessage)
       rememberFailedAction({
         action: 'fetch',
         args: { timeMin, timeMax },
@@ -208,8 +241,9 @@ export function useCalendar() {
       clearFailedAction()
       return result
     } catch (e: any) {
-      error.value = e.message
-      setSyncStatus('error', 'create', e.message || 'Kalendereintrag konnte nicht erstellt werden.')
+      const safeMessage = toSafeCalendarMessage('create', e.message)
+      error.value = safeMessage
+      setSyncStatus('error', 'create', safeMessage)
       rememberFailedAction({
         action: 'create',
         args: { event },
@@ -236,8 +270,9 @@ export function useCalendar() {
       clearFailedAction()
       return result
     } catch (e: any) {
-      error.value = e.message
-      setSyncStatus('error', 'update', e.message || 'Kalendereintrag konnte nicht aktualisiert werden.')
+      const safeMessage = toSafeCalendarMessage('update', e.message)
+      error.value = safeMessage
+      setSyncStatus('error', 'update', safeMessage)
       rememberFailedAction({
         action: 'update',
         args: { eventId, event },
@@ -261,8 +296,9 @@ export function useCalendar() {
       clearFailedAction()
       return true
     } catch (e: any) {
-      error.value = e.message
-      setSyncStatus('error', 'delete', e.message || 'Kalendereintrag konnte nicht entfernt werden.')
+      const safeMessage = toSafeCalendarMessage('delete', e.message)
+      error.value = safeMessage
+      setSyncStatus('error', 'delete', safeMessage)
       rememberFailedAction({
         action: 'delete',
         args: { eventId },

@@ -2,6 +2,15 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { RoutineTemplate, Task } from '~/types/task'
+import {
+  MAX_CHAT_PROMPT_LENGTH,
+  MAX_LONG_TEXT_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
+  normalizeMultilineUserText,
+  normalizeOptionalUserText,
+  normalizeUserText,
+  shortenForFeedback,
+} from '~/utils/inputGuards'
 import { parsePlanningPrompt as parsePlanningPromptCore } from '~/utils/planningChatCore'
 
 type PlanningIntent = 'event' | 'task' | 'routine'
@@ -98,6 +107,23 @@ const examplePrompts = [
   '2h Videoschnitt zwischen 14 und 17 Uhr',
   'jeden Mittwoch Gym 18 bis 20 Uhr',
 ]
+const promptCharactersLeft = computed(() => MAX_CHAT_PROMPT_LENGTH - prompt.value.length)
+const decisionCardModeLabel = computed(() => {
+  if (!parsedDetails.value) return null
+  return previewEvent.value || previewTask.value || previewRoutine.value ? 'Empfehlung' : 'Vorschau'
+})
+const decisionCardTone = computed(() => {
+  if (previewEvent.value || previewTask.value || previewRoutine.value) return 'preview'
+  if (error.value) return 'warning'
+  return 'neutral'
+})
+const decisionCardNextStep = computed(() => {
+  if (previewEvent.value) return 'Prüfe kurz den Vorschlag oder wähle unten eine andere Zeit aus und erstelle dann den Termin.'
+  if (previewTask.value && previewTaskSlot.value) return 'Wenn der Slot passt, kannst du die Aufgabe direkt mit Kalendereintrag anlegen.'
+  if (previewTask.value) return 'Lege die Aufgabe jetzt an oder passe den Prompt an, damit der Chat einen direkten Slot suchen kann.'
+  if (previewRoutine.value) return 'Speichere die Routine, wenn Wochentag und Uhrzeit wirklich zu deinem Rhythmus passen.'
+  return 'Verfeinere Datum, Uhrzeit oder Dauer, damit der Vorschlag genauer wird.'
+})
 
 const previewDuplicateWarnings = computed(() => {
   if (previewEvent.value?.start.dateTime && previewEvent.value?.end.dateTime) {
@@ -190,7 +216,9 @@ watch(() => props.show, (show) => {
 })
 
 async function handlePlan() {
-  if (!prompt.value.trim()) return
+  if (isPlanning.value) return
+  const safePrompt = normalizeMultilineUserText(prompt.value, MAX_CHAT_PROMPT_LENGTH)
+  if (!safePrompt) return
 
   isPlanning.value = true
   error.value = null
@@ -205,7 +233,10 @@ async function handlePlan() {
   selectedPreviewSuggestionKey.value = null
 
   try {
-    const parsed = parsePlanningPromptCore(prompt.value.trim(), durationMinutes.value, intentMode.value)
+    prompt.value = safePrompt
+    const parsed = parsePlanningPromptCore(safePrompt, durationMinutes.value, intentMode.value)
+    const safeTitle = normalizeUserText(parsed.title, MAX_TASK_TITLE_LENGTH) || 'Neuer Eintrag'
+    parsed.title = safeTitle
     parsedDetails.value = parsed
 
     if (parsed.intent === 'routine') {
@@ -227,11 +258,11 @@ async function handlePlan() {
     if (parsed.intent === 'task') {
       previewTaskSlot.value = suggestion ? { start: suggestion.start, end: suggestion.end } : null
       previewTask.value = {
-        title: parsed.title,
-        description: `Erstellt aus Chat-Eingabe: "${prompt.value.trim()}"`,
+        title: safeTitle,
+        description: normalizeOptionalUserText(`Erstellt aus Chat-Eingabe: "${shortenForFeedback(safePrompt, 140)}"`, MAX_LONG_TEXT_LENGTH),
         estimatedMinutes: parsed.durationMinutes,
         deadline: buildTaskDeadline(parsed),
-        priority: inferTaskPriority(prompt.value.trim()),
+        priority: inferTaskPriority(safePrompt),
         aiSuggestedPriority: undefined,
         priorityReason: suggestion
           ? 'Erstellt aus Planungs-Chat und direkt terminiert'
@@ -258,8 +289,8 @@ async function handlePlan() {
 
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     previewEvent.value = {
-      summary: parsed.title,
-      description: `Geplant aus Chat-Eingabe: "${prompt.value.trim()}"`,
+      summary: safeTitle,
+      description: normalizeOptionalUserText(`Geplant aus Chat-Eingabe: "${shortenForFeedback(safePrompt, 140)}"`, MAX_LONG_TEXT_LENGTH),
       start: {
         dateTime: suggestion.start.toISOString(),
         timeZone: tz,
@@ -277,7 +308,7 @@ async function handlePlan() {
 }
 
 async function handleCreate() {
-  if (!previewEvent.value) return
+  if (isPlanning.value || !previewEvent.value) return
 
   isPlanning.value = true
   error.value = null
@@ -302,7 +333,7 @@ async function handleCreate() {
 }
 
 async function handleCreateTask() {
-  if (!previewTask.value) return
+  if (isPlanning.value || !previewTask.value) return
 
   isPlanning.value = true
   error.value = null
@@ -357,7 +388,7 @@ async function handleCreateTask() {
 }
 
 async function handleCreateRoutine() {
-  if (!previewRoutine.value) return
+  if (isPlanning.value || !previewRoutine.value) return
 
   isPlanning.value = true
   error.value = null
@@ -371,10 +402,15 @@ async function handleCreateRoutine() {
     )
 
     if (!existingRoutine) {
+      const safeTemplate = {
+        ...previewRoutine.value.template,
+        title: normalizeUserText(previewRoutine.value.template.title, MAX_TASK_TITLE_LENGTH),
+        description: normalizeOptionalUserText(previewRoutine.value.template.description, MAX_LONG_TEXT_LENGTH),
+      }
       updatePreferences({
         routineTemplates: [
           ...preferences.value.routineTemplates,
-          previewRoutine.value.template,
+          safeTemplate,
         ],
       })
     }
@@ -397,8 +433,8 @@ async function handleCreateRoutine() {
       }
 
       const created = await createEvent({
-        summary: previewRoutine.value.template.title,
-        description: previewRoutine.value.template.description || 'Aus Planungs-Chat als Routine angelegt',
+        summary: normalizeUserText(previewRoutine.value.template.title, MAX_TASK_TITLE_LENGTH),
+        description: normalizeOptionalUserText(previewRoutine.value.template.description || 'Aus Planungs-Chat als Routine angelegt', MAX_LONG_TEXT_LENGTH),
         start: { dateTime: start.toISOString(), timeZone: tz },
         end: { dateTime: end.toISOString(), timeZone: tz },
       })
@@ -1378,8 +1414,13 @@ async function handleRetryCalendarAction() {
                   v-model="prompt"
                   rows="5"
                   class="input-dark mt-3 w-full resize-none px-4 py-4"
+                  :maxlength="MAX_CHAT_PROMPT_LENGTH"
                   placeholder="z.B. Meeting morgen um 14 Uhr, Hausarbeit 3h diese Woche oder jeden Mittwoch Gym 18 bis 20 Uhr"
                 />
+                <div class="mt-2 flex items-center justify-between gap-3 text-[11px] text-text-muted">
+                  <span>Natürliche Sprache reicht. Datum, Uhrzeit und Dauer werden lokal eingegrenzt, damit der Vorschlag stabil bleibt.</span>
+                  <span>{{ promptCharactersLeft }} Zeichen frei</span>
+                </div>
 
                 <div class="mt-4">
                   <div class="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Schnell starten</div>
@@ -1534,18 +1575,18 @@ async function handleRetryCalendarAction() {
                   </span>
                 </div>
 
-                <div
+                <DecisionSummaryCard
                   v-if="previewReason || previewUncertainty || previewAlternatives.length > 0"
-                  class="mt-4 rounded-glass border border-border-subtle bg-white/[0.03] p-4"
-                >
-                  <div class="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Warum diese Entscheidung?</div>
-                  <p v-if="previewReason" class="mt-3 text-sm leading-6 text-text-secondary">
-                    {{ previewReason }}
-                  </p>
-                  <p v-if="previewUncertainty" class="mt-3 text-xs text-priority-high">
-                    Unsicherheit: {{ previewUncertainty }}
-                  </p>
-                  <div v-if="previewSuggestionGroups.length > 0" class="mt-4">
+                  class="mt-4"
+                  :title="'Warum diese Entscheidung?'"
+                  :mode-label="decisionCardModeLabel"
+                  :tone="decisionCardTone"
+                  :why="previewReason ? [previewReason] : []"
+                  :uncertainty="previewUncertainty"
+                  :alternatives="[]"
+                  :next-step="decisionCardNextStep"
+                />
+                <div v-if="previewSuggestionGroups.length > 0" class="mt-4">
                     <div class="flex items-center justify-between gap-2">
                       <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Vorschläge</div>
                       <div class="text-[11px] text-text-muted">{{ previewAlternatives.length }} auswählbar</div>
@@ -1598,7 +1639,6 @@ async function handleRetryCalendarAction() {
                       </div>
                     </div>
                   </div>
-                </div>
 
                 <div v-if="previewEvent && parsedDetails" class="mt-4 space-y-3">
                   <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">

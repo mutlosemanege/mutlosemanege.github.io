@@ -3,6 +3,14 @@ import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle, GermanHolidayRegion } from '~/types/task'
 import { getGermanHolidayRegionOptions } from '~/utils/germanHolidays'
+import {
+  MAX_IMAGE_UPLOAD_BYTES,
+  MAX_IMPORT_ENTRIES,
+  MAX_LONG_TEXT_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
+  normalizeOptionalUserText,
+  normalizeUserText,
+} from '~/utils/inputGuards'
 
 type ImportEntryType = 'routine' | 'fixed-event'
 
@@ -184,16 +192,17 @@ function updateDeepWorkHour(day: number, field: 'startHour' | 'endHour', value: 
 }
 
 function addRoutine() {
-  if (!routineDraft.title.trim() || routineDraft.startHour >= routineDraft.endHour) return
+  const safeTitle = normalizeUserText(routineDraft.title, MAX_TASK_TITLE_LENGTH)
+  if (!safeTitle || routineDraft.startHour >= routineDraft.endHour) return
 
   form.routineTemplates.push({
     id: uuidv4(),
-    title: routineDraft.title.trim(),
+    title: safeTitle,
     repeatMode: routineDraft.repeatMode,
     day: routineDraft.repeatMode === 'weekly' ? routineDraft.day : undefined,
     startHour: routineDraft.startHour,
     endHour: routineDraft.endHour,
-    description: routineDraft.description.trim() || undefined,
+    description: normalizeOptionalUserText(routineDraft.description, MAX_LONG_TEXT_LENGTH),
     skipDates: [],
   })
 
@@ -206,6 +215,10 @@ function addRoutine() {
 }
 
 function addImportReviewEntry() {
+  if (importReviewEntries.value.length >= MAX_IMPORT_ENTRIES) {
+    importFeedback.value = `Maximal ${MAX_IMPORT_ENTRIES} Import-Einträge gleichzeitig, damit die Review übersichtlich bleibt.`
+    return
+  }
   importReviewEntries.value = [
     ...importReviewEntries.value,
     createImportReviewEntry(),
@@ -237,6 +250,18 @@ function handleImportImageChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    importFeedback.value = 'Bitte nur echte Bilddateien hochladen.'
+    input.value = ''
+    return
+  }
+
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    importFeedback.value = 'Das Bild ist zu groß. Bitte nutze maximal 5 MB pro Upload.'
+    input.value = ''
+    return
+  }
 
   const reader = new FileReader()
   reader.onload = () => {
@@ -307,6 +332,7 @@ function removeRoutineException(id: string, date: string) {
 }
 
 async function applyRoutineTemplates() {
+  if (isApplyingRoutines.value) return
   isApplyingRoutines.value = true
   routineFeedback.value = null
 
@@ -408,6 +434,7 @@ async function applyRoutineTemplates() {
 }
 
 async function applyImportEntries() {
+  if (isApplyingImport.value) return
   const selectedEntries = importReviewEntries.value.filter(entry => entry.enabled && entry.title.trim() && entry.startHour < entry.endHour)
   if (selectedEntries.length === 0) {
     importFeedback.value = 'Füge zuerst mindestens einen gültigen Import-Eintrag hinzu.'
@@ -425,19 +452,19 @@ async function applyImportEntries() {
 
     for (const entry of selectedEntries) {
       if (entry.type === 'routine') {
-        if (hasMatchingRoutineTemplate(entry)) {
+    if (hasMatchingRoutineTemplate(entry)) {
           skippedDuplicates++
           continue
         }
 
         const routine: RoutineTemplate = {
           id: uuidv4(),
-          title: entry.title.trim(),
+          title: normalizeUserText(entry.title, MAX_TASK_TITLE_LENGTH),
           repeatMode: entry.repeatMode,
           day: entry.repeatMode === 'weekly' ? entry.day : undefined,
           startHour: entry.startHour,
           endHour: entry.endHour,
-          description: entry.description.trim() || undefined,
+          description: normalizeOptionalUserText(entry.description, MAX_LONG_TEXT_LENGTH),
           skipDates: [],
         }
 
@@ -477,7 +504,13 @@ async function applyImportEntries() {
         end.setDate(end.getDate() + 1)
       }
 
-      const created = await createBlockedEvent(entry.title.trim(), start, end, entry.description.trim() || undefined, tz)
+      const created = await createBlockedEvent(
+        normalizeUserText(entry.title, MAX_TASK_TITLE_LENGTH),
+        start,
+        end,
+        normalizeOptionalUserText(entry.description, MAX_LONG_TEXT_LENGTH),
+        tz,
+      )
       if (created === 'skipped') {
         skippedDuplicates++
       } else if (created) {
@@ -521,7 +554,7 @@ function hasMatchingExistingEvent(summary: string, start: Date, end: Date) {
 }
 
 function hasMatchingRoutineTemplate(entry: ImportReviewEntry) {
-  const normalizedTitle = entry.title.trim().toLowerCase()
+  const normalizedTitle = normalizeUserText(entry.title, MAX_TASK_TITLE_LENGTH).toLowerCase()
 
   return form.routineTemplates.some(routine => {
     const routineTitle = routine.title.trim().toLowerCase()
@@ -533,7 +566,8 @@ function hasMatchingRoutineTemplate(entry: ImportReviewEntry) {
 }
 
 function importEntryDuplicateHint(entry: ImportReviewEntry) {
-  if (!entry.title.trim()) return null
+  const safeTitle = normalizeUserText(entry.title, MAX_TASK_TITLE_LENGTH)
+  if (!safeTitle) return null
 
   if (entry.type === 'routine') {
     return hasMatchingRoutineTemplate(entry) ? 'Ähnliche Routine bereits vorhanden' : null
@@ -549,7 +583,7 @@ function importEntryDuplicateHint(entry: ImportReviewEntry) {
     end.setDate(end.getDate() + 1)
   }
 
-  return hasMatchingExistingEvent(entry.title.trim(), start, end)
+  return hasMatchingExistingEvent(safeTitle, start, end)
     ? 'Ähnlicher Termin bereits im Kalender'
     : null
 }
@@ -629,6 +663,8 @@ function handleSave() {
     deepWorkWindows: form.deepWorkWindows.map(w => ({ ...w })),
     routineTemplates: form.routineTemplates.map(r => ({
       ...r,
+      title: normalizeUserText(r.title, MAX_TASK_TITLE_LENGTH),
+      description: normalizeOptionalUserText(r.description, MAX_LONG_TEXT_LENGTH),
       repeatMode: r.repeatMode || 'weekly',
       skipDates: [...(r.skipDates || [])],
     })),
@@ -1112,12 +1148,13 @@ async function handleRetryCalendarAction() {
             </div>
 
             <div class="grid gap-2 md:grid-cols-2">
-              <input
-                v-model="routineDraft.title"
-                type="text"
-                class="input-dark w-full px-3 py-2 text-sm"
-                placeholder="z.B. Vorlesung, Gym, Team Call"
-              >
+                <input
+                  v-model="routineDraft.title"
+                  type="text"
+                  class="input-dark w-full px-3 py-2 text-sm"
+                  :maxlength="MAX_TASK_TITLE_LENGTH"
+                  placeholder="z.B. Vorlesung, Gym, Team Call"
+                >
               <select
                 v-model="routineDraft.repeatMode"
                 class="input-dark w-full px-3 py-2 text-sm"
@@ -1158,12 +1195,13 @@ async function handleRetryCalendarAction() {
               </select>
             </div>
 
-            <textarea
-              v-model="routineDraft.description"
-              rows="2"
-              class="input-dark w-full px-3 py-2 text-sm"
-              placeholder="Optionaler Hinweis, z.B. Raum, Link oder was du mitbringen musst"
-            />
+              <textarea
+                v-model="routineDraft.description"
+                rows="2"
+                class="input-dark w-full px-3 py-2 text-sm"
+                :maxlength="MAX_LONG_TEXT_LENGTH"
+                placeholder="Optionaler Hinweis, z.B. Raum, Link oder was du mitbringen musst"
+              />
 
             <button
               class="btn-secondary px-3 py-2 text-sm"
@@ -1377,12 +1415,13 @@ async function handleRetryCalendarAction() {
                   </div>
 
                   <div class="mt-3 grid gap-2 md:grid-cols-2">
-                    <input
-                      v-model="entry.title"
-                      type="text"
-                      class="input-dark w-full px-3 py-2 text-sm"
-                      placeholder="Titel aus dem Bild, z.B. Mathe, Team Call"
-                    >
+                      <input
+                        v-model="entry.title"
+                        type="text"
+                        class="input-dark w-full px-3 py-2 text-sm"
+                        :maxlength="MAX_TASK_TITLE_LENGTH"
+                        placeholder="Titel aus dem Bild, z.B. Mathe, Team Call"
+                      >
                     <select
                       v-model="entry.type"
                       class="input-dark w-full px-3 py-2 text-sm"
@@ -1456,6 +1495,7 @@ async function handleRetryCalendarAction() {
                     v-model="entry.description"
                     rows="2"
                     class="input-dark mt-2 w-full px-3 py-2 text-sm"
+                    :maxlength="MAX_LONG_TEXT_LENGTH"
                     placeholder="Optionaler Hinweis, z.B. Raum, Link oder Notiz aus dem Bild"
                   />
 

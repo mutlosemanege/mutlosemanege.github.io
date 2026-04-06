@@ -151,8 +151,8 @@ Rahmen:
 - [x] Projektgenerator-Autoplan ebenfalls erst in einer Vorschau bestaetigen lassen
 
 ### 18. Einheitliche Entscheidungs-Karten
-- [ ] `Warum / Risiko / Alternative / Naechster Schritt` als einheitliches Muster in Sidebar, Chat, Heute-Ansicht und Projektgenerator weiter angleichen
-- [ ] Unterschied zwischen `Vorschau`, `Empfehlung` und `bereits angewendet` noch klarer sichtbar machen
+- [x] `Warum / Risiko / Alternative / Naechster Schritt` als einheitliches Muster in Sidebar, Chat, Heute-Ansicht und Projektgenerator weiter angleichen
+- [x] Unterschied zwischen `Vorschau`, `Empfehlung` und `bereits angewendet` noch klarer sichtbar machen
 
 ### 19. Tages-Commit statt Vollplanung
 - [ ] `Diese 3 Dinge heute` als echten Commit-Flow einbauen
@@ -168,6 +168,6 @@ Rahmen:
 - [x] Frueh sichtbar machen, an welchen Tagen die Planung kippt oder unrealistisch wird
 
 ### 22. Lern- und Vertrauens-Rueckblick
-- [ ] Einen Tages-/Wochenrueckblick fuer `was wurde geplant`, `was wurde verschoben`, `was hat funktioniert` ergaenzen
-- [ ] Gelerntes Verhalten sichtbarer machen, statt es nur implizit in die Planung einfliessen zu lassen
+- [x] Einen Tages-/Wochenrueckblick fuer `was wurde geplant`, `was wurde verschoben`, `was hat funktioniert` ergaenzen
+- [x] Gelerntes Verhalten sichtbarer machen, statt es nur implizit in die Planung einfliessen zu lassen
 - Phase 3 fuehren wir separat in [AI_FEATURE_ROADMAP_PHASE_3.md](d:/kalender-ai/AI_FEATURE_ROADMAP_PHASE_3.md) weiter.

@@ -163,9 +163,11 @@ type RescheduleMode = 'same-time' | 'today' | 'next' | 'redistribute'
 
 interface DecisionTransparency {
   title: string
+  state?: 'preview' | 'recommendation' | 'applied'
   why: string[]
   uncertainty?: string | null
   alternatives: string[]
+  nextStep?: string | null
 }
 
 interface PlanVariantPreview {
@@ -223,6 +225,7 @@ interface ActivityEntry {
   title: string
   detail: string
   createdAt: string
+  recoveryHint?: string
   undoLabel?: string
   undo?: () => Promise<void>
 }
@@ -828,6 +831,7 @@ function buildScheduleReviewDecisionTransparency(preview: ScheduleReviewPreview)
 
   return {
     title: preview.source === 'reschedule' ? 'Warum diese Neuplanung?' : 'Warum diese Vorschau?',
+    state: 'preview',
     why,
     uncertainty: preview.remainingTasks.length > 0
       ? 'Nicht alles passt im aktuellen Horizont. Prüfe die Restaufgaben danach gezielt weiter.'
@@ -837,6 +841,9 @@ function buildScheduleReviewDecisionTransparency(preview: ScheduleReviewPreview)
       : preview.source === 'reschedule'
         ? ['Anderen Neuplanungs-Modus waehlen', 'Aufgabe manuell bearbeiten', 'Spaeter erneut pruefen']
         : ['Planvarianten vergleichen', 'Vor dem Anwenden einzelne Aufgaben manuell anpassen'],
+    nextStep: preview.remainingTasks.length > 0
+      ? 'Vorschau anwenden und die offenen Restaufgaben danach gezielt mit Alternativen oder Planvarianten weiter auflösen.'
+      : 'Wenn die Vorschau stimmig wirkt, kannst du die Änderungen jetzt gesammelt anwenden.',
   }
 }
 
@@ -969,6 +976,7 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
     addActivityEntry({
       title: 'Alternativ-Slot übernommen',
       detail: `"${task.title}" wurde auf ${alternative.label} gelegt.`,
+      recoveryHint: 'Der vorherige Zustand dieser Aufgabe kann direkt aus der Historie wiederhergestellt werden.',
       undoLabel: 'Rückgängig',
       undo: async () => {
         await deleteEvent(createdEvent.id!)
@@ -1042,6 +1050,7 @@ async function confirmScheduleReview() {
         : preview.remainingTasks.length > 0
           ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
           : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
+      recoveryHint: 'Diese Sammeländerung kann über die Historie zurück auf den vorherigen Task- und Kalenderzustand gesetzt werden.',
       undoLabel: 'Rückgängig',
       undo: async () => {
         await restoreTaskSnapshots(restoreSnapshots)
@@ -1449,9 +1458,11 @@ function buildPriorityDecisionTransparency(input: {
 
   return {
     title: 'Warum diese Entscheidung?',
+    state: 'recommendation',
     why,
     uncertainty,
     alternatives,
+    nextStep: 'Prüfe danach per Auto-Planen, ob die Reihenfolge auch im Kalender wirklich tragfähig ist.',
   }
 }
 
@@ -1488,9 +1499,13 @@ function buildSchedulingDecisionTransparency(
 
   return {
     title: remainingTasks.length > 0 ? 'Warum noch nicht alles eingeplant ist' : 'Warum diese Entscheidung?',
+    state: remainingTasks.length > 0 ? 'recommendation' : 'applied',
     why,
     uncertainty,
     alternatives,
+    nextStep: remainingTasks.length > 0
+      ? 'Nutze Planvarianten oder direkte Alternativ-Slots für die offenen Aufgaben.'
+      : 'Prüfe die neuen Kalenderblöcke kurz und arbeite dann mit der nächsten Fokusaufgabe weiter.',
   }
 }
 
@@ -1517,11 +1532,15 @@ function buildRescheduleDecisionTransparency(
 
   return {
     title: succeeded ? 'Warum diese Entscheidung?' : 'Warum noch nicht neu eingeplant',
+    state: succeeded ? 'applied' : 'recommendation',
     why,
     uncertainty: succeeded
       ? 'Je nach späteren Kalenderänderungen könnten noch bessere Alternativen frei werden.'
       : 'Die aktuelle Zeitlage ist eng. Ein anderer Modus oder lockerere Rahmenbedingungen können noch helfen.',
     alternatives,
+    nextStep: succeeded
+      ? 'Wenn der neue Zeitpunkt nicht passt, kannst du direkt einen anderen Reschedule-Modus ausprobieren.'
+      : 'Probiere einen anderen Reschedule-Modus oder lockere die Zeitgrenzen für diese Aufgabe.',
   }
 }
 
@@ -1982,6 +2001,7 @@ async function archiveProjectGroup(groupId: string) {
     addActivityEntry({
       title: 'Projekt archiviert',
       detail: `"${projectGroup.name}" wurde ins Archiv verschoben.`,
+      recoveryHint: 'Das Projekt kann direkt aus der Historie wieder aktiviert werden.',
       undoLabel: 'Wiederherstellen',
       undo: async () => {
         await restoreProject(groupId)
@@ -2003,6 +2023,7 @@ async function restoreArchivedProject(groupId: string) {
     addActivityEntry({
       title: 'Projekt wiederhergestellt',
       detail: `"${projectGroup.name}" ist wieder aktiv.`,
+      recoveryHint: 'Falls das Projekt doch noch ruhen soll, kannst du es von hier erneut archivieren.',
       undoLabel: 'Erneut archivieren',
       undo: async () => {
         await archiveProject(groupId)
@@ -2222,40 +2243,24 @@ async function handleRetryCalendarAction() {
               </div>
             </div>
 
-            <div v-if="decisionTransparency" class="glass-card p-4">
-              <h3 class="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">{{ decisionTransparency.title }}</h3>
-
-              <div class="mt-3 space-y-3">
-                <div>
-                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Warum?</div>
-                  <ul class="mt-2 space-y-1 text-xs text-text-secondary">
-                    <li v-for="reason in decisionTransparency.why" :key="reason">
-                      {{ reason }}
-                    </li>
-                  </ul>
-                </div>
-
-                <div
-                  v-if="decisionTransparency.uncertainty"
-                  class="rounded-glass border border-priority-high/20 bg-priority-high/10 px-3 py-2 text-xs text-priority-high"
-                >
-                  Unsicherheit: {{ decisionTransparency.uncertainty }}
-                </div>
-
-                <div v-if="decisionTransparency.alternatives.length > 0">
-                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-green">Alternativen</div>
-                  <div class="mt-2 flex flex-wrap gap-1.5">
-                    <span
-                      v-for="alternative in decisionTransparency.alternatives"
-                      :key="alternative"
-                      class="rounded-full border border-border-subtle bg-white/[0.04] px-2.5 py-1 text-[11px] text-text-secondary"
-                    >
-                      {{ alternative }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <DecisionSummaryCard
+              v-if="decisionTransparency"
+              :title="decisionTransparency.title"
+              :mode-label="decisionTransparency.state === 'preview'
+                ? 'Vorschau'
+                : decisionTransparency.state === 'applied'
+                  ? 'Angewendet'
+                  : 'Empfehlung'"
+              :tone="decisionTransparency.state === 'preview'
+                ? 'preview'
+                : decisionTransparency.state === 'applied'
+                  ? 'success'
+                  : 'neutral'"
+              :why="decisionTransparency.why"
+              :uncertainty="decisionTransparency.uncertainty"
+              :alternatives="decisionTransparency.alternatives"
+              :next-step="decisionTransparency.nextStep"
+            />
           </div>
         </div>
 
@@ -2401,7 +2406,7 @@ async function handleRetryCalendarAction() {
           <div class="flex items-center justify-between gap-2">
             <div>
               <h3 class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Letzte Änderungen</h3>
-              <p class="mt-1 text-xs text-text-muted">So siehst du, was automatisch oder direkt verändert wurde.</p>
+              <p class="mt-1 text-xs text-text-muted">So siehst du, was automatisch oder direkt verändert wurde und welche Schritte wiederherstellbar sind.</p>
             </div>
             <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[11px] text-text-secondary">
               {{ activityEntries.length }} Einträge
@@ -2419,8 +2424,15 @@ async function handleRetryCalendarAction() {
                   <div class="flex items-center gap-2">
                     <span class="text-xs font-medium text-text-primary">{{ entry.title }}</span>
                     <span class="text-[11px] text-text-muted">{{ formatActivityTime(entry.createdAt) }}</span>
+                    <span
+                      v-if="entry.undo"
+                      class="rounded-full border border-accent-purple/20 bg-accent-purple/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-purple-soft"
+                    >
+                      Wiederherstellbar
+                    </span>
                   </div>
                   <p class="mt-1 text-xs text-text-secondary">{{ entry.detail }}</p>
+                  <p v-if="entry.recoveryHint" class="mt-1 text-[11px] text-text-muted">{{ entry.recoveryHint }}</p>
                 </div>
 
                 <button

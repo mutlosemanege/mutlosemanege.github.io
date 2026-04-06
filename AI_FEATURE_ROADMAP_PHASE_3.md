@@ -14,10 +14,10 @@ Rahmen:
 - [ ] Lokale Recovery-Hinweise fuer abgebrochene Sync-Sequenzen ergaenzen
 
 ## 18. Sicherheits- und Validierungs-Audit
-- [ ] Eingaben in Chat, Import und Projektgenerator systematisch haerten
-- [ ] Kalender- und Auth-Flows auf unnoetig sichtbare Fehlermeldungen pruefen
-- [ ] Client-seitige Grenzen fuer extrem grosse Eingaben und Missbrauchspfade ergaenzen
-- [ ] Review-Dokument fuer echte Sicherheitsfunde anlegen
+- [x] Eingaben in Chat, Import und Projektgenerator systematisch haerten
+- [x] Kalender- und Auth-Flows auf unnoetig sichtbare Fehlermeldungen pruefen
+- [x] Client-seitige Grenzen fuer extrem grosse Eingaben und Missbrauchspfade ergaenzen
+- [x] Review-Dokument fuer echte Sicherheitsfunde anlegen
 
 ## 19. Performance fuer grosse Datenmengen
 - [ ] Scheduler bei vielen Tasks und Events profilieren
@@ -37,7 +37,7 @@ Rahmen:
 - [x] Projektgenerator-Autoplan zuerst als Vorschau bestaetigen lassen
 - [x] Vor Mehrfachaenderungen eine kompakte Aenderungszusammenfassung anzeigen
 - [x] Mehr Undo- und Restore-Pfade fuer Kalender-/Task-Kopplungen ergaenzen
-- [ ] Historie staerker als echte Wiederherstellungshilfe nutzen
+- [x] Historie staerker als echte Wiederherstellungshilfe nutzen
 
 ## 22. Wochenblick und Forecast
 - [x] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen

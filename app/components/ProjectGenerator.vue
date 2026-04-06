@@ -2,6 +2,16 @@
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { Task, TaskPriority } from '~/types/task'
 import type { ScheduledTaskPlan } from '~/composables/useScheduler'
+import {
+  MAX_LONG_TEXT_LENGTH,
+  MAX_PROJECT_DESCRIPTION_LENGTH,
+  MAX_PROJECT_NAME_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
+  normalizeMultilineUserText,
+  normalizeOptionalUserText,
+  normalizeUserText,
+  shortenForFeedback,
+} from '~/utils/inputGuards'
 
 const emit = defineEmits<{
   close: []
@@ -49,6 +59,7 @@ interface ProjectSchedulePreview {
 const schedulePreview = ref<ProjectSchedulePreview | null>(null)
 const createdTasksForSchedule = ref<Task[]>([])
 const isApplyingSchedulePreview = ref(false)
+const descriptionCharactersLeft = computed(() => MAX_PROJECT_DESCRIPTION_LENGTH - description.value.length)
 
 interface PreviewTask {
   tempId: string
@@ -80,11 +91,14 @@ watch(() => props.show, (val) => {
 })
 
 async function handleGenerate() {
-  if (!description.value.trim()) return
+  if (isProcessing.value) return
+  const safeDescription = normalizeMultilineUserText(description.value, MAX_PROJECT_DESCRIPTION_LENGTH)
+  if (!safeDescription) return
+  description.value = safeDescription
 
   const promptDescription = projectType.value === 'allgemein'
-    ? description.value.trim()
-    : `Projekttyp: ${projectType.value}\n${description.value.trim()}`
+    ? safeDescription
+    : `Projekttyp: ${projectType.value}\n${safeDescription}`
 
   const result = await generateProject(
     promptDescription,
@@ -92,20 +106,26 @@ async function handleGenerate() {
   )
 
   if (result) {
-    projectName.value = result.projectName
-    previewTasks.value = result.tasks.map(t => ({ ...t, include: true }))
+    projectName.value = normalizeUserText(result.projectName, MAX_PROJECT_NAME_LENGTH) || 'Neues Projekt'
+    previewTasks.value = result.tasks.slice(0, 40).map(t => ({
+      ...t,
+      title: normalizeUserText(t.title, MAX_TASK_TITLE_LENGTH) || 'Neue Aufgabe',
+      description: normalizeOptionalUserText(t.description, MAX_LONG_TEXT_LENGTH) || `Aus "${shortenForFeedback(projectName.value, 48)}" abgeleitet.`,
+      include: true,
+    }))
     step.value = 'review'
   }
 }
 
 async function handleConfirm() {
+  if (isProcessing.value || isApplyingSchedulePreview.value) return
   const includedTasks = previewTasks.value.filter(t => t.include)
   if (includedTasks.length === 0) return
 
   // Projekt erstellen
   const project = await createProject({
-    name: projectName.value,
-    description: description.value,
+    name: normalizeUserText(projectName.value, MAX_PROJECT_NAME_LENGTH) || 'Neues Projekt',
+    description: normalizeOptionalUserText(description.value, MAX_PROJECT_DESCRIPTION_LENGTH),
     taskIds: [],
     deadline: deadline.value ? new Date(`${deadline.value}T23:59:59`).toISOString() : undefined,
     reviewAfterDate: addDays(new Date(), 3).toISOString(),
@@ -120,7 +140,7 @@ async function handleConfirm() {
   for (const pt of includedTasks) {
     const task = await createTask({
       title: pt.title,
-      description: pt.description,
+      description: normalizeOptionalUserText(pt.description, MAX_LONG_TEXT_LENGTH),
       estimatedMinutes: pt.estimatedMinutes,
       priority: pt.suggestedPriority,
       aiSuggestedPriority: pt.suggestedPriority,
@@ -489,7 +509,7 @@ function buildSchedulePreview(tasksToSchedule: Task[]): ProjectSchedulePreview {
 }
 
 async function applySchedulePreview() {
-  if (!schedulePreview.value || createdTasksForSchedule.value.length === 0 || !createdProjectId.value) return
+  if (isApplyingSchedulePreview.value || !schedulePreview.value || createdTasksForSchedule.value.length === 0 || !createdProjectId.value) return
 
   isApplyingSchedulePreview.value = true
 
@@ -576,8 +596,13 @@ function addDays(date: Date, days: number) {
                   v-model="description"
                   rows="5"
                   class="input-dark mt-3 w-full resize-none px-4 py-4"
+                  :maxlength="MAX_PROJECT_DESCRIPTION_LENGTH"
                   placeholder="z.B. YouTube-Video schneiden, Umzug planen, Prüfung vorbereiten oder Website relaunchen..."
                 />
+                <div class="mt-2 flex items-center justify-between gap-3 text-[11px] text-text-muted">
+                  <span>Kurzer Kontext reicht. Der Generator begrenzt große Prompts lokal, damit die Vorschau stabil und gut prüfbar bleibt.</span>
+                  <span>{{ descriptionCharactersLeft }} Zeichen frei</span>
+                </div>
 
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
@@ -716,25 +741,17 @@ function addDays(date: Date, days: number) {
               </div>
             </div>
 
-            <div v-if="reviewWhy.length > 0 || reviewUncertainty || reviewAlternatives.length > 0" class="mt-5 rounded-glass border border-border-subtle bg-white/[0.03] p-4">
-              <div class="text-sm font-medium text-text-primary">Warum diese Entscheidung?</div>
-              <div v-if="reviewWhy.length > 0" class="mt-3 space-y-2">
-                <p v-for="reason in reviewWhy" :key="reason" class="text-sm leading-6 text-text-secondary">
-                  {{ reason }}
-                </p>
-              </div>
-              <p v-if="reviewUncertainty" class="mt-3 text-xs text-priority-high">Unsicherheit: {{ reviewUncertainty }}</p>
-              <div v-if="reviewAlternatives.length > 0" class="mt-4 space-y-2">
-                <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Alternativen</div>
-                <div
-                  v-for="alternative in reviewAlternatives"
-                  :key="alternative"
-                  class="rounded-xl border border-border-subtle bg-white/[0.04] px-3 py-2 text-xs text-text-secondary"
-                >
-                  {{ alternative }}
-                </div>
-              </div>
-            </div>
+            <DecisionSummaryCard
+              v-if="reviewWhy.length > 0 || reviewUncertainty || reviewAlternatives.length > 0"
+              class="mt-5"
+              :title="'Warum diese Entscheidung?'"
+              mode-label="Empfehlung"
+              tone="neutral"
+              :why="reviewWhy"
+              :uncertainty="reviewUncertainty"
+              :alternatives="reviewAlternatives"
+              next-step="Prüfe zuerst Startaufgaben und Umfang. Danach kannst du das Projekt bewusst mit oder ohne Auto-Planen anlegen."
+            />
 
             <label class="mt-5 flex items-center gap-3 rounded-glass border border-border-subtle bg-white/[0.03] px-4 py-3 text-sm text-text-secondary">
               <input
