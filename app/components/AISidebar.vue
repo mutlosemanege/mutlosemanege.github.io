@@ -25,8 +25,11 @@ const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done' | 'missed'>('all'
 const collapsedGroups = ref<string[]>([])
 const showArchivedProjects = ref(false)
 const planningFeedback = ref<string | null>(null)
+const planningRecoveryHint = ref<string | null>(null)
 const priorityFeedback = ref<string | null>(null)
 const decisionTransparency = ref<DecisionTransparency | null>(null)
+const isRefreshingPlanningInsights = ref(false)
+const planningInsightProfile = ref<PlanningInsightProfile | null>(null)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -210,6 +213,21 @@ interface ScheduleReviewPreview {
   rescheduleTaskId?: string
   rescheduleMode?: RescheduleMode
   previousStart?: string
+}
+
+interface AppliedScheduleResult {
+  successfulSchedule: Map<string, ScheduledTaskPlan>
+  successCount: number
+  failureCount: number
+  failedTaskTitles: string[]
+  rollbackFailureCount: number
+  recoveryHint?: string | null
+}
+
+interface PlanningInsightProfile {
+  durationMs: number
+  taskCount: number
+  eventCount: number
 }
 
 interface TaskRestoreSnapshot {
@@ -508,7 +526,7 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   const refreshedTask = tasks.value.find(entry => entry.id === task.id)
   if (!refreshedTask) return
 
-  const schedule = await applyScheduleForTasks([{
+  const scheduleResult = await applyScheduleForTasks([{
     ...refreshedTask,
     status: 'todo',
     scheduleBlocks: undefined,
@@ -525,9 +543,10 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
   })
 
   const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
+  planningRecoveryHint.value = scheduleResult.recoveryHint || null
 
-  if (schedule.has(task.id)) {
-    const newStart = schedule.get(task.id)?.blocks[0]?.start
+  if (scheduleResult.successfulSchedule.has(task.id)) {
+    const newStart = scheduleResult.successfulSchedule.get(task.id)?.blocks[0]?.start
     const shiftLabel = describeRescheduleShift(previousStart, newStart)
     planningFeedback.value = `"${task.title}" wurde neu eingeplant (${modeLabel}). ${shiftLabel}`
     decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, true, previousStart, newStart)
@@ -619,6 +638,27 @@ function formatActivityTime(value: string) {
   })
 }
 
+function summarizeFailedTitles(titles: readonly string[], maxCount = 2) {
+  if (titles.length === 0) return null
+  if (titles.length <= maxCount) return titles.join(', ')
+  return `${titles.slice(0, maxCount).join(', ')} und ${titles.length - maxCount} weitere`
+}
+
+function buildRecoveryHint(result: Pick<AppliedScheduleResult, 'failureCount' | 'rollbackFailureCount' | 'failedTaskTitles'>) {
+  if (result.failureCount === 0 && result.rollbackFailureCount === 0) return null
+
+  const failedTitleSummary = summarizeFailedTitles(result.failedTaskTitles)
+  if (result.rollbackFailureCount > 0) {
+    return failedTitleSummary
+      ? `Teilweise fehlgeschlagen bei ${failedTitleSummary}. Einige Kalenderblöcke konnten nicht sauber zurückgerollt werden. Prüfe den Kalenderstatus und nutze bei Bedarf "Erneut versuchen".`
+      : 'Ein Teil der Kalenderänderungen konnte nicht sauber zurückgerollt werden. Prüfe den Kalenderstatus und nutze bei Bedarf "Erneut versuchen".'
+  }
+
+  return failedTitleSummary
+    ? `Nicht alles konnte übernommen werden: ${failedTitleSummary}. Die restlichen Aufgaben bleiben lokal offen und können nach einem Sync erneut geprüft werden.`
+    : 'Nicht alle Änderungen konnten übernommen werden. Die restlichen Aufgaben bleiben lokal offen und können nach einem Sync erneut geprüft werden.'
+}
+
 async function undoActivity(entryId: string) {
   const entry = activityEntries.value.find(item => item.id === entryId)
   if (!entry?.undo) return
@@ -707,15 +747,27 @@ async function refreshSchedulingInsights(
   remainingTasks: readonly Task[],
   existingEvents: readonly CalendarEvent[],
 ) {
-  const diagnostics = remainingTasks
-    .map(task => diagnoseSchedulingIssue(task, existingEvents))
-    .sort(sortSchedulingDiagnosis)
+  const startedAt = Date.now()
+  isRefreshingPlanningInsights.value = true
 
-  planningDiagnostics.value = diagnostics
-  decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, [...remainingTasks], diagnostics)
-  schedulingAlternatives.value = buildSchedulingAlternativesMap(remainingTasks, existingEvents)
-  displacementSuggestions.value = buildDisplacementSuggestions(remainingTasks)
-  await evaluatePlanVariants(remainingTasks, existingEvents)
+  try {
+    const diagnostics = remainingTasks
+      .map(task => diagnoseSchedulingIssue(task, existingEvents))
+      .sort(sortSchedulingDiagnosis)
+
+    planningDiagnostics.value = diagnostics
+    decisionTransparency.value = buildSchedulingDecisionTransparency(schedule, [...remainingTasks], diagnostics)
+    schedulingAlternatives.value = buildSchedulingAlternativesMap(remainingTasks, existingEvents)
+    displacementSuggestions.value = buildDisplacementSuggestions(remainingTasks)
+    await evaluatePlanVariants(remainingTasks, existingEvents)
+    planningInsightProfile.value = {
+      durationMs: Date.now() - startedAt,
+      taskCount: remainingTasks.length,
+      eventCount: existingEvents.length,
+    }
+  } finally {
+    isRefreshingPlanningInsights.value = false
+  }
 }
 
 async function applyPlanVariant(style: PlanningStyle) {
@@ -1012,6 +1064,7 @@ async function confirmScheduleReview() {
 
   const preview = scheduleReviewPreview.value
   applyingScheduleReview.value = true
+  planningRecoveryHint.value = null
 
   try {
     const restoreSnapshots = captureTaskRestoreSnapshots(preview.tasksToSchedule.map(task => task.id))
@@ -1031,19 +1084,34 @@ async function confirmScheduleReview() {
       }
     }
 
-    const schedule = await applyPlannedSchedule(preview.plannedSchedule, preview.tasksToSchedule)
+    const scheduleResult = await applyPlannedSchedule(preview.plannedSchedule, preview.tasksToSchedule)
+    const schedule = scheduleResult.successfulSchedule
+
+    if (preview.source === 'reschedule' && scheduleResult.successCount === 0 && scheduleResult.failureCount > 0) {
+      await restoreTaskSnapshots(restoreSnapshots)
+      const restoredEvents = await refreshCalendarEvents()
+      await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), restoredEvents)
+      planningRecoveryHint.value = scheduleResult.recoveryHint || 'Die ursprüngliche Planung wurde wiederhergestellt, weil die Neuplanung nicht sauber gespeichert werden konnte.'
+      planningFeedback.value = 'Die Neuplanung konnte nicht übernommen werden. Der vorherige Zustand wurde automatisch wiederhergestellt.'
+      closeScheduleReview()
+      return
+    }
+
     const updatedEvents = [...calendarEvents.value]
     await refreshSchedulingInsights(schedule, preview.remainingTasks, updatedEvents)
+    planningRecoveryHint.value = scheduleResult.recoveryHint || null
 
     if (preview.source === 'reschedule') {
       const item = preview.items[0]
       planningFeedback.value = item
-        ? `"${item.title}" wurde nach Vorschau neu eingeplant.`
+        ? scheduleResult.failureCount > 0
+          ? `"${item.title}" wurde nach Vorschau neu eingeplant, aber ${scheduleResult.failureCount} Teilfehler sind aufgetreten.`
+          : `"${item.title}" wurde nach Vorschau neu eingeplant.`
         : 'Aufgabe wurde nach Vorschau neu eingeplant.'
-    } else if (preview.remainingTasks.length > 0) {
-      planningFeedback.value = `${preview.label} hat ${schedule.size} Aufgaben eingeplant, ${preview.remainingTasks.length} bleiben noch offen.`
+    } else if (preview.remainingTasks.length > 0 || scheduleResult.failureCount > 0) {
+      planningFeedback.value = `${preview.label} hat ${scheduleResult.successCount} Aufgaben eingeplant, ${preview.remainingTasks.length + scheduleResult.failureCount} bleiben noch offen.`
     } else {
-      planningFeedback.value = `${preview.label} hat alle ${schedule.size} Aufgaben erfolgreich eingeplant.`
+      planningFeedback.value = `${preview.label} hat alle ${scheduleResult.successCount} Aufgaben erfolgreich eingeplant.`
     }
 
     addActivityEntry({
@@ -1053,11 +1121,13 @@ async function confirmScheduleReview() {
           ? 'Neuplanung bestätigt'
           : 'Auto-Planen bestätigt',
       detail: preview.source === 'reschedule'
-        ? `${preview.label}: neue Zeit wurde nach Vorschau übernommen.`
+        ? scheduleResult.failureCount > 0
+          ? `${preview.label}: neue Zeit übernommen, aber mit ${scheduleResult.failureCount} Teilfehlern.`
+          : `${preview.label}: neue Zeit wurde nach Vorschau übernommen.`
         : preview.remainingTasks.length > 0
-          ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
-          : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
-      recoveryHint: 'Diese Sammeländerung kann über die Historie zurück auf den vorherigen Task- und Kalenderzustand gesetzt werden.',
+          ? `${preview.label}: ${scheduleResult.successCount} eingeplant, ${preview.remainingTasks.length + scheduleResult.failureCount} weiter offen.`
+          : `${preview.label}: ${scheduleResult.successCount} Aufgaben erfolgreich eingeplant.`,
+      recoveryHint: scheduleResult.recoveryHint || 'Diese Sammeländerung kann über die Historie zurück auf den vorherigen Task- und Kalenderzustand gesetzt werden.',
       undoLabel: 'Rückgängig',
       undo: async () => {
         await restoreTaskSnapshots(restoreSnapshots)
@@ -2072,12 +2142,14 @@ async function restoreTaskSnapshots(snapshots: readonly TaskRestoreSnapshot[]) {
 async function applyPlannedSchedule(
   plannedSchedule: Map<string, ScheduledTaskPlan>,
   tasksToSchedule: readonly Task[],
-) {
+): Promise<AppliedScheduleResult> {
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const successfulSchedule = new Map<string, ScheduledTaskPlan>()
   let successCount = 0
   let failCount = 0
+  let rollbackFailureCount = 0
+  const failedTaskTitles: string[] = []
 
   for (const [taskId, plan] of plannedSchedule) {
     const task = tasks.value.find(t => t.id === taskId) || tasksToSchedule.find(t => t.id === taskId)
@@ -2121,15 +2193,15 @@ async function applyPlannedSchedule(
       }
     } catch (err) {
       for (const calendarId of createdCalendarIds) {
-        await deleteEvent(calendarId!)
+        const rolledBack = await deleteEvent(calendarId!)
+        if (!rolledBack) {
+          rollbackFailureCount++
+        }
       }
       console.error(`Fehler beim Einplanen von Task "${task.title}":`, err)
       failCount++
+      failedTaskTitles.push(task.title)
     }
-  }
-
-  if (failCount > 0) {
-    planningFeedback.value = `${successCount} Aufgaben eingeplant, ${failCount} fehlgeschlagen.`
   }
 
   const now = new Date()
@@ -2137,14 +2209,28 @@ async function applyPlannedSchedule(
   const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
   await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
 
-  return successfulSchedule
+  return {
+    successfulSchedule,
+    successCount,
+    failureCount: failCount,
+    failedTaskTitles,
+    rollbackFailureCount,
+    recoveryHint: buildRecoveryHint({
+      failureCount: failCount,
+      rollbackFailureCount,
+      failedTaskTitles,
+    }),
+  }
 }
 
 async function refreshCalendarEvents() {
   const now = new Date()
   const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
-  await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+  const refreshed = await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+  if (!refreshed) {
+    planningRecoveryHint.value = 'Der Kalender konnte nach der letzten Änderung nicht vollständig nachgeladen werden. Die lokale Aufgabenliste bleibt erhalten, aber prüfe den Sync-Status.'
+  }
   return [...calendarEvents.value]
 }
 
@@ -2231,7 +2317,10 @@ async function restoreArchivedProject(groupId: string) {
 }
 
 async function handleRetryCalendarAction() {
-  await retryLastAction()
+  const retried = await retryLastAction()
+  if (retried) {
+    planningRecoveryHint.value = null
+  }
 }
 </script>
 
@@ -2413,6 +2502,27 @@ async function handleRetryCalendarAction() {
               class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3 text-xs text-accent-blue"
             >
               {{ planningFeedback }}
+            </div>
+
+            <div
+              v-if="planningRecoveryHint"
+              class="rounded-glass border border-priority-high/20 bg-priority-high/10 px-4 py-3 text-xs text-priority-high"
+            >
+              {{ planningRecoveryHint }}
+            </div>
+
+            <div
+              v-if="isRefreshingPlanningInsights"
+              class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3 text-xs text-text-secondary"
+            >
+              Planungsanalyse wird aktualisiert. Bei vielen Aufgaben und Kalenderevents kann das kurz dauern.
+            </div>
+
+            <div
+              v-else-if="planningInsightProfile && planningInsightProfile.durationMs >= 250"
+              class="rounded-glass border border-border-subtle bg-white/[0.03] px-4 py-3 text-[11px] text-text-muted"
+            >
+              Letzte Analyse: {{ planningInsightProfile.taskCount }} Aufgaben, {{ planningInsightProfile.eventCount }} Kalenderevents, {{ planningInsightProfile.durationMs }} ms.
             </div>
 
             <div
@@ -2687,7 +2797,12 @@ async function handleRetryCalendarAction() {
 
         <div v-else class="space-y-4">
           <div v-if="filteredTaskGroups.length > 0" class="space-y-4">
-            <section v-for="group in filteredTaskGroups" :key="group.id" class="space-y-2">
+            <section
+              v-for="group in filteredTaskGroups"
+              :key="group.id"
+              v-memo="[group.id, group.tasks.length, group.reviewStatus, isGroupCollapsed(group.id), activeFilter]"
+              class="space-y-2"
+            >
               <div class="glass-card p-3">
                 <div class="flex items-start justify-between gap-3">
                   <button
@@ -2787,6 +2902,7 @@ async function handleRetryCalendarAction() {
                 <div
                   v-for="task in group.tasks"
                   :key="task.id"
+                  v-memo="[task.id, task.status, task.priority, task.updatedAt, task.progressPercent, task.scheduleBlocks?.length || 0]"
                   class="cursor-pointer rounded-glass border border-border-subtle bg-white/[0.03] p-3 transition hover:-translate-y-0.5 hover:border-border-strong hover:bg-white/[0.05]"
                   :class="{ 'opacity-50': task.status === 'done' }"
                   @click="emit('edit-task', task)"

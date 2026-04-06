@@ -192,6 +192,85 @@ const cases = [
     }),
   },
   {
+    name: 'scheduler behandelt ganztagige Events als Blocker fuer den betroffenen Arbeitstag',
+    run: () => withFixedNow('2026-04-06T08:00:00.000Z', () => {
+      const { scheduleTasks } = useScheduler()
+      const prefs = buildPreferences({
+        workDays: [1],
+        workStartHour: 9,
+        workEndHour: 17,
+        lunchStartHour: 17,
+        lunchEndHour: 17,
+      })
+      const task = buildTask({
+        estimatedMinutes: 60,
+        deadline: '2026-04-06T23:59:59.000Z',
+      })
+      const events = [{
+        summary: 'Ganztagig',
+        start: { date: '2026-04-06' },
+        end: { date: '2026-04-07' },
+      }]
+
+      const schedule = scheduleTasks([task], events, prefs)
+      assert.equal(schedule.has(task.id), false)
+    }),
+  },
+  {
+    name: 'scheduler respektiert ueber-Mitternacht-Termine am naechsten Tag',
+    run: () => withFixedNow('2026-04-07T00:00:00.000Z', () => {
+      const { scheduleTasks } = useScheduler()
+      const prefs = buildPreferences({
+        workDays: [2],
+        workStartHour: 0,
+        workEndHour: 8,
+        lunchStartHour: 8,
+        lunchEndHour: 8,
+      })
+      const task = buildTask({
+        estimatedMinutes: 60,
+        deadline: '2026-04-07T23:59:59.000Z',
+      })
+      const events = [
+        buildEvent('2026-04-06T22:30:00.000Z', '2026-04-07T02:30:00.000Z', 'Nachttermin'),
+      ]
+
+      const plan = scheduleTasks([task], events, prefs).get(task.id)
+      assert.ok(plan, 'Aufgabe sollte nach dem Nachttermin planbar sein')
+      assert.ok(
+        plan.blocks[0].start >= new Date('2026-04-07T02:30:00.000Z'),
+        'Der erste Block darf nicht in den ueber-Mitternacht-Termin hineinragen',
+      )
+    }),
+  },
+  {
+    name: 'scheduler bleibt ueber DST-Grenzen mit expliziten Offsets stabil',
+    run: () => withFixedNow('2026-03-29T00:45:00.000Z', () => {
+      const { scheduleTasks } = useScheduler()
+      const prefs = buildPreferences({
+        workDays: [0],
+        workStartHour: 0,
+        workEndHour: 8,
+        lunchStartHour: 8,
+        lunchEndHour: 8,
+      })
+      const task = buildTask({
+        estimatedMinutes: 60,
+        deadline: '2026-03-29T23:59:59.000Z',
+      })
+      const events = [
+        buildEvent('2026-03-29T01:30:00+01:00', '2026-03-29T03:30:00+02:00', 'DST-Sprung'),
+      ]
+
+      const plan = scheduleTasks([task], events, prefs).get(task.id)
+      assert.ok(plan, 'Aufgabe sollte trotz DST-Grenze planbar sein')
+      assert.ok(
+        plan.blocks[0].start >= new Date('2026-03-29T03:30:00+02:00'),
+        'Der erste Block darf nicht in das DST-Event hineinragen',
+      )
+    }),
+  },
+  {
     name: 'reschedule-modus today bevorzugt einen Slot heute statt eine spaetere aehnliche Uhrzeit',
     run: () => withFixedNow('2026-04-06T08:00:00.000Z', () => {
       const { scheduleTasks } = useScheduler()
@@ -295,6 +374,10 @@ const cases = [
       assert.equal(nextYearHolidayRequest.dateFrom.getFullYear(), 2027)
       assert.equal(nextYearHolidayRequest.dateFrom.getMonth(), 11)
       assert.equal(nextYearHolidayRequest.dateFrom.getDate(), 24)
+
+      const ambiguousFridayRequest = parsePlanningPrompt('Treffen Freitag Abend', 90, 'event', baseNow)
+      assert.equal(ambiguousFridayRequest.ambiguityHints.length > 0, true)
+      assert.equal(ambiguousFridayRequest.preferredPeriod, 'evening')
     },
   },
 ]

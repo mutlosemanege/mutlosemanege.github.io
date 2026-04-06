@@ -25,6 +25,7 @@ interface FindFreeSlotsOptions {
 
 export function useScheduler() {
   const { preferences } = usePreferences()
+  const slotCache = new Map<string, TimeSlot[]>()
 
   /**
    * Findet alle freien Zeitslots in einem Zeitraum unter Beruecksichtigung
@@ -37,6 +38,12 @@ export function useScheduler() {
     prefs: ReadonlyUserPreferences = preferences.value,
     options: FindFreeSlotsOptions = {},
   ): TimeSlot[] {
+    const cacheKey = buildSlotsCacheKey(from, to, existingEvents, prefs, options)
+    const cachedSlots = slotCache.get(cacheKey)
+    if (cachedSlots) {
+      return cloneTimeSlots(cachedSlots)
+    }
+
     const slots: TimeSlot[] = []
     const planningConstraintEvents = [...existingEvents, ...buildPreferenceBlockers(from, to, prefs)]
     const current = new Date(from)
@@ -57,6 +64,14 @@ export function useScheduler() {
 
       current.setDate(current.getDate() + 1)
     }
+
+    if (slotCache.size >= 40) {
+      const oldestKey = slotCache.keys().next().value
+      if (oldestKey) {
+        slotCache.delete(oldestKey)
+      }
+    }
+    slotCache.set(cacheKey, cloneTimeSlots(slots))
 
     return slots
   }
@@ -510,8 +525,13 @@ function buildPreferenceBlockers(
   endDate.setHours(23, 59, 59, 999)
 
   while (cursor <= endDate) {
+    const holidaysToday = prefs.respectPublicHolidays
+      ? getGermanHolidayEntriesForRange(cursor, cursor, prefs.publicHolidayRegion)
+      : []
+    const isPublicHoliday = holidaysToday.length > 0
+
     if (prefs.respectPublicHolidays) {
-      for (const holiday of getGermanHolidayEntriesForRange(cursor, cursor, prefs.publicHolidayRegion)) {
+      for (const holiday of holidaysToday) {
         const holidayStart = new Date(cursor)
         holidayStart.setHours(0, 0, 0, 0)
         const holidayEnd = new Date(cursor)
@@ -532,7 +552,7 @@ function buildPreferenceBlockers(
       blockers.push(createSyntheticEvent('Schlaf', sleepStart, sleepEnd))
     }
 
-    if (prefs.syncCommuteSchedule && prefs.workDays.includes(cursor.getDay())) {
+    if (prefs.syncCommuteSchedule && prefs.workDays.includes(cursor.getDay()) && !isPublicHoliday) {
       if (prefs.commuteToWorkMinutes > 0) {
         const commuteStart = new Date(cursor)
         commuteStart.setHours(prefs.workStartHour, 0, 0, 0)
@@ -553,6 +573,7 @@ function buildPreferenceBlockers(
     }
 
     for (const routine of prefs.routineTemplates) {
+      if (isPublicHoliday && (routine.repeatMode || 'weekly') === 'workdays') continue
       if (!routineAppliesOnDate(routine, cursor, prefs.workDays)) continue
       if (routine.skipDates?.includes(toDateKey(cursor))) continue
 
@@ -676,4 +697,68 @@ function hasValidPlannedBlocks(blocks: ReadonlyArray<{ start: Date; end: Date }>
   }
 
   return true
+}
+
+function buildSlotsCacheKey(
+  from: Date,
+  to: Date,
+  existingEvents: readonly CalendarEvent[],
+  prefs: ReadonlyUserPreferences,
+  options: FindFreeSlotsOptions,
+) {
+  const eventSignature = existingEvents
+    .map(event => [
+      event.summary || '',
+      event.start.dateTime || event.start.date || '',
+      event.end.dateTime || event.end.date || '',
+      event.colorId || '',
+    ].join('|'))
+    .join('~')
+
+  const routineSignature = prefs.routineTemplates
+    .map(routine => [
+      routine.id,
+      routine.title,
+      routine.repeatMode || 'weekly',
+      typeof routine.day === 'number' ? routine.day : '',
+      routine.startHour,
+      routine.endHour,
+      (routine.skipDates || []).join(','),
+    ].join('|'))
+    .join('~')
+
+  return JSON.stringify({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    ignoreSoftBlockers: Boolean(options.ignoreSoftBlockers),
+    eventSignature,
+    prefs: {
+      workDays: prefs.workDays,
+      workStartHour: prefs.workStartHour,
+      workEndHour: prefs.workEndHour,
+      lunchStartHour: prefs.lunchStartHour,
+      lunchEndHour: prefs.lunchEndHour,
+      taskBufferMinutes: prefs.taskBufferMinutes,
+      minDeepWorkBlockMinutes: prefs.minDeepWorkBlockMinutes,
+      deepWorkWindows: prefs.deepWorkWindows,
+      planningStyle: prefs.planningStyle,
+      respectPublicHolidays: prefs.respectPublicHolidays,
+      publicHolidayRegion: prefs.publicHolidayRegion,
+      syncSleepSchedule: prefs.syncSleepSchedule,
+      sleepStartHour: prefs.sleepStartHour,
+      sleepEndHour: prefs.sleepEndHour,
+      syncCommuteSchedule: prefs.syncCommuteSchedule,
+      commuteToWorkMinutes: prefs.commuteToWorkMinutes,
+      commuteFromWorkMinutes: prefs.commuteFromWorkMinutes,
+      routineSignature,
+    },
+  })
+}
+
+function cloneTimeSlots(slots: readonly TimeSlot[]) {
+  return slots.map(slot => ({
+    start: new Date(slot.start),
+    end: new Date(slot.end),
+    isDeepWork: slot.isDeepWork,
+  }))
 }

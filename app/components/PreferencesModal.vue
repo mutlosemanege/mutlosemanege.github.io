@@ -340,6 +340,7 @@ async function applyRoutineTemplates() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const createdEvents: string[] = []
     let skippedEvents = 0
+    const failedEntries: string[] = []
     const now = new Date()
 
     for (const routine of form.routineTemplates) {
@@ -357,6 +358,8 @@ async function applyRoutineTemplates() {
           skippedEvents++
         } else if (created) {
           createdEvents.push(created)
+        } else {
+          failedEntries.push(routine.title)
         }
       }
     }
@@ -380,6 +383,8 @@ async function applyRoutineTemplates() {
           skippedEvents++
         } else if (createdSleep) {
           createdEvents.push(createdSleep)
+        } else {
+          failedEntries.push('Schlaf')
         }
       }
     }
@@ -401,6 +406,8 @@ async function applyRoutineTemplates() {
               skippedEvents++
             } else if (createdToWork) {
               createdEvents.push(createdToWork)
+            } else {
+              failedEntries.push('Arbeitsweg')
             }
           }
 
@@ -416,6 +423,8 @@ async function applyRoutineTemplates() {
               skippedEvents++
             } else if (createdFromWork) {
               createdEvents.push(createdFromWork)
+            } else {
+              failedEntries.push('Arbeitsweg')
             }
           }
         }
@@ -424,8 +433,8 @@ async function applyRoutineTemplates() {
 
     const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
-    await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
-    routineFeedback.value = `${createdEvents.length} Routinen wurden eingetragen.${skippedEvents > 0 ? ` ${skippedEvents} vorhandene Termine wurden übersprungen.` : ''}`
+    const refreshed = await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+    routineFeedback.value = `${createdEvents.length} Routinen wurden eingetragen.${skippedEvents > 0 ? ` ${skippedEvents} vorhandene Termine wurden übersprungen.` : ''}${failedEntries.length > 0 ? ` ${failedEntries.length} Einträge konnten nicht sauber geschrieben werden.` : ''}${refreshed ? '' : ' Der Kalender konnte danach nicht vollständig nachgeladen werden.'}`
   } catch (error: any) {
     routineFeedback.value = error.message || 'Routinen konnten nicht eingetragen werden.'
   } finally {
@@ -448,6 +457,7 @@ async function applyImportEntries() {
     let savedRoutines = 0
     let createdEvents = 0
     let skippedDuplicates = 0
+    const failedEntries: string[] = []
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
     for (const entry of selectedEntries) {
@@ -486,6 +496,8 @@ async function applyImportEntries() {
               skippedDuplicates++
             } else if (created) {
               createdEvents++
+            } else {
+              failedEntries.push(routine.title)
             }
           }
         }
@@ -515,6 +527,8 @@ async function applyImportEntries() {
         skippedDuplicates++
       } else if (created) {
         createdEvents++
+      } else {
+        failedEntries.push(entry.title)
       }
     }
 
@@ -522,10 +536,13 @@ async function applyImportEntries() {
       const now = new Date()
       const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
-      await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+      const refreshed = await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
+      if (!refreshed) {
+        failedEntries.push('Kalender-Sync')
+      }
     }
 
-    importFeedback.value = `${savedRoutines} Routinen gespeichert, ${createdEvents} feste Termine eingetragen.${skippedDuplicates > 0 ? ` ${skippedDuplicates} ähnliche Einträge wurden übersprungen.` : ''}`
+    importFeedback.value = `${savedRoutines} Routinen gespeichert, ${createdEvents} feste Termine eingetragen.${skippedDuplicates > 0 ? ` ${skippedDuplicates} ähnliche Einträge wurden übersprungen.` : ''}${failedEntries.length > 0 ? ` ${failedEntries.length} Einträge brauchen Nachkontrolle.` : ''}`
   } catch (error: any) {
     importFeedback.value = error.message || 'Import-Einträge konnten nicht übernommen werden.'
   } finally {

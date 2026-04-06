@@ -35,6 +35,7 @@ interface ParsedPlanningRequest {
   recurrenceDay?: number
   recurrenceLabel?: string
   timePreference?: PlanningTimePreference
+  ambiguityHints: string[]
 }
 
 interface SlotSuggestion {
@@ -123,6 +124,28 @@ const decisionCardNextStep = computed(() => {
   if (previewTask.value) return 'Lege die Aufgabe jetzt an oder passe den Prompt an, damit der Chat einen direkten Slot suchen kann.'
   if (previewRoutine.value) return 'Speichere die Routine, wenn Wochentag und Uhrzeit wirklich zu deinem Rhythmus passen.'
   return 'Verfeinere Datum, Uhrzeit oder Dauer, damit der Vorschlag genauer wird.'
+})
+const interpretedPromptSummary = computed(() => {
+  if (!parsedDetails.value) return null
+
+  const parts: string[] = []
+  if (parsedDetails.value.hasExplicitDate) {
+    const sameDay = parsedDetails.value.dateFrom.toDateString() === parsedDetails.value.dateTo.toDateString()
+    parts.push(sameDay
+      ? parsedDetails.value.dateFrom.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+      : `${parsedDetails.value.dateFrom.toLocaleDateString('de-DE')} bis ${parsedDetails.value.dateTo.toLocaleDateString('de-DE')}`)
+  } else {
+    parts.push('nächster passender Zeitraum')
+  }
+
+  if (parsedDetails.value.timePreference?.label) {
+    parts.push(parsedDetails.value.timePreference.label)
+  } else if (parsedDetails.value.preferredPeriod !== 'any') {
+    parts.push(periodLabel(parsedDetails.value.preferredPeriod))
+  }
+
+  parts.push(`${parsedDetails.value.durationMinutes} Min.`)
+  return `Verstanden als: ${parts.join(' · ')}`
 })
 
 const previewDuplicateWarnings = computed(() => {
@@ -1227,6 +1250,10 @@ function buildPreviewUncertainty(
     return 'Es gibt aktuell keinen sicheren passenden Slot im gewünschten Fenster.'
   }
 
+  if (parsed.ambiguityHints.length > 0) {
+    return parsed.ambiguityHints[0]
+  }
+
   if (intentMode.value === 'auto') {
     return `Der Typ wurde automatisch als ${intentLabel(parsed.intent).toLowerCase()} erkannt. Wenn das nicht passt, kannst du ihn oben manuell umstellen.`
   }
@@ -1574,6 +1601,10 @@ async function handleRetryCalendarAction() {
                     {{ periodLabel(parsedDetails.preferredPeriod) }}
                   </span>
                 </div>
+
+                <p v-if="interpretedPromptSummary" class="mt-3 text-xs text-text-muted">
+                  {{ interpretedPromptSummary }}
+                </p>
 
                 <DecisionSummaryCard
                   v-if="previewReason || previewUncertainty || previewAlternatives.length > 0"

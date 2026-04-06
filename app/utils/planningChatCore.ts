@@ -19,6 +19,7 @@ export interface ParsedPlanningRequest {
   recurrenceDay?: number
   recurrenceLabel?: string
   timePreference?: PlanningTimePreference
+  ambiguityHints: string[]
 }
 
 interface RecurrenceMatch {
@@ -102,6 +103,15 @@ export function parsePlanningPrompt(
   const explicitDuration = extractDuration(text)
   const title = buildCleanTitle(normalized)
   const intent = detectIntent(text, recurrence, intentMode)
+  const ambiguityHints = buildAmbiguityHints({
+    hasExplicitDate,
+    preferredPeriod,
+    timePreference,
+    weekday,
+    weekdayReferenceMode,
+    rangeMode,
+    intent,
+  })
 
   return {
     title: title || 'Neuer Eintrag',
@@ -114,6 +124,7 @@ export function parsePlanningPrompt(
     recurrenceDay: recurrence?.day,
     recurrenceLabel: recurrence?.label,
     timePreference,
+    ambiguityHints,
   }
 }
 
@@ -445,4 +456,39 @@ function formatClockMinutes(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function buildAmbiguityHints(context: {
+  hasExplicitDate: boolean
+  preferredPeriod: PreferredPeriod
+  timePreference?: PlanningTimePreference
+  weekday: number | null
+  weekdayReferenceMode: 'next' | 'this' | 'default'
+  rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open'
+  intent: PlanningIntent
+}) {
+  const hints: string[] = []
+
+  if (!context.hasExplicitDate) {
+    hints.push('Es wurde kein genaues Datum erkannt. Ich suche deshalb im nächsten passenden Zeitraum.')
+  } else if (context.weekday !== null && context.weekdayReferenceMode === 'default') {
+    hints.push('Den genannten Wochentag deute ich als nächsten passenden Termin. Mit "diesen" oder "nächsten" wird es eindeutiger.')
+  }
+
+  if (!context.timePreference && context.preferredPeriod !== 'any') {
+    hints.push(`"${periodLabel(context.preferredPeriod)}" ist eher ein Zeitraum als eine feste Uhrzeit. Deshalb bekommst du bewusst mehrere passende Zeiten.`)
+  }
+
+  if (!context.timePreference && context.rangeMode !== 'exact-day' && context.intent !== 'routine') {
+    hints.push('Ohne genaue Uhrzeit oder exakten Tag priorisiere ich zuerst sinnvolle freie Slots statt nur eine einzige starre Zeit.')
+  }
+
+  return hints
+}
+
+function periodLabel(period: PreferredPeriod) {
+  if (period === 'morning') return 'morgens'
+  if (period === 'afternoon') return 'nachmittags'
+  if (period === 'evening') return 'abends'
+  return 'flexibel'
 }

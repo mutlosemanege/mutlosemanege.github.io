@@ -34,7 +34,14 @@ const deadline = ref('')
 const projectType = ref('allgemein')
 const step = ref<'input' | 'review' | 'schedule-review' | 'done'>('input')
 const autoScheduleAfterCreate = ref(true)
-const creationSummary = ref<{ scheduledCount: number; remainingCount: number } | null>(null)
+interface ProjectCreationSummary {
+  scheduledCount: number
+  remainingCount: number
+  failedTaskTitles?: string[]
+  recoveryHint?: string | null
+}
+
+const creationSummary = ref<ProjectCreationSummary | null>(null)
 const createdProjectId = ref<string | null>(null)
 
 interface ProjectSchedulePreviewItem {
@@ -54,6 +61,10 @@ interface ProjectSchedulePreview {
   remainingTasks: Task[]
   totalBlocks: number
   totalMinutes: number
+}
+
+interface ProjectScheduleApplyResult extends ProjectCreationSummary {
+  rollbackFailureCount: number
 }
 
 const schedulePreview = ref<ProjectSchedulePreview | null>(null)
@@ -397,9 +408,11 @@ async function scheduleCreatedTasks(tasksToSchedule: Task[]) {
 async function applyPlannedProjectSchedule(
   plannedSchedule: Map<string, ScheduledTaskPlan>,
   tasksToSchedule: Task[],
-) {
+): Promise<ProjectScheduleApplyResult> {
 
   let scheduledCount = 0
+  let rollbackFailureCount = 0
+  const failedTaskTitles: string[] = []
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   for (const [taskId, plan] of plannedSchedule) {
@@ -443,12 +456,16 @@ async function applyPlannedProjectSchedule(
       for (const calendarId of createdCalendarIds) {
         // best effort rollback
         try {
-          await deleteEvent(calendarId)
+          const rolledBack = await deleteEvent(calendarId)
+          if (!rolledBack) {
+            rollbackFailureCount++
+          }
         } catch {
-          // ignore rollback errors
+          rollbackFailureCount++
         }
       }
       console.error(`Projekt-Task "${task.title}" konnte nicht automatisch eingeplant werden:`, error)
+      failedTaskTitles.push(task.title)
     }
   }
 
@@ -460,6 +477,11 @@ async function applyPlannedProjectSchedule(
   return {
     scheduledCount,
     remainingCount: tasksToSchedule.length - scheduledCount,
+    failedTaskTitles,
+    rollbackFailureCount,
+    recoveryHint: failedTaskTitles.length > 0 || rollbackFailureCount > 0
+      ? `Nicht alles konnte automatisch eingeplant werden${failedTaskTitles.length > 0 ? `: ${failedTaskTitles.slice(0, 2).join(', ')}${failedTaskTitles.length > 2 ? ` und ${failedTaskTitles.length - 2} weitere` : ''}` : ''}.`
+      : null,
   }
 }
 
@@ -970,7 +992,13 @@ function addDays(date: Date, days: number) {
               <p v-if="creationSummary && autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
                 {{ creationSummary.scheduledCount }} Aufgaben wurden direkt eingeplant, {{ creationSummary.remainingCount }} bleiben vorerst offen.
               </p>
-              <p v-else-if="creationSummary && !autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
+              <p v-if="creationSummary?.recoveryHint" class="mt-2 rounded-glass border border-priority-high/20 bg-priority-high/10 px-3 py-2 text-xs text-priority-high">
+                {{ creationSummary.recoveryHint }}
+              </p>
+              <p v-if="creationSummary?.failedTaskTitles?.length" class="mt-2 text-xs text-text-muted">
+                Betroffen: {{ creationSummary.failedTaskTitles.slice(0, 3).join(', ') }}<span v-if="creationSummary.failedTaskTitles.length > 3"> und {{ creationSummary.failedTaskTitles.length - 3 }} weitere</span>.
+              </p>
+              <p v-if="creationSummary && !autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
                 Die Aufgaben wurden angelegt und können danach manuell oder per Auto-Planen eingeplant werden.
               </p>
               <div class="mt-6 flex justify-center gap-2">
