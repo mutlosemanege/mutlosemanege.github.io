@@ -17,7 +17,7 @@ const emit = defineEmits<{
 const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, updateProject, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
-const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus } = useCalendar()
+const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction } = useCalendar()
 const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } = usePreferences()
 
 const showProjectGenerator = ref(false)
@@ -177,6 +177,28 @@ interface PlanVariantPreview {
   highlight: string
 }
 
+interface ScheduleReviewItem {
+  taskId: string
+  title: string
+  priority: TaskPriority
+  blockCount: number
+  totalMinutes: number
+  firstStart?: string
+  lastEnd?: string
+  isDeepWork: boolean
+}
+
+interface ScheduleReviewPreview {
+  source: 'auto-plan' | 'variant'
+  label: string
+  plannedSchedule: Map<string, ScheduledTaskPlan>
+  tasksToSchedule: Task[]
+  remainingTasks: Task[]
+  items: ScheduleReviewItem[]
+  totalBlocks: number
+  totalMinutes: number
+}
+
 interface ActivityEntry {
   id: string
   title: string
@@ -201,9 +223,11 @@ const planVariants = ref<PlanVariantPreview[]>([])
 const activityEntries = ref<ActivityEntry[]>([])
 const displacementSuggestions = ref<DisplacementSuggestion[]>([])
 const previewDisplacement = ref<DisplacementSuggestion | null>(null)
+const scheduleReviewPreview = ref<ScheduleReviewPreview | null>(null)
 const applyingVariantStyle = ref<PlanningStyle | null>(null)
 const applyingAlternativeTaskId = ref<string | null>(null)
 const applyingDisplacementId = ref<string | null>(null)
+const applyingScheduleReview = ref(false)
 const rescheduleTask = ref<Task | null>(null)
 const selectedRescheduleMode = ref<RescheduleMode>('same-time')
 const diagnosisLabels: Record<SchedulingDiagnosis['code'], string> = {
@@ -357,15 +381,14 @@ async function handleAutoSchedule() {
   decisionTransparency.value = null
 
   const currentEvents = await refreshCalendarEvents()
-  const schedule = await applyScheduleForTasks(unscheduled, currentEvents)
-  const updatedEvents = [...calendarEvents.value]
-  const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
-  await refreshSchedulingInsights(schedule, remainingTasks, updatedEvents)
+  const preview = buildScheduleReviewPreview(unscheduled, currentEvents, 'Auto-Planen', 'auto-plan')
+  const remainingTasks = preview.remainingTasks
 
-  const scheduledCount = schedule.size
+  const scheduledCount = preview.plannedSchedule.size
   const unscheduledCount = remainingTasks.length
 
   if (scheduledCount === 0) {
+    await refreshSchedulingInsights(new Map(), remainingTasks, currentEvents)
     const topReasons = planningDiagnostics.value.slice(0, 3).map(entry => `${entry.title} (${entry.summary})`).join(', ')
     planningFeedback.value = `Es konnte aktuell keine Aufgabe in einen freien Slot eingeplant werden.${topReasons ? ` Hauptgruende: ${topReasons}` : ''}`
     addActivityEntry({
@@ -375,25 +398,11 @@ async function handleAutoSchedule() {
     return
   }
 
-  if (unscheduledCount > 0) {
-    const remainingTitles = planningDiagnostics.value
-      .slice(0, 3)
-      .map(entry => `${entry.title} (${entry.summary})`)
-      .join(', ')
-
-    planningFeedback.value = `${scheduledCount} Aufgaben eingeplant, ${unscheduledCount} noch offen. ${remainingTitles ? `Noch offen: ${remainingTitles}` : ''}`
-    addActivityEntry({
-      title: 'Auto-Planen',
-      detail: `${scheduledCount} eingeplant, ${unscheduledCount} offen geblieben.`,
-    })
-    return
-  }
-
-  planningFeedback.value = `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`
-  addActivityEntry({
-    title: 'Auto-Planen',
-    detail: `Alle ${scheduledCount} offenen Aufgaben wurden eingeplant.`,
-  })
+  scheduleReviewPreview.value = preview
+  planningFeedback.value = unscheduledCount > 0
+    ? `Vorschau bereit: ${scheduledCount} Aufgaben koennten eingeplant werden, ${unscheduledCount} blieben noch offen.`
+    : `Vorschau bereit: Alle ${scheduledCount} offenen Aufgaben koennten eingeplant werden.`
+  decisionTransparency.value = buildScheduleReviewDecisionTransparency(preview)
 }
 
 async function markDone(task: Task) {
@@ -645,13 +654,18 @@ async function applyPlanVariant(style: PlanningStyle) {
   try {
     const variant = planVariantOptions.find(option => option.style === style)
     const currentEvents = await refreshCalendarEvents()
-    const schedule = await applyScheduleForTasks(unscheduled, currentEvents, {}, buildPreferencesForStyle(style))
-    const remainingTasks = unscheduled.filter(task => !schedule.has(task.id))
-    const updatedEvents = [...calendarEvents.value]
-    await refreshSchedulingInsights(schedule, remainingTasks, updatedEvents)
-    const scheduledCount = schedule.size
+    const preview = buildScheduleReviewPreview(
+      unscheduled,
+      currentEvents,
+      variant?.label || style,
+      'variant',
+      {},
+      buildPreferencesForStyle(style),
+    )
+    const scheduledCount = preview.plannedSchedule.size
 
     if (scheduledCount === 0) {
+      await refreshSchedulingInsights(new Map(), preview.remainingTasks, currentEvents)
       planningFeedback.value = `${variant?.label || style} konnte aktuell keine weiteren Aufgaben einplanen.`
       addActivityEntry({
         title: 'Planvariante getestet',
@@ -660,20 +674,11 @@ async function applyPlanVariant(style: PlanningStyle) {
       return
     }
 
-    if (remainingTasks.length > 0) {
-      planningFeedback.value = `${variant?.label || style} hat ${scheduledCount} weitere Aufgaben eingeplant, ${remainingTasks.length} bleiben noch offen.`
-      addActivityEntry({
-        title: 'Planvariante angewendet',
-        detail: `${variant?.label || style}: ${scheduledCount} weitere Aufgaben eingeplant, ${remainingTasks.length} offen.`,
-      })
-      return
-    }
-
-    planningFeedback.value = `${variant?.label || style} konnte alle restlichen Aufgaben einplanen.`
-    addActivityEntry({
-      title: 'Planvariante angewendet',
-      detail: `${variant?.label || style} konnte alle restlichen Aufgaben einplanen.`,
-    })
+    scheduleReviewPreview.value = preview
+    planningFeedback.value = preview.remainingTasks.length > 0
+      ? `${variant?.label || style} ist als Vorschau bereit: ${scheduledCount} Aufgaben koennten eingeplant werden, ${preview.remainingTasks.length} blieben noch offen.`
+      : `${variant?.label || style} ist als Vorschau bereit und koennte alle restlichen Aufgaben einplanen.`
+    decisionTransparency.value = buildScheduleReviewDecisionTransparency(preview)
   } finally {
     applyingVariantStyle.value = null
   }
@@ -682,6 +687,88 @@ async function applyPlanVariant(style: PlanningStyle) {
 function isRecommendedPlanVariant(style: PlanningStyle) {
   const best = planVariants.value[0]
   return best?.style === style && best.scheduledCount > 0
+}
+
+function buildScheduleReviewPreview(
+  tasksToSchedule: readonly Task[],
+  existingEvents: readonly CalendarEvent[],
+  label: string,
+  source: ScheduleReviewPreview['source'],
+  options: ScheduleTaskOptions = {},
+  prefsOverride: UserPreferences = preferences.value,
+): ScheduleReviewPreview {
+  const plannedSchedule = scheduleTasks(
+    tasksToSchedule,
+    existingEvents,
+    prefsOverride,
+    options,
+  )
+
+  const remainingTasks = tasksToSchedule.filter(task => !plannedSchedule.has(task.id))
+  const items = [...plannedSchedule.entries()]
+    .map(([taskId, plan]) => {
+      const task = tasksToSchedule.find(entry => entry.id === taskId) || tasks.value.find(entry => entry.id === taskId)
+      if (!task) return null
+
+      const firstBlock = plan.blocks[0]
+      const lastBlock = plan.blocks[plan.blocks.length - 1]
+      const totalMinutes = Math.round(
+        plan.blocks.reduce((sum, block) => sum + ((block.end.getTime() - block.start.getTime()) / 60000), 0),
+      )
+
+      return {
+        taskId,
+        title: task.title,
+        priority: task.priority,
+        blockCount: plan.blocks.length,
+        totalMinutes,
+        firstStart: firstBlock?.start.toISOString(),
+        lastEnd: lastBlock?.end.toISOString(),
+        isDeepWork: task.isDeepWork,
+      } satisfies ScheduleReviewItem
+    })
+    .filter((item): item is ScheduleReviewItem => item !== null)
+    .sort((a, b) => {
+      const aStart = a.firstStart ? new Date(a.firstStart).getTime() : Infinity
+      const bStart = b.firstStart ? new Date(b.firstStart).getTime() : Infinity
+      return aStart - bStart
+    })
+
+  const totalBlocks = items.reduce((sum, item) => sum + item.blockCount, 0)
+  const totalMinutes = items.reduce((sum, item) => sum + item.totalMinutes, 0)
+
+  return {
+    source,
+    label,
+    plannedSchedule,
+    tasksToSchedule: [...tasksToSchedule],
+    remainingTasks,
+    items,
+    totalBlocks,
+    totalMinutes,
+  }
+}
+
+function buildScheduleReviewDecisionTransparency(preview: ScheduleReviewPreview): DecisionTransparency {
+  const why = [
+    `${preview.items.length} Aufgaben würden mit ${preview.totalBlocks} Kalenderblock${preview.totalBlocks === 1 ? '' : 'en'} eingeplant.`,
+    `In Summe würden etwa ${Math.round((preview.totalMinutes / 60) * 10) / 10} Stunden automatisch verteilt.`,
+  ]
+
+  if (preview.remainingTasks.length > 0) {
+    why.push(`${preview.remainingTasks.length} Aufgaben bleiben trotz dieser Vorschau noch offen.`)
+  }
+
+  return {
+    title: 'Warum diese Vorschau?',
+    why,
+    uncertainty: preview.remainingTasks.length > 0
+      ? 'Nicht alles passt im aktuellen Horizont. Prüfe die Restaufgaben danach gezielt weiter.'
+      : null,
+    alternatives: preview.source === 'variant'
+      ? ['Andere Planvariante pruefen', 'Direkte Alternativ-Slots einzelner Aufgaben nutzen']
+      : ['Planvarianten vergleichen', 'Vor dem Anwenden einzelne Aufgaben manuell anpassen'],
+  }
 }
 
 function buildSchedulingAlternativesMap(
@@ -829,6 +916,40 @@ async function applyAlternativeSlot(taskId: string, alternative: SlotAlternative
     planningFeedback.value = `"${task.title}" konnte nicht auf den vorgeschlagenen Slot eingeplant werden.`
   } finally {
     applyingAlternativeTaskId.value = null
+  }
+}
+
+function closeScheduleReview() {
+  scheduleReviewPreview.value = null
+}
+
+async function confirmScheduleReview() {
+  if (!scheduleReviewPreview.value) return
+
+  const preview = scheduleReviewPreview.value
+  applyingScheduleReview.value = true
+
+  try {
+    const schedule = await applyPlannedSchedule(preview.plannedSchedule, preview.tasksToSchedule)
+    const updatedEvents = [...calendarEvents.value]
+    await refreshSchedulingInsights(schedule, preview.remainingTasks, updatedEvents)
+
+    if (preview.remainingTasks.length > 0) {
+      planningFeedback.value = `${preview.label} hat ${schedule.size} Aufgaben eingeplant, ${preview.remainingTasks.length} bleiben noch offen.`
+    } else {
+      planningFeedback.value = `${preview.label} hat alle ${schedule.size} Aufgaben erfolgreich eingeplant.`
+    }
+
+    addActivityEntry({
+      title: preview.source === 'variant' ? 'Planvariante angewendet' : 'Auto-Planen bestätigt',
+      detail: preview.remainingTasks.length > 0
+        ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
+        : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
+    })
+
+    closeScheduleReview()
+  } finally {
+    applyingScheduleReview.value = false
   }
 }
 
@@ -1542,6 +1663,14 @@ async function applyScheduleForTasks(
     options,
   )
 
+  return applyPlannedSchedule(plannedSchedule, tasksToSchedule)
+}
+
+async function applyPlannedSchedule(
+  plannedSchedule: Map<string, ScheduledTaskPlan>,
+  tasksToSchedule: readonly Task[],
+) {
+
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const successfulSchedule = new Map<string, ScheduledTaskPlan>()
   let successCount = 0
@@ -1694,6 +1823,10 @@ async function restoreArchivedProject(groupId: string) {
     console.error(`Fehler beim Wiederherstellen des Projekts "${projectGroup.name}":`, error)
     planningFeedback.value = `Projekt "${projectGroup.name}" konnte nicht wiederhergestellt werden.`
   }
+}
+
+async function handleRetryCalendarAction() {
+  await retryLastAction()
 }
 </script>
 
@@ -1886,7 +2019,18 @@ async function restoreArchivedProject(groupId: string) {
                   ? 'border-accent-green/25 bg-accent-green/10 text-accent-green'
                   : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
             >
-              Kalenderstatus: {{ calendarSyncStatus.message }}
+              <div class="flex items-center justify-between gap-3">
+                <span>Kalenderstatus: {{ calendarSyncStatus.message }}</span>
+                <button
+                  v-if="calendarSyncStatus.state === 'error' && canRetryLastAction"
+                  type="button"
+                  class="rounded-full border border-priority-critical/30 bg-priority-critical/10 px-3 py-1 text-[11px] font-medium text-[#FFD3DC] transition hover:bg-priority-critical/15 disabled:opacity-60"
+                  :disabled="isRetryingLastAction"
+                  @click="handleRetryCalendarAction"
+                >
+                  {{ isRetryingLastAction ? 'Versuche erneut...' : 'Erneut versuchen' }}
+                </button>
+              </div>
             </div>
 
             <div v-if="decisionTransparency" class="glass-card p-4">
@@ -2034,7 +2178,7 @@ async function restoreArchivedProject(groupId: string) {
                   :disabled="applyingVariantStyle === variant.style"
                   @click="applyPlanVariant(variant.style)"
                 >
-                  {{ applyingVariantStyle === variant.style ? 'Prüft...' : 'Anwenden' }}
+                  {{ applyingVariantStyle === variant.style ? 'Prüft...' : 'Prüfen' }}
                 </button>
               </div>
             </div>
@@ -2405,6 +2549,116 @@ async function restoreArchivedProject(groupId: string) {
   />
 
   <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="scheduleReviewPreview" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div class="absolute inset-0" @click="closeScheduleReview" />
+
+        <div class="glass-card-elevated relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-glass-xl sm:max-w-2xl sm:rounded-glass-lg">
+          <div class="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Plan-Review</p>
+              <h3 class="mt-2 text-lg font-semibold text-text-primary">{{ scheduleReviewPreview.label }}</h3>
+              <p class="mt-1 text-sm text-text-secondary">
+                Prüfe zuerst, was automatisch passieren würde, bevor Termine und Aufgaben wirklich verändert werden.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary inline-flex h-10 w-10 items-center justify-center" @click="closeScheduleReview">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <div class="grid gap-3 sm:grid-cols-4">
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold text-text-primary">{{ scheduleReviewPreview.items.length }}</div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Aufgaben</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold text-accent-green">{{ scheduleReviewPreview.totalBlocks }}</div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Kalenderblöcke</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold text-text-primary">{{ Math.round((scheduleReviewPreview.totalMinutes / 60) * 10) / 10 }}h</div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Geplante Zeit</div>
+              </div>
+              <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                <div class="text-lg font-semibold" :class="scheduleReviewPreview.remainingTasks.length > 0 ? 'text-priority-high' : 'text-accent-green'">
+                  {{ scheduleReviewPreview.remainingTasks.length }}
+                </div>
+                <div class="text-[11px] uppercase tracking-wide text-text-muted">Weiter offen</div>
+              </div>
+            </div>
+
+            <div class="glass-card p-4">
+              <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">Neue Blöcke</h4>
+              <div class="mt-3 space-y-2">
+                <div
+                  v-for="item in scheduleReviewPreview.items.slice(0, 8)"
+                  :key="item.taskId"
+                  class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-sm font-medium text-text-primary">{{ item.title }}</span>
+                        <span class="rounded-full px-2 py-0.5 text-[11px]" :class="priorityColors[item.priority]">
+                          {{ item.priority }}
+                        </span>
+                        <span v-if="item.isDeepWork" class="rounded-full border border-accent-purple/20 bg-accent-purple/10 px-2 py-0.5 text-[11px] text-accent-purple-soft">
+                          Fokus
+                        </span>
+                      </div>
+                      <p v-if="item.firstStart && item.lastEnd" class="mt-2 text-xs text-text-secondary">
+                        {{ formatTaskDateTime(item.firstStart) }} bis {{ formatTaskDateTime(item.lastEnd) }}
+                      </p>
+                    </div>
+                    <div class="text-right text-xs text-text-secondary">
+                      <div>{{ item.blockCount }} Block{{ item.blockCount === 1 ? '' : 'e' }}</div>
+                      <div class="mt-1">{{ item.totalMinutes }} Min.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p v-if="scheduleReviewPreview.items.length > 8" class="mt-3 text-xs text-text-muted">
+                {{ scheduleReviewPreview.items.length - 8 }} weitere Aufgaben würden ebenfalls eingeplant.
+              </p>
+            </div>
+
+            <div v-if="scheduleReviewPreview.remainingTasks.length > 0" class="rounded-glass border border-priority-high/20 bg-priority-high/10 px-4 py-4">
+              <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-priority-high">Bleibt noch offen</h4>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <span
+                  v-for="task in scheduleReviewPreview.remainingTasks.slice(0, 6)"
+                  :key="task.id"
+                  class="rounded-full border border-priority-high/20 bg-white/[0.05] px-2.5 py-1 text-[11px] text-text-secondary"
+                >
+                  {{ task.title }}
+                </span>
+              </div>
+              <p class="mt-3 text-xs text-text-secondary">
+                Diese Aufgaben kannst du danach mit Planvarianten, Alternativ-Slots oder manuellen Anpassungen weiter auflösen.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-col-reverse gap-3 border-t border-border-subtle px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="closeScheduleReview">
+              Später prüfen
+            </button>
+            <button
+              type="button"
+              class="btn-accent-green px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="applyingScheduleReview"
+              @click="confirmScheduleReview"
+            >
+              {{ applyingScheduleReview ? 'Plant ein...' : 'Jetzt anwenden' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
     <Transition name="modal">
       <div v-if="rescheduleTask" class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div class="absolute inset-0" @click="closeRescheduleDialog" />

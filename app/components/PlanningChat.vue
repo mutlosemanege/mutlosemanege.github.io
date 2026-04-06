@@ -75,7 +75,7 @@ const emit = defineEmits<{
 
 const { preferences, updatePreferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
-const { createEvent, error: calendarError, syncStatus, findPotentialDuplicates } = useCalendar()
+const { createEvent, error: calendarError, syncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction, findPotentialDuplicates } = useCalendar()
 const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
@@ -1336,6 +1336,10 @@ function intentLabel(intent: PlanningIntent) {
 function useExamplePrompt(value: string) {
   prompt.value = value
 }
+
+async function handleRetryCalendarAction() {
+  await retryLastAction()
+}
 </script>
 
 <template>
@@ -1488,7 +1492,18 @@ function useExamplePrompt(value: string) {
                     ? 'border-accent-green/30 bg-accent-green/10 text-accent-green'
                     : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
               >
-                {{ syncStatus.message }}
+                <div class="flex items-center justify-between gap-3">
+                  <span>{{ syncStatus.message }}</span>
+                  <button
+                    v-if="syncStatus.state === 'error' && canRetryLastAction"
+                    type="button"
+                    class="rounded-full border border-priority-critical/30 bg-priority-critical/10 px-3 py-1 text-xs font-medium text-[#FFD3DC] transition hover:bg-priority-critical/15 disabled:opacity-60"
+                    :disabled="isRetryingLastAction"
+                    @click="handleRetryCalendarAction"
+                  >
+                    {{ isRetryingLastAction ? 'Versuche erneut...' : 'Erneut versuchen' }}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1739,7 +1754,18 @@ function useExamplePrompt(value: string) {
                     ? 'border-accent-green/30 bg-accent-green/10 text-accent-green'
                     : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
               >
-                {{ syncStatus.message }}
+                <div class="flex items-center justify-between gap-3">
+                  <span>{{ syncStatus.message }}</span>
+                  <button
+                    v-if="syncStatus.state === 'error' && canRetryLastAction"
+                    type="button"
+                    class="rounded-full border border-priority-critical/30 bg-priority-critical/10 px-3 py-1 text-xs font-medium text-[#FFD3DC] transition hover:bg-priority-critical/15 disabled:opacity-60"
+                    :disabled="isRetryingLastAction"
+                    @click="handleRetryCalendarAction"
+                  >
+                    {{ isRetryingLastAction ? 'Versuche erneut...' : 'Erneut versuchen' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

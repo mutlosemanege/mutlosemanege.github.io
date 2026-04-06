@@ -34,7 +34,7 @@ const {
   updatePreferences,
   resetPreferences,
 } = usePreferences()
-const { createEvent, fetchEvents, syncStatus, findPotentialDuplicates } = useCalendar()
+const { createEvent, fetchEvents, syncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction, findPotentialDuplicates } = useCalendar()
 
 const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
@@ -640,6 +640,10 @@ function handleReset() {
   resetPreferences()
   emit('close')
 }
+
+async function handleRetryCalendarAction() {
+  await retryLastAction()
+}
 </script>
 
 <template>
@@ -684,7 +688,18 @@ function handleReset() {
                 ? 'border-accent-green/30 bg-accent-green/10 text-accent-green'
                 : 'border-border-subtle bg-white/[0.04] text-text-secondary'"
           >
-            Kalenderstatus: {{ syncStatus.message }}
+            <div class="flex items-center justify-between gap-3">
+              <span>Kalenderstatus: {{ syncStatus.message }}</span>
+              <button
+                v-if="syncStatus.state === 'error' && canRetryLastAction"
+                type="button"
+                class="rounded-full border border-priority-critical/30 bg-priority-critical/10 px-3 py-1 text-xs font-medium text-[#FFD3DC] transition hover:bg-priority-critical/15 disabled:opacity-60"
+                :disabled="isRetryingLastAction"
+                @click="handleRetryCalendarAction"
+              >
+                {{ isRetryingLastAction ? 'Versuche erneut...' : 'Erneut versuchen' }}
+              </button>
+            </div>
           </div>
 
           <div class="glass-card p-4">

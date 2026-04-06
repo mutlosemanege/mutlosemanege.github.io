@@ -28,10 +28,18 @@ export interface CalendarSyncStatus {
   at: string
 }
 
+type RetryableCalendarAction =
+  | { action: 'fetch'; args: { timeMin: string; timeMax: string } }
+  | { action: 'create'; args: { event: Omit<CalendarEvent, 'id'> } }
+  | { action: 'update'; args: { eventId: string; event: Partial<CalendarEvent> } }
+  | { action: 'delete'; args: { eventId: string } }
+
 const events = ref<CalendarEvent[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const syncStatus = ref<CalendarSyncStatus | null>(null)
+const lastFailedAction = ref<RetryableCalendarAction | null>(null)
+const isRetryingLastAction = ref(false)
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3'
 
@@ -79,6 +87,14 @@ export function useCalendar() {
       message,
       at: new Date().toISOString(),
     }
+  }
+
+  function rememberFailedAction(action: RetryableCalendarAction) {
+    lastFailedAction.value = action
+  }
+
+  function clearFailedAction() {
+    lastFailedAction.value = null
   }
 
   function getEventStart(event: CalendarEvent): Date | null {
@@ -160,10 +176,17 @@ export function useCalendar() {
       )
       events.value = data.items || []
       setSyncStatus('success', 'fetch', `${events.value.length} Kalendereintraege synchronisiert.`)
+      clearFailedAction()
+      return true
     } catch (e: any) {
       error.value = e.message
       events.value = []
       setSyncStatus('error', 'fetch', e.message || 'Kalender konnte nicht synchronisiert werden.')
+      rememberFailedAction({
+        action: 'fetch',
+        args: { timeMin, timeMax },
+      })
+      return false
     } finally {
       isLoading.value = false
     }
@@ -182,10 +205,15 @@ export function useCalendar() {
         }
       )
       setSyncStatus('success', 'create', 'Kalendereintrag wurde erfolgreich erstellt.')
+      clearFailedAction()
       return result
     } catch (e: any) {
       error.value = e.message
       setSyncStatus('error', 'create', e.message || 'Kalendereintrag konnte nicht erstellt werden.')
+      rememberFailedAction({
+        action: 'create',
+        args: { event },
+      })
       return null
     } finally {
       isLoading.value = false
@@ -205,10 +233,15 @@ export function useCalendar() {
         }
       )
       setSyncStatus('success', 'update', 'Kalendereintrag wurde aktualisiert.')
+      clearFailedAction()
       return result
     } catch (e: any) {
       error.value = e.message
       setSyncStatus('error', 'update', e.message || 'Kalendereintrag konnte nicht aktualisiert werden.')
+      rememberFailedAction({
+        action: 'update',
+        args: { eventId, event },
+      })
       return null
     } finally {
       isLoading.value = false
@@ -225,13 +258,47 @@ export function useCalendar() {
         { method: 'DELETE' }
       )
       setSyncStatus('success', 'delete', 'Kalendereintrag wurde entfernt.')
+      clearFailedAction()
       return true
     } catch (e: any) {
       error.value = e.message
       setSyncStatus('error', 'delete', e.message || 'Kalendereintrag konnte nicht entfernt werden.')
+      rememberFailedAction({
+        action: 'delete',
+        args: { eventId },
+      })
       return false
     } finally {
       isLoading.value = false
+    }
+  }
+
+  const canRetryLastAction = computed(() => !!lastFailedAction.value)
+
+  async function retryLastAction() {
+    if (!lastFailedAction.value || isRetryingLastAction.value) return false
+
+    isRetryingLastAction.value = true
+    setSyncStatus('syncing', lastFailedAction.value.action, 'Letzte Kalenderaktion wird erneut versucht...')
+
+    try {
+      const action = lastFailedAction.value
+
+      if (action.action === 'fetch') {
+        return await fetchEvents(action.args.timeMin, action.args.timeMax)
+      }
+
+      if (action.action === 'create') {
+        return !!(await createEvent(action.args.event))
+      }
+
+      if (action.action === 'update') {
+        return !!(await updateEvent(action.args.eventId, action.args.event))
+      }
+
+      return await deleteEvent(action.args.eventId)
+    } finally {
+      isRetryingLastAction.value = false
     }
   }
 
@@ -240,10 +307,13 @@ export function useCalendar() {
     isLoading: readonly(isLoading),
     error: readonly(error),
     syncStatus: readonly(syncStatus),
+    canRetryLastAction: readonly(canRetryLastAction),
+    isRetryingLastAction: readonly(isRetryingLastAction),
     findPotentialDuplicates,
     fetchEvents,
     createEvent,
     updateEvent,
-    deleteEvent
+    deleteEvent,
+    retryLastAction,
   }
 }
