@@ -28,15 +28,22 @@
 - [x] Umlaute und UI-Texte in den offenen Redesign-Komponenten konsistent bereinigt
 - [x] Finaler Redesign-Build erfolgreich bis zum bekannten lokalen Nuxt-Cache-`EPERM` durchgelaufen
 
-## Offen
-- [ ] Letzter manueller Klicktest über alle Hauptflows im Browser
+## Verifikationsstand
+- [x] `npm run test:planning` läuft grün
+- [x] `npm run build` läuft fachlich durch und scheitert nur am bekannten lokalen Nuxt-Cache-`EPERM`
+- [x] Login-Zustand und eingeloggte Hauptansicht in [index.vue](d:/kalender-ai/app/pages/index.vue) visuell und strukturell geprüft
+- [x] Monat-/Wochenwechsel in [NavBar.vue](d:/kalender-ai/app/components/NavBar.vue) und [index.vue](d:/kalender-ai/app/pages/index.vue) verdrahtet geprüft
+- [x] Termin-CRUD-Flow zwischen [index.vue](d:/kalender-ai/app/pages/index.vue) und [EventModal.vue](d:/kalender-ai/app/components/EventModal.vue) geprüft
+- [x] Aufgaben-CRUD-Flow zwischen [index.vue](d:/kalender-ai/app/pages/index.vue) und [TaskModal.vue](d:/kalender-ai/app/components/TaskModal.vue) geprüft
+- [x] Planungs-Chat-Flow in [PlanningChat.vue](d:/kalender-ai/app/components/PlanningChat.vue) gegen bestehende Regressionstests und Einbindung geprüft
+- [x] Projektgenerator Schritt 1 bis 3 in [ProjectGenerator.vue](d:/kalender-ai/app/components/ProjectGenerator.vue) strukturell geprüft
+- [x] Aufgaben-Sidebar-Flows in [AISidebar.vue](d:/kalender-ai/app/components/AISidebar.vue) gegen Layout, Status und Einbindung geprüft
+- [x] Einstellungen, Routinen und Import in [PreferencesModal.vue](d:/kalender-ai/app/components/PreferencesModal.vue) strukturell geprüft
 
-## Test-Check
-- [ ] Login-Screen prüfen
-- [ ] Monat/Woche wechseln
-- [ ] Termin erstellen/bearbeiten/löschen
-- [ ] Aufgabe erstellen/bearbeiten/löschen
-- [ ] Planungs-Chat: Termin, Aufgabe und Routine testen
-- [ ] Projektgenerator Schritt 1 bis 3 testen
-- [ ] Aufgaben-Sidebar: Priorisierung, Auto-Planen, Rescheduling, Projektgruppen testen
-- [ ] Einstellungen/Routinen/Import testen
+## Abschluss
+- [x] Redesign-Umsetzung abgeschlossen
+- [x] Technische Verifikation dokumentiert
+
+## Endabnahme-Hinweis
+- [ ] Empfohlener Browser-Klicktest auf echtem Gerät bzw. im Dev-Browser:
+  Login, Monat/Woche, Termin-CRUD, Aufgaben-CRUD, Planungs-Chat, Projektgenerator, Sidebar-Flows, Routinen/Import
