@@ -1260,11 +1260,11 @@ function intentLabel(intent: PlanningIntent) {
                   <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
                     <p class="text-sm font-medium text-text-primary">{{ previewTask.title }}</p>
                     <p class="mt-1 text-sm text-text-secondary">
-                      {{ previewTask.estimatedMinutes }} Minuten, Priorität {{ previewTask.priority }}
+                      {{ previewTask.estimatedMinutes }} Minuten, Prioritï¿½t {{ previewTask.priority }}
                     </p>
                     <p class="mt-3 text-sm text-accent-purple">
                       <template v-if="previewTaskSlot">
-                        Wird als Aufgabe angelegt und direkt für {{ formatPreview(previewTask.scheduledStart) }} terminiert
+                        Wird als Aufgabe angelegt und direkt fï¿½r {{ formatPreview(previewTask.scheduledStart) }} terminiert
                       </template>
                       <template v-else>
                         Noch kein freier Slot gefunden, Aufgabe wird nur angelegt.
@@ -1279,14 +1279,14 @@ function intentLabel(intent: PlanningIntent) {
                     v-if="previewDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
                   >
-                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Mögliche Duplikate</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Mï¿½gliche Duplikate</div>
                     <div class="mt-3 space-y-2">
                       <div
                         v-for="duplicate in previewDuplicateWarnings.slice(0, 2)"
                         :key="`${duplicate.event.id || duplicate.event.summary}-${duplicate.reason}`"
                         class="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"
                       >
-                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || 'Ähnlicher Termin' }}</div>
+                        <div class="text-xs font-medium text-text-primary">{{ duplicate.event.summary || 'ï¿½hnlicher Termin' }}</div>
                         <div class="mt-1 text-[11px] text-priority-high">{{ duplicate.reason }}</div>
                       </div>
                     </div>
@@ -1311,10 +1311,10 @@ function intentLabel(intent: PlanningIntent) {
                       {{ String(previewRoutine.template.endHour).padStart(2, '0') }}:00
                     </p>
                     <p class="mt-3 text-sm text-accent-green">
-                      Wird als Routine-Vorlage gespeichert und für die nächsten 4 Wochen eingetragen
+                      Wird als Routine-Vorlage gespeichert und fï¿½r die nï¿½chsten 4 Wochen eingetragen
                     </p>
                     <p class="mt-2 text-xs text-text-muted">
-                      Nächste Ausführung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
+                      Nï¿½chste Ausfï¿½hrung: {{ formatPreview(previewRoutine.nextStart.toISOString()) }} bis {{ formatPreview(previewRoutine.nextEnd.toISOString()) }}
                     </p>
                   </div>
 
@@ -1322,7 +1322,7 @@ function intentLabel(intent: PlanningIntent) {
                     v-if="routineDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
                   >
-                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Bereits ähnliche Routinen im Kalender</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-priority-high">Bereits ï¿½hnliche Routinen im Kalender</div>
                     <div class="mt-3 space-y-2">
                       <div
                         v-for="duplicate in routineDuplicateWarnings"
@@ -1348,7 +1348,7 @@ function intentLabel(intent: PlanningIntent) {
                 <div v-else class="mt-4 rounded-glass border border-dashed border-border-subtle bg-white/[0.03] px-4 py-6 text-center text-sm text-text-muted">
                   Noch kein Vorschlag vorhanden.
                 </div>
-              </div>
+              </section>
 
               <div v-if="error" class="rounded-glass border border-priority-critical/30 bg-priority-critical/10 px-4 py-3 text-sm text-[#FFD3DC]">
                 {{ error }}

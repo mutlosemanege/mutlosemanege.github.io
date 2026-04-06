@@ -1922,6 +1922,8 @@ async function restoreArchivedProject(groupId: string) {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
       <div v-if="planningDiagnostics.length > 0" class="px-4 pb-2">
         <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -2390,6 +2392,7 @@ async function restoreArchivedProject(groupId: string) {
         </div>
       </div>
     </div>
+  </div>
   </Transition>
 
   <!-- Project Generator Modal -->

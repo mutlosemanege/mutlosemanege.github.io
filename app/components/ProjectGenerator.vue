@@ -415,7 +415,7 @@ function addDays(date: Date, days: number) {
                 </div>
                 <h2 class="mt-2 text-2xl font-semibold text-text-primary">Projekt in Aufgaben zerlegen</h2>
                 <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-                  Beschreibe dein Projekt und die KI erstellt daraus sinnvolle Aufgaben, Prioritäten und Abhängigkeiten.
+                  Beschreibe dein Projekt und die KI erstellt daraus sinnvolle Aufgaben, Prioritï¿½ten und Abhï¿½ngigkeiten.
                 </p>
               </div>
             </div>
@@ -427,7 +427,7 @@ function addDays(date: Date, days: number) {
                   v-model="description"
                   rows="5"
                   class="input-dark mt-3 w-full resize-none px-4 py-4"
-                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Prüfung vorbereiten oder Website relaunchen..."
+                  placeholder="z.B. YouTube-Video schneiden, Umzug planen, Prï¿½fung vorbereiten oder Website relaunchen..."
                 />
 
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -454,10 +454,10 @@ function addDays(date: Date, days: number) {
                 <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-accent-blue">Leitplanken</h3>
                 <div class="mt-4 space-y-3 text-sm text-text-secondary">
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
-                    Die vorhandene KI bleibt unverändert. Wir redesignen nur die Oberfläche und den Review-Fluss.
+                    Die vorhandene KI bleibt unverï¿½ndert. Wir redesignen nur die Oberflï¿½che und den Review-Fluss.
                   </div>
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
-                    Der Generator ist bewusst allgemeiner gehalten und passt für private, kreative und produktive Projekte.
+                    Der Generator ist bewusst allgemeiner gehalten und passt fï¿½r private, kreative und produktive Projekte.
                   </div>
                   <div class="rounded-xl border border-border-subtle bg-white/[0.04] p-3">
                     Nach dem Erstellen kann das Projekt auf Wunsch direkt automatisch eingeplant werden.
@@ -536,7 +536,7 @@ function addDays(date: Date, days: number) {
                     <div class="min-w-0">
                       <div class="text-sm font-medium text-text-primary">{{ task.title }}</div>
                       <div class="mt-1 text-xs text-text-secondary">
-                        {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abhängigkeiten' : '' }}
+                        {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abhï¿½ngigkeiten' : '' }}
                       </div>
                     </div>
                     <span class="rounded-full bg-accent-blue/15 px-2 py-0.5 text-[11px] text-accent-blue">zuerst</span>
@@ -609,7 +609,7 @@ function addDays(date: Date, days: number) {
                     <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-text-muted">
                       <span>{{ task.estimatedMinutes }} Min.</span>
                       <span v-if="task.dependsOn.length === 0" class="text-accent-blue">Startklar</span>
-                      <span v-if="task.dependsOn.length > 0">Abhängig von: {{ dependencyLabels(task) }}</span>
+                      <span v-if="task.dependsOn.length > 0">Abhï¿½ngig von: {{ dependencyLabels(task) }}</span>
                     </div>
                   </div>
                 </div>
@@ -617,7 +617,7 @@ function addDays(date: Date, days: number) {
             </div>
 
             <div class="mt-6 flex justify-between gap-2">
-              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zurück</button>
+              <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="step = 'input'">Zurï¿½ck</button>
               <div class="flex gap-2">
                 <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Abbrechen</button>
                 <button type="button" class="btn-accent-green px-4 py-2 text-sm" @click="handleConfirm">Projekt erstellen</button>
@@ -640,217 +640,11 @@ function addDays(date: Date, days: number) {
                 {{ creationSummary.scheduledCount }} Aufgaben wurden direkt eingeplant, {{ creationSummary.remainingCount }} bleiben vorerst offen.
               </p>
               <p v-else-if="creationSummary && !autoScheduleAfterCreate" class="mt-2 text-sm text-text-secondary">
-                Die Aufgaben wurden angelegt und können danach manuell oder per Auto-Planen eingeplant werden.
+                Die Aufgaben wurden angelegt und kï¿½nnen danach manuell oder per Auto-Planen eingeplant werden.
               </p>
               <div class="mt-6 flex justify-center gap-2">
-                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schließen</button>
+                <button type="button" class="btn-secondary px-4 py-2 text-sm" @click="emit('close')">Schlieï¿½en</button>
               </div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
-</template>
-
-          <!-- Step 2: Review -->
-          <template v-if="step === 'review'">
-            <div class="flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900">{{ projectName }}</h2>
-              <span class="text-xs text-gray-400">
-                {{ tokenUsage.inputTokens + tokenUsage.outputTokens }} Tokens
-              </span>
-            </div>
-            <p class="text-sm text-gray-500">
-              {{ previewTasks.filter(t => t.include).length }} Aufgaben, ca. {{ totalHours }} Stunden
-            </p>
-
-            <div
-              v-if="projectScopeInsights.labels.length > 0"
-              class="rounded-xl border px-4 py-3"
-              :class="projectScopeInsights.severity === 'danger'
-                ? 'border-red-200 bg-red-50'
-                : 'border-amber-200 bg-amber-50'"
-            >
-              <div class="text-sm font-medium"
-                :class="projectScopeInsights.severity === 'danger' ? 'text-red-700' : 'text-amber-700'"
-              >
-                Projekt-Check
-              </div>
-              <p class="mt-1 text-xs"
-                :class="projectScopeInsights.severity === 'danger' ? 'text-red-600' : 'text-amber-700'"
-              >
-                Freie Zeit im aktuellen Horizont: ca. {{ projectScopeInsights.availableHours }} Stunden.
-              </p>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <span
-                  v-for="label in projectScopeInsights.labels"
-                  :key="label"
-                  class="rounded-full bg-white px-2 py-0.5 text-[11px]"
-                  :class="projectScopeInsights.severity === 'danger' ? 'text-red-700' : 'text-amber-700'"
-                >
-                  {{ label }}
-                </span>
-              </div>
-            </div>
-
-            <div v-if="suggestedStartTasks.length > 0" class="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <div class="text-sm font-medium text-blue-800">Empfohlener Start</div>
-              <div class="mt-2 space-y-2">
-                <div
-                  v-for="task in suggestedStartTasks"
-                  :key="`start-${task.tempId}`"
-                  class="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2"
-                >
-                  <div class="min-w-0">
-                    <div class="text-sm font-medium text-gray-900">{{ task.title }}</div>
-                    <div class="text-xs text-gray-500">
-                      {{ task.estimatedMinutes }} Min.{{ task.dependsOn.length === 0 ? ', keine Abhaengigkeiten' : '' }}
-                    </div>
-                  </div>
-                  <span class="rounded-full px-2 py-0.5 text-[11px]"
-                    :class="{
-                      'bg-red-100 text-red-700': task.suggestedPriority === 'critical',
-                      'bg-orange-100 text-orange-700': task.suggestedPriority === 'high',
-                      'bg-yellow-100 text-yellow-700': task.suggestedPriority === 'medium',
-                      'bg-green-100 text-green-700': task.suggestedPriority === 'low',
-                    }"
-                  >
-                    zuerst
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div
-              v-if="reviewWhy.length > 0 || reviewUncertainty || reviewAlternatives.length > 0"
-              class="rounded-xl border border-slate-200 bg-slate-50 p-4"
-            >
-              <div class="text-sm font-medium text-slate-800">Warum diese Entscheidung?</div>
-              <div v-if="reviewWhy.length > 0" class="mt-2 space-y-1">
-                <p
-                  v-for="reason in reviewWhy"
-                  :key="reason"
-                  class="text-xs text-slate-600"
-                >
-                  {{ reason }}
-                </p>
-              </div>
-              <p v-if="reviewUncertainty" class="mt-2 text-xs text-amber-700">
-                Unsicherheit: {{ reviewUncertainty }}
-              </p>
-              <div v-if="reviewAlternatives.length > 0" class="mt-3 space-y-2">
-                <div class="text-[11px] font-medium text-slate-700">Alternativen</div>
-                <div
-                  v-for="alternative in reviewAlternatives"
-                  :key="alternative"
-                  class="rounded-lg bg-white px-3 py-2 text-xs text-gray-600"
-                >
-                  {{ alternative }}
-                </div>
-              </div>
-            </div>
-
-            <label class="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-              <input
-                v-model="autoScheduleAfterCreate"
-                type="checkbox"
-                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              >
-              Nach dem Erstellen direkt automatisch einplanen
-            </label>
-
-            <div class="space-y-2">
-              <div
-                v-for="task in orderedPreviewTasks"
-                :key="task.tempId"
-                class="flex items-start gap-3 p-3 rounded-lg border"
-                :class="task.include ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-50'"
-              >
-                <input
-                  v-model="task.include"
-                  type="checkbox"
-                  class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                >
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-gray-900">{{ task.title }}</span>
-                    <span
-                      class="text-xs px-1.5 py-0.5 rounded-full"
-                      :class="{
-                        'bg-red-100 text-red-700': task.suggestedPriority === 'critical',
-                        'bg-orange-100 text-orange-700': task.suggestedPriority === 'high',
-                        'bg-yellow-100 text-yellow-700': task.suggestedPriority === 'medium',
-                        'bg-green-100 text-green-700': task.suggestedPriority === 'low',
-                      }"
-                    >
-                      {{ task.suggestedPriority }}
-                    </span>
-                    <span v-if="task.isDeepWork" class="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                      Deep Work
-                    </span>
-                  </div>
-                  <p class="text-xs text-gray-500 mt-0.5">{{ task.description }}</p>
-                  <div class="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                    <span>{{ task.estimatedMinutes }} Min.</span>
-                    <span v-if="task.dependsOn.length === 0" class="text-blue-500">
-                      Startklar
-                    </span>
-                    <span v-if="task.dependsOn.length > 0">
-                      Abhaengig von: {{ dependencyLabels(task) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="flex justify-between pt-2">
-              <button
-                class="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                @click="step = 'input'"
-              >
-                Zurueck
-              </button>
-              <div class="flex gap-2">
-                <button
-                  class="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                  @click="emit('close')"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  class="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                  @click="handleConfirm"
-                >
-                  Projekt erstellen
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <!-- Step 3: Fertig -->
-          <template v-if="step === 'done'">
-            <div class="text-center py-6">
-              <svg class="mx-auto w-12 h-12 text-green-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              <h2 class="text-lg font-semibold text-gray-900">Projekt erstellt!</h2>
-              <p class="text-sm text-gray-500 mt-1">
-                {{ previewTasks.filter(t => t.include).length }} Aufgaben wurden angelegt.
-              </p>
-              <p v-if="creationSummary && autoScheduleAfterCreate" class="text-sm text-gray-500 mt-1">
-                {{ creationSummary.scheduledCount }} Aufgaben wurden direkt eingeplant,
-                {{ creationSummary.remainingCount }} bleiben vorerst offen.
-              </p>
-              <p v-else-if="creationSummary && !autoScheduleAfterCreate" class="text-sm text-gray-500 mt-1">
-                Die Aufgaben wurden angelegt und koennen danach manuell oder per Auto-Planen eingeplant werden.
-              </p>
-              <button
-                class="mt-4 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                @click="emit('close')"
-              >
-                Schliessen
-              </button>
             </div>
           </template>
         </div>
