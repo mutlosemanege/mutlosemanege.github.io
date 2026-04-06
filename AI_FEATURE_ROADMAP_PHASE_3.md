@@ -36,7 +36,7 @@ Rahmen:
 - [x] Rescheduling zuerst als Vorschau zeigen, bevor der alte Zustand mutiert wird
 - [x] Projektgenerator-Autoplan zuerst als Vorschau bestaetigen lassen
 - [x] Vor Mehrfachaenderungen eine kompakte Aenderungszusammenfassung anzeigen
-- [ ] Mehr Undo- und Restore-Pfade fuer Kalender-/Task-Kopplungen ergaenzen
+- [x] Mehr Undo- und Restore-Pfade fuer Kalender-/Task-Kopplungen ergaenzen
 - [ ] Historie staerker als echte Wiederherstellungshilfe nutzen
 
 ## 22. Wochenblick und Forecast

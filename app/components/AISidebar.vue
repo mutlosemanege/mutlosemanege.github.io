@@ -203,6 +203,21 @@ interface ScheduleReviewPreview {
   previousStart?: string
 }
 
+interface TaskRestoreSnapshot {
+  taskId: string
+  title: string
+  description?: string
+  estimatedMinutes: number
+  originalEstimatedMinutes?: number
+  progressPercent?: number
+  status: Task['status']
+  scheduleBlocks?: readonly Task['scheduleBlocks']
+  scheduledStart?: string
+  scheduledEnd?: string
+  calendarEventId?: string
+  isDeepWork: boolean
+}
+
 interface ActivityEntry {
   id: string
   title: string
@@ -984,6 +999,8 @@ async function confirmScheduleReview() {
   applyingScheduleReview.value = true
 
   try {
+    const restoreSnapshots = captureTaskRestoreSnapshots(preview.tasksToSchedule.map(task => task.id))
+
     if (preview.source === 'reschedule' && preview.rescheduleTaskId) {
       const targetTask = tasks.value.find(task => task.id === preview.rescheduleTaskId)
       if (targetTask && preview.rescheduleMode) {
@@ -1025,6 +1042,12 @@ async function confirmScheduleReview() {
         : preview.remainingTasks.length > 0
           ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
           : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
+      undoLabel: 'Rückgängig',
+      undo: async () => {
+        await restoreTaskSnapshots(restoreSnapshots)
+        const restoredEvents = await refreshCalendarEvents()
+        await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), restoredEvents)
+      },
     })
 
     closeScheduleReview()
@@ -1758,6 +1781,77 @@ async function clearScheduledTaskBlocks(task: Task) {
 
   if (task.calendarEventId) {
     await deleteEvent(task.calendarEventId)
+  }
+}
+
+function captureTaskRestoreSnapshots(taskIds: readonly string[]): TaskRestoreSnapshot[] {
+  return taskIds
+    .map((taskId) => {
+      const task = tasks.value.find(entry => entry.id === taskId)
+      if (!task) return null
+
+      return {
+        taskId: task.id,
+        title: task.title,
+        description: task.description,
+        estimatedMinutes: task.estimatedMinutes,
+        originalEstimatedMinutes: task.originalEstimatedMinutes,
+        progressPercent: task.progressPercent,
+        status: task.status,
+        scheduleBlocks: task.scheduleBlocks ? [...task.scheduleBlocks] : undefined,
+        scheduledStart: task.scheduledStart,
+        scheduledEnd: task.scheduledEnd,
+        calendarEventId: task.calendarEventId,
+        isDeepWork: task.isDeepWork,
+      } satisfies TaskRestoreSnapshot
+    })
+    .filter((snapshot): snapshot is TaskRestoreSnapshot => snapshot !== null)
+}
+
+async function restoreTaskSnapshots(snapshots: readonly TaskRestoreSnapshot[]) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  for (const snapshot of snapshots) {
+    const currentTask = tasks.value.find(task => task.id === snapshot.taskId)
+    if (!currentTask) continue
+
+    await clearScheduledTaskBlocks(currentTask)
+
+    let restoredBlocks: Array<{ start: string; end: string; calendarEventId?: string }> | undefined
+    let restoredCalendarEventId: string | undefined
+
+    if (snapshot.scheduleBlocks && snapshot.scheduleBlocks.length > 0) {
+      restoredBlocks = []
+
+      for (const [index, block] of snapshot.scheduleBlocks.entries()) {
+        const restoredEvent = await createEvent({
+          summary: snapshot.scheduleBlocks.length > 1 ? `${snapshot.title} (${index + 1}/${snapshot.scheduleBlocks.length})` : snapshot.title,
+          description: `[KALENDER-AI-TASK:${snapshot.taskId}]\n${snapshot.description || ''}`,
+          start: { dateTime: block.start, timeZone: tz },
+          end: { dateTime: block.end, timeZone: tz },
+          colorId: snapshot.isDeepWork ? '3' : '9',
+        })
+
+        restoredBlocks.push({
+          start: block.start,
+          end: block.end,
+          calendarEventId: restoredEvent?.id,
+        })
+      }
+
+      restoredCalendarEventId = restoredBlocks[0]?.calendarEventId
+    }
+
+    await updateTask(snapshot.taskId, {
+      status: snapshot.status,
+      estimatedMinutes: snapshot.estimatedMinutes,
+      originalEstimatedMinutes: snapshot.originalEstimatedMinutes,
+      progressPercent: snapshot.progressPercent,
+      scheduleBlocks: restoredBlocks,
+      scheduledStart: snapshot.scheduledStart,
+      scheduledEnd: snapshot.scheduledEnd,
+      calendarEventId: restoredCalendarEventId,
+    })
   }
 }
 
