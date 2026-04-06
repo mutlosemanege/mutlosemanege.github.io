@@ -19,14 +19,14 @@ Rahmen:
 - [x] Risikoarme Rueckfragen vor Wochenend- oder Konflikt-Planungen einfuehren
 
 ## 25. Abendabschluss und Morgenbrief
-- [ ] Einen kurzen Tagesabschluss mit `geschafft`, `verschoben`, `unrealistisch` bauen
-- [ ] Daraus einen Morgenbrief fuer den naechsten Tag ableiten
-- [ ] Gelerntes Verhalten sichtbarer in konkrete Vorschlaege uebersetzen
+- [x] Einen kurzen Tagesabschluss mit `geschafft`, `verschoben`, `unrealistisch` bauen
+- [x] Daraus einen Morgenbrief fuer den naechsten Tag ableiten
+- [x] Gelerntes Verhalten sichtbarer in konkrete Vorschlaege uebersetzen
 
 ## 26. Sicheres Wiederherstellen als eigene Ansicht
-- [ ] Eine zentrale Wiederherstellen-Ansicht fuer groessere Planungsbatches bauen
-- [ ] Kalender- und Aufgabenwiederherstellung zusammenfassen statt nur einzelne Undo-Buttons zu zeigen
-- [ ] Wiederherstellbare Aenderungen zeitlich und thematisch gruppieren
+- [x] Eine zentrale Wiederherstellen-Ansicht fuer groessere Planungsbatches bauen
+- [x] Kalender- und Aufgabenwiederherstellung zusammenfassen statt nur einzelne Undo-Buttons zu zeigen
+- [x] Wiederherstellbare Aenderungen zeitlich und thematisch gruppieren
 
 ## 27. End-to-End-Absicherung der KI-Flows
 - [ ] Komplette KI-Hauptpfade als szenariobasierte Ablauf-Checks dokumentieren

@@ -1,11 +1,11 @@
 ﻿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { DailyPlanningMode, PlanningStyle, Task } from '~/types/task'
+import type { DailyPlanningMode, DailyReflectionTag, PlanningStyle, Task } from '~/types/task'
 
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
-const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode } = usePreferences()
+const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode, getDailyReflection, saveDailyReflection, getRecentDailyReflections } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { warnings, criticalCount } = useDeadlineWatcher()
 
@@ -22,11 +22,18 @@ const selectedDate = ref<string | undefined>(undefined)
 const todayActionFeedback = ref<string | null>(null)
 const isRunningTodayAction = ref(false)
 const selectedCommitTaskIds = ref<string[]>([])
+const selectedReflectionTags = ref<DailyReflectionTag[]>([])
+const dailyReflectionNote = ref('')
 const dailyModeOptions: Array<{ value: DailyPlanningMode; label: string; description: string; accent: string }> = [
   { value: 'fokussiert', label: 'Fokussiert', description: 'Deep Work und wichtige Hebel zuerst.', accent: 'accent-purple-soft' },
   { value: 'entspannt', label: 'Entspannt', description: 'Weniger Druck, mehr machbare Schritte.', accent: 'accent-green' },
   { value: 'wenig-zeit', label: 'Wenig Zeit', description: 'Kurze, klare Aufgaben für enge Tage.', accent: 'accent-blue' },
   { value: 'aufholen', label: 'Aufholen', description: 'Deadline-Druck und Rückstände zuerst glätten.', accent: 'priority-high' },
+]
+const reflectionOptions: Array<{ value: DailyReflectionTag; label: string; description: string }> = [
+  { value: 'geschafft', label: 'Geschafft', description: 'Der Tag war insgesamt gut machbar.' },
+  { value: 'verschoben', label: 'Verschoben', description: 'Es musste spürbar umgeplant werden.' },
+  { value: 'unrealistisch', label: 'Unrealistisch', description: 'Die Planung war für heute zu ambitioniert.' },
 ]
 
 const todayRange = computed(() => {
@@ -53,6 +60,7 @@ const todayPendingTasks = computed(() => {
 const todayCommit = computed(() => getDailyCommit())
 const todayMode = computed(() => getDailyMode())
 const activeDailyMode = computed<DailyPlanningMode | null>(() => todayMode.value.mode)
+const todayReflection = computed(() => getDailyReflection())
 const todayCommittedTasks = computed(() => {
   const committedIds = new Set(todayCommit.value.committedTaskIds)
   return todayPendingTasks.value.filter(task => committedIds.has(task.id))
@@ -365,6 +373,7 @@ const weekForecastSummary = computed(() => {
   return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
 })
 const activeDailyModeMeta = computed(() => dailyModeOptions.find(option => option.value === activeDailyMode.value) || null)
+const recentDailyReflections = computed(() => getRecentDailyReflections(5))
 const reviewWindowStart = computed(() => {
   const start = new Date()
   start.setHours(0, 0, 0, 0)
@@ -427,6 +436,68 @@ const learningReview = computed(() => {
     nextStep,
   }
 })
+const tomorrowForecast = computed(() => weekForecastDays.value[1] || null)
+const morningBrief = computed(() => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayReflection = getDailyReflection(yesterday)
+  const tags = new Set(yesterdayReflection.tags)
+  const tomorrow = tomorrowForecast.value
+  const recentReflectionCount = recentDailyReflections.value.length
+
+  const why: string[] = []
+  if (tags.has('geschafft')) {
+    why.push('Gestern war für dich insgesamt machbar. Morgen kann die App etwas ambitionierter, aber weiterhin klar priorisieren.')
+  }
+  if (tags.has('verschoben')) {
+    why.push('Gestern musste einiges geschoben werden. Morgen lohnt sich ein engerer Fokus mit weniger gleichzeitigen Zusagen.')
+  }
+  if (tags.has('unrealistisch')) {
+    why.push('Gestern wirkte die Planung zu dicht. Morgen sollte die KI bewusster mit Puffer und weniger Commit arbeiten.')
+  }
+  if (why.length === 0) {
+    why.push('Es liegt noch kein kurzer Tagesabschluss vor. Die KI nutzt daher vor allem dein bisheriges Verhalten und den Wochenblick.')
+  }
+
+  if (tomorrow) {
+    why.push(`Morgen wirken aktuell ${Math.round((tomorrow.freeMinutes / 60) * 10) / 10}h frei, ${tomorrow.eventCount} Termine und ${tomorrow.dueTasks.length} sichtbare Deadlines.`)
+  }
+
+  const alternatives = [
+    activeDailyModeMeta.value
+      ? `Starte morgen wieder bewusst mit einem Tagesmodus wie "${activeDailyModeMeta.value.label}" statt neutral loszulegen.`
+      : 'Wähle morgen früh zuerst einen Tagesmodus, bevor du alles gleichzeitig planst.',
+    learningReview.value.topHours[0]
+      ? `Lege wichtige Abschlüsse möglichst rund um ${learningReview.value.topHours[0]} oder kurz davor.`
+      : 'Nutze morgen einen klaren Fokusblock, damit die App stärkere Abschlusszeiten lernen kann.',
+  ]
+
+  let uncertainty: string | null = null
+  if (recentReflectionCount < 2) {
+    uncertainty = 'Es sind noch wenig explizite Tagesabschlüsse vorhanden. Der Morgenbrief wird mit ein paar echten Rückmeldungen deutlich präziser.'
+  } else if (tags.has('unrealistisch')) {
+    uncertainty = 'Wenn heute ähnlich voll wird wie gestern, sollte die KI eher konservativer planen als sonst.'
+  }
+
+  const nextStep = tags.has('unrealistisch')
+    ? 'Plane morgen früh maximal drei klare Dinge fest ein und lass den Rest bewusst flexibel.'
+    : tags.has('verschoben')
+      ? 'Starte morgen mit einem kurzen Review der offenen Verschiebungen, bevor neue Aufgaben dazukommen.'
+      : 'Nutze morgen den besten freien Block zuerst für die wichtigste Aufgabe statt mit Kleinkram zu starten.'
+
+  return {
+    why,
+    alternatives,
+    uncertainty,
+    nextStep,
+    yesterdayReflection,
+  }
+})
+
+watch(todayReflection, (reflection) => {
+  selectedReflectionTags.value = [...reflection.tags]
+  dailyReflectionNote.value = reflection.note || ''
+}, { immediate: true })
 
 let desktopSidebarQuery: MediaQueryList | null = null
 let onDesktopSidebarChange: ((event: MediaQueryListEvent) => void) | null = null
@@ -676,6 +747,27 @@ function toggleCommitCandidate(taskId: string) {
     current.add(taskId)
   }
   selectedCommitTaskIds.value = [...current]
+}
+
+function toggleReflectionTag(tag: DailyReflectionTag) {
+  const current = new Set(selectedReflectionTags.value)
+  if (current.has(tag)) {
+    current.delete(tag)
+  } else {
+    current.add(tag)
+  }
+  selectedReflectionTags.value = [...current]
+}
+
+function saveTodayReflectionSummary() {
+  saveDailyReflection(selectedReflectionTags.value, dailyReflectionNote.value)
+  const labels = reflectionOptions
+    .filter(option => selectedReflectionTags.value.includes(option.value))
+    .map(option => option.label.toLowerCase())
+
+  todayActionFeedback.value = labels.length > 0
+    ? `Tagesabschluss gespeichert: ${labels.join(', ')}. Der Morgenbrief wurde entsprechend geschärft.`
+    : 'Tagesabschluss ohne Tags gespeichert. Die Notiz fließt trotzdem lokal in den Morgenbrief ein.'
 }
 
 function activateDailyMode(mode: DailyPlanningMode) {
@@ -1230,6 +1322,96 @@ function isSameCalendarDay(a: Date, b: Date) {
               :alternatives="learningReview.alternatives"
               :next-step="learningReview.nextStep"
             />
+
+            <div class="mt-5 grid gap-4 xl:grid-cols-[1.05fr,0.95fr]">
+              <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-accent-purple-soft">Abendabschluss</p>
+                    <p class="mt-2 text-sm leading-6 text-text-secondary">
+                      Ein kurzer ehrlicher Check hilft der KI, den nächsten Tag realistischer vorzubereiten.
+                    </p>
+                  </div>
+                  <span class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-purple-soft">
+                    Heute
+                  </span>
+                </div>
+
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <button
+                    v-for="option in reflectionOptions"
+                    :key="option.value"
+                    type="button"
+                    class="rounded-full border px-3 py-2 text-left text-xs transition"
+                    :class="selectedReflectionTags.includes(option.value)
+                      ? 'border-accent-purple/30 bg-white/[0.08] text-text-primary'
+                      : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'"
+                    @click="toggleReflectionTag(option.value)"
+                  >
+                    <span class="font-medium">{{ option.label }}</span>
+                    <span class="ml-1">{{ option.description }}</span>
+                  </button>
+                </div>
+
+                <textarea
+                  v-model="dailyReflectionNote"
+                  rows="3"
+                  class="input-dark mt-4 w-full resize-none px-4 py-3"
+                  placeholder="Optional: Was war heute der eigentliche Knackpunkt?"
+                />
+
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div class="text-xs text-text-secondary">
+                    Letzter Status: {{ todayReflection.tags.length > 0 ? todayReflection.tags.join(', ') : 'noch offen' }}
+                  </div>
+                  <button class="btn-primary px-4 py-2 text-sm" @click="saveTodayReflectionSummary">
+                    Tagesabschluss speichern
+                  </button>
+                </div>
+              </div>
+
+              <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-accent-blue">Morgenbrief</p>
+                    <p class="mt-2 text-sm leading-6 text-text-secondary">
+                      So würde die KI den nächsten Tag gerade vorbereiten.
+                    </p>
+                  </div>
+                  <span class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-blue">
+                    Für morgen
+                  </span>
+                </div>
+
+                <div v-if="tomorrowForecast" class="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                    <div class="text-lg font-semibold text-text-primary">{{ Math.round((tomorrowForecast.freeMinutes / 60) * 10) / 10 }}h</div>
+                    <div class="text-xs text-text-muted">Freie Zeit</div>
+                  </div>
+                  <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                    <div class="text-lg font-semibold text-text-primary">{{ tomorrowForecast.eventCount }}</div>
+                    <div class="text-xs text-text-muted">Termine</div>
+                  </div>
+                  <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
+                    <div class="text-lg font-semibold" :class="tomorrowForecast.status === 'critical' ? 'text-priority-high' : 'text-text-primary'">
+                      {{ tomorrowForecast.statusLabel }}
+                    </div>
+                    <div class="text-xs text-text-muted">Tagesdruck</div>
+                  </div>
+                </div>
+
+                <DecisionSummaryCard
+                  class="mt-4"
+                  title="Was morgen anders laufen sollte"
+                  mode-label="Morgenbrief"
+                  :tone="selectedReflectionTags.includes('unrealistisch') ? 'warning' : 'preview'"
+                  :why="morningBrief.why"
+                  :uncertainty="morningBrief.uncertainty"
+                  :alternatives="morningBrief.alternatives"
+                  :next-step="morningBrief.nextStep"
+                />
+              </div>
+            </div>
           </section>
 
           <div class="mt-6 flex items-center justify-between gap-3">

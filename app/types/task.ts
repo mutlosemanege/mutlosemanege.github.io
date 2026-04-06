@@ -103,11 +103,20 @@ export interface DailyPlanningModeState {
   mode: DailyPlanningMode | null
 }
 
+export type DailyReflectionTag = 'geschafft' | 'verschoben' | 'unrealistisch'
+
+export interface DailyReflectionEntry {
+  dateKey: string
+  tags: readonly DailyReflectionTag[]
+  note?: string
+}
+
 export interface UserPreferences {
   planningStyle: PlanningStyle
   behaviorSignals: PlanningBehaviorSignals
   dailyCommit: DailyCommitState
   dailyMode: DailyPlanningModeState
+  dailyReflections: readonly DailyReflectionEntry[]
   respectPublicHolidays: boolean
   publicHolidayRegion: GermanHolidayRegion
   workStartHour: number
@@ -150,6 +159,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     dateKey: '',
     mode: null,
   },
+  dailyReflections: [],
   respectPublicHolidays: true,
   publicHolidayRegion: 'DE',
   workStartHour: 9,

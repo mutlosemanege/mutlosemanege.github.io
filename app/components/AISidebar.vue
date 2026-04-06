@@ -268,8 +268,17 @@ interface ActivityEntry {
   detail: string
   createdAt: string
   recoveryHint?: string
+  category?: 'planung' | 'projekt' | 'aufgabe' | 'fokus'
+  scope?: 'batch' | 'single'
   undoLabel?: string
   undo?: () => Promise<void>
+}
+
+interface RecoveryGroup {
+  key: string
+  label: string
+  description: string
+  entries: ActivityEntry[]
 }
 
 interface DisplacementSuggestion {
@@ -638,10 +647,14 @@ async function changePriority(task: Task, priority: Task['priority']) {
 }
 
 function addActivityEntry(entry: Omit<ActivityEntry, 'id' | 'createdAt'>) {
+  const category = entry.category || inferActivityCategory(entry.title)
+  const scope = entry.scope || inferActivityScope(entry.title)
   activityEntries.value = [
     {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: new Date().toISOString(),
+      category,
+      scope,
       ...entry,
     },
     ...activityEntries.value,
@@ -654,6 +667,84 @@ function formatActivityTime(value: string) {
     minute: '2-digit',
   })
 }
+
+function formatActivityDate(value: string) {
+  return new Date(value).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+  })
+}
+
+function inferActivityCategory(title: string): ActivityEntry['category'] {
+  if (/projekt/i.test(title)) return 'projekt'
+  if (/commit|tages/i.test(title)) return 'fokus'
+  if (/planung|planvariante|neuplanung/i.test(title)) return 'planung'
+  return 'aufgabe'
+}
+
+function inferActivityScope(title: string): ActivityEntry['scope'] {
+  if (/auto-planen|planvariante|neuplanung/i.test(title)) return 'batch'
+  return 'single'
+}
+
+function recoveryGroupMeta(groupKey: string) {
+  if (groupKey === 'planung:batch') {
+    return {
+      label: 'Planungsbatches',
+      description: 'Groessere Sammelaenderungen an Kalender und Aufgaben.',
+    }
+  }
+
+  if (groupKey === 'projekt:single') {
+    return {
+      label: 'Projektzustand',
+      description: 'Archivieren oder Wiederaktivieren von Projekten.',
+    }
+  }
+
+  if (groupKey === 'aufgabe:single') {
+    return {
+      label: 'Aufgaben & Slots',
+      description: 'Direkte Slot- oder Aufgabenentscheidungen.',
+    }
+  }
+
+  if (groupKey === 'fokus:single') {
+    return {
+      label: 'Fokus & Tag',
+      description: 'Bewusste Tagesentscheidungen und Fokuswechsel.',
+    }
+  }
+
+  return {
+    label: 'Wiederherstellbar',
+    description: 'Letzte wiederherstellbare Aenderungen.',
+  }
+}
+
+const restorableActivityGroups = computed<RecoveryGroup[]>(() => {
+  const restorable = activityEntries.value.filter(entry => entry.undo)
+  const grouped = new Map<string, ActivityEntry[]>()
+
+  for (const entry of restorable) {
+    const key = `${entry.category || 'aufgabe'}:${entry.scope || 'single'}`
+    const entries = grouped.get(key) || []
+    entries.push(entry)
+    grouped.set(key, entries)
+  }
+
+  return [...grouped.entries()]
+    .map(([key, entries]) => ({
+      key,
+      entries,
+      ...recoveryGroupMeta(key),
+    }))
+    .sort((a, b) => {
+      const aTime = new Date(a.entries[0]?.createdAt || 0).getTime()
+      const bTime = new Date(b.entries[0]?.createdAt || 0).getTime()
+      return bTime - aTime
+    })
+})
 
 function summarizeFailedTitles(titles: readonly string[], maxCount = 2) {
   if (titles.length === 0) return null
@@ -2753,6 +2844,75 @@ async function handleRetryCalendarAction() {
                 würde {{ suggestion.displacedTitle }} am {{ formatTaskDateTime(suggestion.start) }} verdrängen
               </div>
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="restorableActivityGroups.length > 0" class="px-4 pb-2">
+        <div class="glass-card border border-accent-purple/20 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-accent-purple-soft">Wiederherstellen</h3>
+              <p class="mt-1 text-xs text-text-muted">Groessere aenderungen sind hier thematisch gebuendelt, damit du nicht nur einzelne Zeilen suchen musst.</p>
+            </div>
+            <span class="rounded-full border border-accent-purple/20 bg-accent-purple/10 px-2 py-0.5 text-[11px] text-accent-purple-soft">
+              {{ restorableActivityGroups.reduce((sum, group) => sum + group.entries.length, 0) }} Aktionen
+            </span>
+          </div>
+
+          <div class="mt-3 space-y-3">
+            <div
+              v-for="group in restorableActivityGroups"
+              :key="group.key"
+              class="rounded-glass border border-border-subtle bg-white/[0.03] p-3"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-xs font-medium text-text-primary">{{ group.label }}</div>
+                  <div class="mt-1 text-[11px] text-text-muted">{{ group.description }}</div>
+                </div>
+                <span class="rounded-full border border-border-subtle bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wide text-text-secondary">
+                  {{ group.entries.length }} {{ group.entries.length === 1 ? 'Eintrag' : 'Einträge' }}
+                </span>
+              </div>
+
+              <div class="mt-3 space-y-2">
+                <div
+                  v-for="entry in group.entries.slice(0, 3)"
+                  :key="entry.id"
+                  class="rounded-glass border border-accent-purple/15 bg-accent-purple/8 px-3 py-2"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-medium text-text-primary">{{ entry.title }}</span>
+                        <span class="text-[11px] text-text-muted">{{ formatActivityDate(entry.createdAt) }} · {{ formatActivityTime(entry.createdAt) }}</span>
+                        <span
+                          v-if="entry.scope === 'batch'"
+                          class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent-purple-soft"
+                        >
+                          Batch
+                        </span>
+                      </div>
+                      <p class="mt-1 text-xs text-text-secondary">{{ entry.detail }}</p>
+                      <p v-if="entry.recoveryHint" class="mt-1 text-[11px] text-text-muted">{{ entry.recoveryHint }}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="rounded-md border border-accent-purple/20 bg-accent-purple/10 px-2 py-1 text-[11px] text-accent-purple-soft transition hover:border-accent-purple/35 hover:bg-accent-purple/15"
+                      @click="undoActivity(entry.id)"
+                    >
+                      {{ entry.undoLabel || 'Wiederherstellen' }}
+                    </button>
+                  </div>
+                </div>
+
+                <p v-if="group.entries.length > 3" class="text-[11px] text-text-muted">
+                  Plus {{ group.entries.length - 3 }} weitere wiederherstellbare Schritte in dieser Gruppe.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,14 @@
 import { DEFAULT_PREFERENCES } from '~/types/task'
-import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals, DailyCommitState, DailyPlanningMode, DailyPlanningModeState } from '~/types/task'
+import type {
+  UserPreferences,
+  DeepWorkWindow,
+  PlanningBehaviorSignals,
+  DailyCommitState,
+  DailyPlanningMode,
+  DailyPlanningModeState,
+  DailyReflectionEntry,
+  DailyReflectionTag,
+} from '~/types/task'
 
 const STORAGE_KEY = 'kalender-ai-preferences'
 
@@ -26,6 +35,9 @@ function loadPreferences(): UserPreferences {
           ...DEFAULT_PREFERENCES.dailyMode,
           ...(parsed.dailyMode || {}),
         },
+        dailyReflections: Array.isArray(parsed.dailyReflections)
+          ? parsed.dailyReflections.slice(0, 14)
+          : DEFAULT_PREFERENCES.dailyReflections,
       }
     }
   } catch {
@@ -137,6 +149,40 @@ export function usePreferences() {
     savePreferences()
   }
 
+  function getDailyReflection(date = new Date()): DailyReflectionEntry {
+    const dateKey = dateKeyFromDate(date)
+    return preferences.value.dailyReflections.find(entry => entry.dateKey === dateKey) || {
+      dateKey,
+      tags: [],
+      note: '',
+    }
+  }
+
+  function saveDailyReflection(tags: DailyReflectionTag[], note = '', date = new Date()) {
+    const dateKey = dateKeyFromDate(date)
+    const nextEntry: DailyReflectionEntry = {
+      dateKey,
+      tags: [...new Set(tags)],
+      note: note.trim(),
+    }
+
+    const remaining = preferences.value.dailyReflections.filter(entry => entry.dateKey !== dateKey)
+    preferences.value = {
+      ...preferences.value,
+      dailyReflections: [nextEntry, ...remaining]
+        .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+        .slice(0, 14),
+    }
+    savePreferences()
+  }
+
+  function getRecentDailyReflections(limit = 7) {
+    return preferences.value.dailyReflections
+      .slice()
+      .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+      .slice(0, limit)
+  }
+
   function clearDailyCommit(date = new Date()) {
     preferences.value = {
       ...preferences.value,
@@ -226,5 +272,8 @@ export function usePreferences() {
     getDailyMode,
     setDailyMode,
     clearDailyMode,
+    getDailyReflection,
+    saveDailyReflection,
+    getRecentDailyReflections,
   }
 }
