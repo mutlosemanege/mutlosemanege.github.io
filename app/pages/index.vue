@@ -1,11 +1,11 @@
 ﻿<script setup lang="ts">
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { Task } from '~/types/task'
+import type { DailyPlanningMode, PlanningStyle, Task } from '~/types/task'
 
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
-const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit } = usePreferences()
+const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { warnings, criticalCount } = useDeadlineWatcher()
 
@@ -22,6 +22,12 @@ const selectedDate = ref<string | undefined>(undefined)
 const todayActionFeedback = ref<string | null>(null)
 const isRunningTodayAction = ref(false)
 const selectedCommitTaskIds = ref<string[]>([])
+const dailyModeOptions: Array<{ value: DailyPlanningMode; label: string; description: string; accent: string }> = [
+  { value: 'fokussiert', label: 'Fokussiert', description: 'Deep Work und wichtige Hebel zuerst.', accent: 'accent-purple-soft' },
+  { value: 'entspannt', label: 'Entspannt', description: 'Weniger Druck, mehr machbare Schritte.', accent: 'accent-green' },
+  { value: 'wenig-zeit', label: 'Wenig Zeit', description: 'Kurze, klare Aufgaben für enge Tage.', accent: 'accent-blue' },
+  { value: 'aufholen', label: 'Aufholen', description: 'Deadline-Druck und Rückstände zuerst glätten.', accent: 'priority-high' },
+]
 
 const todayRange = computed(() => {
   const start = new Date()
@@ -45,6 +51,8 @@ const todayPendingTasks = computed(() => {
 })
 
 const todayCommit = computed(() => getDailyCommit())
+const todayMode = computed(() => getDailyMode())
+const activeDailyMode = computed<DailyPlanningMode | null>(() => todayMode.value.mode)
 const todayCommittedTasks = computed(() => {
   const committedIds = new Set(todayCommit.value.committedTaskIds)
   return todayPendingTasks.value.filter(task => committedIds.has(task.id))
@@ -60,9 +68,29 @@ const todayFreeSlots = computed(() => {
     todayRange.value.start,
     todayRange.value.end,
     events.value,
-    preferences.value,
+    effectiveTodayPreferences.value,
   )
 })
+
+const effectiveTodayPlanningStyle = computed<PlanningStyle>(() => {
+  switch (activeDailyMode.value) {
+    case 'fokussiert':
+      return 'focus-first'
+    case 'entspannt':
+      return 'entspannt'
+    case 'wenig-zeit':
+      return 'normal'
+    case 'aufholen':
+      return 'deadline-first'
+    default:
+      return preferences.value.planningStyle
+  }
+})
+
+const effectiveTodayPreferences = computed(() => ({
+  ...preferences.value,
+  planningStyle: effectiveTodayPlanningStyle.value,
+}))
 
 const todayFocusSlots = computed(() => {
   return todayFreeSlots.value
@@ -89,6 +117,9 @@ const nextBestTask = computed(() => {
 
   return [...candidateTasks]
     .sort((a, b) => {
+      const modeScoreDiff = getDailyModeTaskScore(b) - getDailyModeTaskScore(a)
+      if (modeScoreDiff !== 0) return modeScoreDiff
+
       const aScheduled = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity
       const bScheduled = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity
       if (aScheduled !== bScheduled) return aScheduled - bScheduled
@@ -106,6 +137,9 @@ const commitCandidateTasks = computed(() => {
   const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 }
   return [...todayPendingTasks.value]
     .sort((a, b) => {
+      const modeScoreDiff = getDailyModeTaskScore(b) - getDailyModeTaskScore(a)
+      if (modeScoreDiff !== 0) return modeScoreDiff
+
       const aScheduled = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity
       const bScheduled = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity
       if (aScheduled !== bScheduled) return aScheduled - bScheduled
@@ -136,6 +170,10 @@ const nextBestTaskReason = computed(() => {
   const task = nextBestTask.value
   if (!task) return 'Gerade ist nichts Dringendes offen.'
   if (todayCommit.value.committedTaskIds.includes(task.id)) return 'Teil deines heutigen bewussten Fokus-Commits.'
+  if (activeDailyMode.value === 'fokussiert' && task.isDeepWork) return 'Passt heute am besten zu deinem fokussierten Tagesmodus.'
+  if (activeDailyMode.value === 'wenig-zeit') return 'Wurde wegen deines engen Tages bewusst nach Machbarkeit und Kürze gewählt.'
+  if (activeDailyMode.value === 'aufholen') return 'Wurde wegen deines Aufholmodus stärker nach Deadline-Druck und Rückstand gezogen.'
+  if (activeDailyMode.value === 'entspannt') return 'Wurde als machbarer Schritt für einen entspannteren Tag ausgewählt.'
   if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
   if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
   if (task.priorityReason) return task.priorityReason
@@ -185,6 +223,22 @@ const todayDecisionNextStep = computed(() => {
 const todayPressure = computed(() => {
   if (criticalCount.value > 0) {
     return `${criticalCount.value} kritische Deadline-Warnung${criticalCount.value > 1 ? 'en' : ''} brauchen heute Aufmerksamkeit.`
+  }
+
+  if (activeDailyMode.value === 'fokussiert') {
+    return 'Heute ist ein fokussierter Tag. Die App bevorzugt wichtige Hebel und echte Fokusblöcke.'
+  }
+
+  if (activeDailyMode.value === 'entspannt') {
+    return 'Heute ist ein entspannter Modus aktiv. Die App priorisiert machbare Schritte statt maximale Dichte.'
+  }
+
+  if (activeDailyMode.value === 'wenig-zeit') {
+    return 'Heute ist wenig Zeit markiert. Die App sucht kürzere, klar abschließbare Schritte.'
+  }
+
+  if (activeDailyMode.value === 'aufholen') {
+    return 'Heute läuft ein Aufholmodus. Die App zieht Rückstände und knappe Deadlines spürbar nach vorn.'
   }
 
   const openMinutes = todayPendingTasks.value
@@ -310,6 +364,7 @@ const weekForecastSummary = computed(() => {
 
   return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
 })
+const activeDailyModeMeta = computed(() => dailyModeOptions.find(option => option.value === activeDailyMode.value) || null)
 const reviewWindowStart = computed(() => {
   const start = new Date()
   start.setHours(0, 0, 0, 0)
@@ -517,8 +572,36 @@ async function clearTaskSchedule(task: Task) {
   }
 }
 
+function getDailyModeTaskScore(task: Task) {
+  const now = Date.now()
+  const deadlinePressure = task.deadline
+    ? Math.max(0, 7 * 24 * 60 * 60 * 1000 - (new Date(task.deadline).getTime() - now))
+    : 0
+
+  switch (activeDailyMode.value) {
+    case 'fokussiert':
+      return (task.isDeepWork ? 5000 : 0) +
+        (task.priority === 'critical' ? 3000 : task.priority === 'high' ? 2000 : 0) +
+        deadlinePressure / (60 * 60 * 1000)
+    case 'entspannt':
+      return (task.isDeepWork ? -200 : 300) -
+        Math.max(task.estimatedMinutes - 45, 0) +
+        (task.scheduledStart ? 120 : 0)
+    case 'wenig-zeit':
+      return (task.estimatedMinutes <= 45 ? 2000 : task.estimatedMinutes <= 90 ? 1000 : 0) +
+        (task.scheduledStart ? 200 : 0) -
+        (task.isDeepWork ? 300 : 0)
+    case 'aufholen':
+      return deadlinePressure / (30 * 60 * 1000) +
+        (task.priority === 'critical' ? 4000 : task.priority === 'high' ? 2000 : 0) +
+        (task.status === 'missed' ? 1000 : 0)
+    default:
+      return 0
+  }
+}
+
 function findSlotForTask(task: Task, start: Date, end: Date, preferSmallest = false) {
-  const slots = findFreeSlots(start, end, events.value, preferences.value)
+  const slots = findFreeSlots(start, end, events.value, effectiveTodayPreferences.value)
     .filter(slot => !task.isDeepWork || slot.isDeepWork)
     .filter(slot => ((slot.end.getTime() - slot.start.getTime()) / 60000) >= task.estimatedMinutes)
 
@@ -593,6 +676,19 @@ function toggleCommitCandidate(taskId: string) {
     current.add(taskId)
   }
   selectedCommitTaskIds.value = [...current]
+}
+
+function activateDailyMode(mode: DailyPlanningMode) {
+  setDailyMode(mode)
+  const meta = dailyModeOptions.find(option => option.value === mode)
+  todayActionFeedback.value = meta
+    ? `Tagesmodus aktiviert: ${meta.label}. ${meta.description}`
+    : 'Tagesmodus wurde gespeichert.'
+}
+
+function resetDailyMode() {
+  clearDailyMode()
+  todayActionFeedback.value = 'Tagesmodus zurückgesetzt. Die Planung ist wieder neutral.'
 }
 
 function commitSelectedTasks() {
@@ -824,6 +920,51 @@ function isSameCalendarDay(a: Date, b: Date) {
                 </div>
               </div>
 
+              <div class="relative z-10 mt-4 rounded-glass border border-accent-blue/15 bg-white/[0.03] p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-accent-blue">Tagesmodus</p>
+                    <p class="mt-2 text-sm leading-6 text-text-secondary">
+                      Gib der KI für heute einen klaren Arbeitsmodus statt stiller Annahmen.
+                    </p>
+                  </div>
+                  <button
+                    v-if="activeDailyMode"
+                    type="button"
+                    class="btn-secondary px-3 py-2 text-sm"
+                    @click="resetDailyMode"
+                  >
+                    Modus lösen
+                  </button>
+                </div>
+
+                <div class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  <button
+                    v-for="option in dailyModeOptions"
+                    :key="option.value"
+                    type="button"
+                    class="rounded-glass border px-3 py-3 text-left transition"
+                    :class="activeDailyMode === option.value
+                      ? 'border-accent-blue/30 bg-accent-blue/12'
+                      : 'border-border-subtle bg-white/[0.04] hover:border-border-strong hover:bg-white/[0.06]'"
+                    @click="activateDailyMode(option.value)"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-sm font-medium text-text-primary">{{ option.label }}</div>
+                      <span
+                        class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                        :class="activeDailyMode === option.value
+                          ? 'bg-accent-blue/15 text-accent-blue'
+                          : 'bg-white/[0.06] text-text-muted'"
+                      >
+                        {{ activeDailyMode === option.value ? 'aktiv' : 'wählbar' }}
+                      </span>
+                    </div>
+                    <div class="mt-2 text-xs text-text-secondary">{{ option.description }}</div>
+                  </button>
+                </div>
+              </div>
+
               <div v-if="todayActionFeedback" class="relative z-10 mt-4 rounded-glass border border-accent-green/25 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">
                 {{ todayActionFeedback }}
               </div>
@@ -836,6 +977,9 @@ function isSameCalendarDay(a: Date, b: Date) {
                 <p class="mt-2 text-sm leading-6 text-text-secondary">{{ nextBestTaskReason }}</p>
                 <div class="mt-4 flex flex-wrap gap-2">
                   <span class="rounded-full bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">{{ nextBestTask.priority }}</span>
+                  <span v-if="activeDailyModeMeta" class="rounded-full bg-accent-blue/10 px-3 py-1 text-xs text-accent-blue">
+                    Modus {{ activeDailyModeMeta.label }}
+                  </span>
                   <span v-if="nextBestTask.deadline" class="rounded-full bg-priority-high/10 px-3 py-1 text-xs text-priority-high">
                     Deadline {{ new Date(nextBestTask.deadline).toLocaleDateString('de-DE') }}
                   </span>

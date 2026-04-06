@@ -1,5 +1,5 @@
 import { DEFAULT_PREFERENCES } from '~/types/task'
-import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals, DailyCommitState } from '~/types/task'
+import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals, DailyCommitState, DailyPlanningMode, DailyPlanningModeState } from '~/types/task'
 
 const STORAGE_KEY = 'kalender-ai-preferences'
 
@@ -21,6 +21,10 @@ function loadPreferences(): UserPreferences {
         dailyCommit: {
           ...DEFAULT_PREFERENCES.dailyCommit,
           ...(parsed.dailyCommit || {}),
+        },
+        dailyMode: {
+          ...DEFAULT_PREFERENCES.dailyMode,
+          ...(parsed.dailyMode || {}),
         },
       }
     }
@@ -93,6 +97,41 @@ export function usePreferences() {
         dateKey: dateKeyFromDate(date),
         committedTaskIds: [...new Set(committedTaskIds)],
         deferredTaskIds: [...new Set(deferredTaskIds)],
+      },
+    }
+    savePreferences()
+  }
+
+  function getDailyMode(date = new Date()): DailyPlanningModeState {
+    const dateKey = dateKeyFromDate(date)
+    const current = preferences.value.dailyMode
+    if (current.dateKey !== dateKey) {
+      return {
+        dateKey,
+        mode: null,
+      }
+    }
+
+    return current
+  }
+
+  function setDailyMode(mode: DailyPlanningMode, date = new Date()) {
+    preferences.value = {
+      ...preferences.value,
+      dailyMode: {
+        dateKey: dateKeyFromDate(date),
+        mode,
+      },
+    }
+    savePreferences()
+  }
+
+  function clearDailyMode(date = new Date()) {
+    preferences.value = {
+      ...preferences.value,
+      dailyMode: {
+        dateKey: dateKeyFromDate(date),
+        mode: null,
       },
     }
     savePreferences()
@@ -184,5 +223,8 @@ export function usePreferences() {
     getDailyCommit,
     setDailyCommit,
     clearDailyCommit,
+    getDailyMode,
+    setDailyMode,
+    clearDailyMode,
   }
 }

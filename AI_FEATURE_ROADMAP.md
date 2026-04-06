@@ -171,3 +171,7 @@ Rahmen:
 - [x] Einen Tages-/Wochenrueckblick fuer `was wurde geplant`, `was wurde verschoben`, `was hat funktioniert` ergaenzen
 - [x] Gelerntes Verhalten sichtbarer machen, statt es nur implizit in die Planung einfliessen zu lassen
 - Phase 3 fuehren wir separat in [AI_FEATURE_ROADMAP_PHASE_3.md](d:/kalender-ai/AI_FEATURE_ROADMAP_PHASE_3.md) weiter.
+
+## Phase 4: Persoenliche Steuerung und Klarheit
+
+- Phase 4 fuehren wir separat in [AI_FEATURE_ROADMAP_PHASE_4.md](d:/kalender-ai/AI_FEATURE_ROADMAP_PHASE_4.md) weiter.

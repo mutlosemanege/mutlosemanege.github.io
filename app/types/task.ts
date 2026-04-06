@@ -31,6 +31,7 @@ export interface TaskScheduleBlock {
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done' | 'missed'
 export type PlanningStyle = 'entspannt' | 'normal' | 'aggressiv' | 'deadline-first' | 'focus-first'
+export type DailyPlanningMode = 'fokussiert' | 'entspannt' | 'wenig-zeit' | 'aufholen'
 export type GermanHolidayRegion =
   | 'DE'
   | 'BW'
@@ -97,10 +98,16 @@ export interface DailyCommitState {
   deferredTaskIds: readonly string[]
 }
 
+export interface DailyPlanningModeState {
+  dateKey: string
+  mode: DailyPlanningMode | null
+}
+
 export interface UserPreferences {
   planningStyle: PlanningStyle
   behaviorSignals: PlanningBehaviorSignals
   dailyCommit: DailyCommitState
+  dailyMode: DailyPlanningModeState
   respectPublicHolidays: boolean
   publicHolidayRegion: GermanHolidayRegion
   workStartHour: number
@@ -138,6 +145,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     dateKey: '',
     committedTaskIds: [],
     deferredTaskIds: [],
+  },
+  dailyMode: {
+    dateKey: '',
+    mode: null,
   },
   respectPublicHolidays: true,
   publicHolidayRegion: 'DE',

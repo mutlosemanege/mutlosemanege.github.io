@@ -18,7 +18,7 @@ const { tasks, projects, getPendingTasks, getUnscheduledTasks, createTask, updat
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction } = useCalendar()
-const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours, getDailyCommit } = usePreferences()
+const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours, getDailyCommit, getDailyMode } = usePreferences()
 
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done' | 'missed'>('all')
@@ -43,6 +43,7 @@ const stats = computed(() => {
   }
 })
 const todayCommit = computed(() => getDailyCommit())
+const todayMode = computed(() => getDailyMode())
 
 const todayWindow = computed(() => {
   const start = new Date()
@@ -106,6 +107,22 @@ const todayRemainingWorkMinutes = computed(() => {
 })
 
 const aiHeaderMessage = computed(() => {
+  if (todayMode.value.mode === 'fokussiert') {
+    return 'Heute ist ein fokussierter Modus aktiv. Ich ziehe wichtige Hebel und Deep-Work-Themen sichtbar nach vorn.'
+  }
+
+  if (todayMode.value.mode === 'entspannt') {
+    return 'Heute läuft ein entspannter Modus. Ich bevorzuge machbare Schritte und etwas mehr Puffer.'
+  }
+
+  if (todayMode.value.mode === 'wenig-zeit') {
+    return 'Heute ist wenig Zeit markiert. Ich denke stärker in kurzen, realistischen Schritten.'
+  }
+
+  if (todayMode.value.mode === 'aufholen') {
+    return 'Heute läuft ein Aufholmodus. Ich schaue besonders auf Rückstände und enge Deadlines.'
+  }
+
   if (stats.value.todo === 0 && stats.value.scheduled === 0) {
     return 'Heute sieht ruhig aus. Du kannst entspannt neu planen.'
   }
