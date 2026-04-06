@@ -65,6 +65,13 @@ interface PreviewSuggestionGroup {
   suggestions: PreviewAlternative[]
 }
 
+interface ClarificationOption {
+  key: string
+  label: string
+  detail: string
+  promptValue: string
+}
+
 interface RoutinePreview {
   template: RoutineTemplate
   nextStart: Date
@@ -146,6 +153,101 @@ const interpretedPromptSummary = computed(() => {
 
   parts.push(`${parsedDetails.value.durationMinutes} Min.`)
   return `Verstanden als: ${parts.join(' · ')}`
+})
+const clarificationOptions = computed<ClarificationOption[]>(() => {
+  if (!parsedDetails.value) return []
+
+  const options: ClarificationOption[] = []
+  const normalizedPrompt = normalizeText(prompt.value)
+
+  const addOption = (option: ClarificationOption) => {
+    if (option.promptValue.trim() === prompt.value.trim()) return
+    if (options.some(existing => existing.promptValue.trim() === option.promptValue.trim())) return
+    options.push(option)
+  }
+
+  if (
+    parsedDetails.value.hasExplicitDate &&
+    parsedDetails.value.ambiguityHints.some(hint => hint.includes('Wochentag'))
+  ) {
+    const weekday = weekdayLabel(parsedDetails.value.dateFrom.getDay())
+    const thisWeekPrompt = applyWeekdayQualifier(prompt.value, weekday, 'diesen')
+    const nextWeekPrompt = applyWeekdayQualifier(prompt.value, weekday, 'nächsten')
+    addOption({
+      key: 'weekday-this',
+      label: `Diesen ${weekday}`,
+      detail: 'Nimmt den nächstmöglichen Termin in dieser Woche.',
+      promptValue: thisWeekPrompt,
+    })
+    addOption({
+      key: 'weekday-next',
+      label: `Nächsten ${weekday}`,
+      detail: 'Springt bewusst auf die Woche danach.',
+      promptValue: nextWeekPrompt,
+    })
+  }
+
+  if (!parsedDetails.value.hasExplicitDate && parsedDetails.value.intent !== 'routine') {
+    addOption({
+      key: 'date-today',
+      label: 'Heute',
+      detail: 'Ich suche nur im restlichen heutigen Tag.',
+      promptValue: prependDateClarifier(prompt.value, 'heute'),
+    })
+    addOption({
+      key: 'date-tomorrow',
+      label: 'Morgen',
+      detail: 'Ich suche gezielt morgen statt offen in den nächsten Tagen.',
+      promptValue: prependDateClarifier(prompt.value, 'morgen'),
+    })
+    addOption({
+      key: 'date-weekend',
+      label: 'Wochenende',
+      detail: 'Erlaubt bewusst auch Samstag und Sonntag.',
+      promptValue: prependDateClarifier(prompt.value, 'am Wochenende'),
+    })
+  }
+
+  if (!parsedDetails.value.timePreference?.exactStartMinutes && parsedDetails.value.intent !== 'routine') {
+    const timeOptions = parsedDetails.value.preferredPeriod === 'evening'
+      ? [
+          { label: '18:00', minutes: 18 * 60, detail: 'Etwas früher am Abend.' },
+          { label: '19:30', minutes: 19 * 60 + 30, detail: 'Klassischer Abend-Slot.' },
+        ]
+      : parsedDetails.value.preferredPeriod === 'morning'
+        ? [
+            { label: '09:00', minutes: 9 * 60, detail: 'Klarer Start am Vormittag.' },
+            { label: '10:30', minutes: 10 * 60 + 30, detail: 'Etwas später am Vormittag.' },
+          ]
+        : [
+            { label: '12:00', minutes: 12 * 60, detail: 'Mittig am Tag.' },
+            { label: '18:00', minutes: 18 * 60, detail: 'Späterer Termin am selben Tag.' },
+          ]
+
+    for (const option of timeOptions) {
+      addOption({
+        key: `time-${option.minutes}`,
+        label: option.label,
+        detail: option.detail,
+        promptValue: appendExactTime(prompt.value, option.label),
+      })
+    }
+  }
+
+  if (
+    previewAlternatives.value.length === 0 &&
+    parsedDetails.value.intent !== 'routine' &&
+    !normalizedPrompt.includes('wochenende')
+  ) {
+    addOption({
+      key: 'fallback-weekend',
+      label: 'Auch Wochenende',
+      detail: 'Erweitert die Suche auf Samstag und Sonntag.',
+      promptValue: prependDateClarifier(prompt.value, 'am Wochenende'),
+    })
+  }
+
+  return options.slice(0, 5)
 })
 
 const previewDuplicateWarnings = computed(() => {
@@ -1400,6 +1502,39 @@ function useExamplePrompt(value: string) {
   prompt.value = value
 }
 
+async function applyClarification(option: ClarificationOption) {
+  if (isPlanning.value) return
+  prompt.value = option.promptValue
+  await handlePlan()
+}
+
+function applyWeekdayQualifier(text: string, weekday: string, qualifier: 'diesen' | 'nächsten') {
+  const escapedWeekday = weekday.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const hasQualifier = new RegExp(`\\b(diesen|dieses|kommenden|naechsten|nächsten)\\s+${escapedWeekday}\\b`, 'i')
+  if (hasQualifier.test(text)) {
+    return text.replace(hasQualifier, `${qualifier} ${weekday}`)
+  }
+
+  return text.replace(new RegExp(`\\b${escapedWeekday}\\b`, 'i'), `${qualifier} ${weekday}`)
+}
+
+function prependDateClarifier(text: string, fragment: string) {
+  const normalizedPrompt = normalizeText(text)
+  const normalizedFragment = normalizeText(fragment)
+  if (normalizedPrompt.includes(normalizedFragment)) return text
+  return `${fragment} ${text}`.trim()
+}
+
+function appendExactTime(text: string, timeLabel: string) {
+  const normalizedPrompt = normalizeText(text)
+  const compactTime = normalizeText(timeLabel)
+  if (normalizedPrompt.includes(`${compactTime} uhr`) || normalizedPrompt.includes(compactTime)) {
+    return text
+  }
+
+  return `${text} um ${timeLabel} Uhr`.trim()
+}
+
 async function handleRetryCalendarAction() {
   await retryLastAction()
 }
@@ -1605,6 +1740,26 @@ async function handleRetryCalendarAction() {
                 <p v-if="interpretedPromptSummary" class="mt-3 text-xs text-text-muted">
                   {{ interpretedPromptSummary }}
                 </p>
+
+                <div v-if="clarificationOptions.length > 0" class="mt-4 rounded-glass border border-accent-blue/15 bg-accent-blue/8 p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-blue">Kurz klären</div>
+                    <div class="text-[11px] text-text-muted">1 Klick schärft den Prompt</div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button
+                      v-for="option in clarificationOptions"
+                      :key="option.key"
+                      type="button"
+                      class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-3 py-2 text-left text-xs text-accent-blue transition hover:border-accent-blue/35 hover:bg-white/[0.1] disabled:opacity-50"
+                      :disabled="isPlanning"
+                      @click="applyClarification(option)"
+                    >
+                      <span class="font-medium">{{ option.label }}</span>
+                      <span class="ml-1 text-text-secondary">{{ option.detail }}</span>
+                    </button>
+                  </div>
+                </div>
 
                 <DecisionSummaryCard
                   v-if="previewReason || previewUncertainty || previewAlternatives.length > 0"

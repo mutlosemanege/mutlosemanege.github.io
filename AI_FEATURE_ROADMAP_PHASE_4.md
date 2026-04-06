@@ -14,9 +14,9 @@ Rahmen:
 - [x] Tagesmodus im Aufgabenbereich sprachlich mitfuehren
 
 ## 24. Klaerende KI statt stiller Annahmen
-- [ ] Bei mehrdeutigen Zeitangaben explizite Klaerungs-Chips oder Mini-Nachfragen anbieten
-- [ ] Zwischen `diesen Freitag` und `naechsten Freitag` noch sichtbarer unterscheiden
-- [ ] Risikoarme Rueckfragen vor Wochenend- oder Konflikt-Planungen einfuehren
+- [x] Bei mehrdeutigen Zeitangaben explizite Klaerungs-Chips oder Mini-Nachfragen anbieten
+- [x] Zwischen `diesen Freitag` und `naechsten Freitag` noch sichtbarer unterscheiden
+- [x] Risikoarme Rueckfragen vor Wochenend- oder Konflikt-Planungen einfuehren
 
 ## 25. Abendabschluss und Morgenbrief
 - [ ] Einen kurzen Tagesabschluss mit `geschafft`, `verschoben`, `unrealistisch` bauen
