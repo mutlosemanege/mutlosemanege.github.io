@@ -111,6 +111,115 @@ const todayPressure = computed(() => {
   return 'Heute wirkt der Plan machbar und es gibt noch nutzbare freie Blöcke.'
 })
 
+const weekForecastDays = computed(() => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const dayStart = new Date(start)
+    dayStart.setDate(start.getDate() + index)
+
+    const dayEnd = new Date(dayStart)
+    dayEnd.setHours(23, 59, 59, 999)
+
+    const freeSlots = findFreeSlots(dayStart, dayEnd, events.value, preferences.value)
+    const freeMinutes = Math.round(
+      freeSlots.reduce((sum, slot) => sum + ((slot.end.getTime() - slot.start.getTime()) / 60000), 0),
+    )
+
+    const eventCount = events.value.filter((event) => {
+      const value = event.start.dateTime || event.start.date
+      if (!value) return false
+      const eventStart = new Date(value)
+      return eventStart >= dayStart && eventStart <= dayEnd
+    }).length
+
+    const dueTasks = tasks.value.filter((task) => {
+      if (task.status === 'done' || !task.deadline) return false
+      return isSameCalendarDay(new Date(task.deadline), dayStart)
+    })
+
+    const scheduledTasks = tasks.value.filter((task) => {
+      if (task.status === 'done') return false
+      const scheduledValue = task.scheduleBlocks?.[0]?.start || task.scheduledStart
+      if (!scheduledValue) return false
+      return isSameCalendarDay(new Date(scheduledValue), dayStart)
+    })
+
+    const cumulativeOpenMinutes = tasks.value
+      .filter((task) => {
+        if (task.status === 'done') return false
+        if (task.scheduleBlocks?.length || task.scheduledStart) return false
+        if (!task.deadline) return false
+        return new Date(task.deadline) <= dayEnd
+      })
+      .reduce((sum, task) => sum + task.estimatedMinutes, 0)
+
+    const overloadRatio = freeMinutes > 0 ? cumulativeOpenMinutes / freeMinutes : Infinity
+
+    let status: 'critical' | 'warning' | 'ok' = 'ok'
+    let statusLabel = 'Machbar'
+    let detail = freeMinutes > 0
+      ? `${Math.round((freeMinutes / 60) * 10) / 10}h frei`
+      : 'Keine freie Zeit'
+
+    if (dueTasks.length > 0) {
+      detail = `${dueTasks.length} Deadline${dueTasks.length > 1 ? 's' : ''}`
+    }
+
+    if (dueTasks.length > 0 && overloadRatio > 1) {
+      status = 'critical'
+      statusLabel = 'Kritisch'
+      detail = 'Deadline-Druck über freier Zeit'
+    } else if (freeMinutes === 0 && (dueTasks.length > 0 || scheduledTasks.length > 0)) {
+      status = 'critical'
+      statusLabel = 'Voll'
+      detail = 'Kein Puffer mehr sichtbar'
+    } else if (overloadRatio > 1.25) {
+      status = 'critical'
+      statusLabel = 'Eng'
+      detail = 'Offene Last kippt den Tag'
+    } else if (dueTasks.length > 0 || overloadRatio > 0.8) {
+      status = 'warning'
+      statusLabel = 'Achten'
+      detail = dueTasks.length > 0
+        ? `${dueTasks.length} Aufgabe${dueTasks.length > 1 ? 'n' : ''} mit Deadline`
+        : 'Wenig Puffer'
+    }
+
+    return {
+      key: dayStart.toISOString(),
+      dayStart,
+      freeMinutes,
+      eventCount,
+      dueTasks,
+      scheduledTasks,
+      cumulativeOpenMinutes,
+      status,
+      statusLabel,
+      detail,
+    }
+  })
+})
+
+const weekForecastSummary = computed(() => {
+  const criticalDays = weekForecastDays.value.filter(day => day.status === 'critical').length
+  const warningDays = weekForecastDays.value.filter(day => day.status === 'warning').length
+  const totalFreeHours = Math.round(
+    (weekForecastDays.value.reduce((sum, day) => sum + day.freeMinutes, 0) / 60) * 10,
+  ) / 10
+
+  if (criticalDays > 0) {
+    return `${criticalDays} kritische Tag${criticalDays > 1 ? 'e' : ''}, ${warningDays} weitere mit engem Puffer bei ca. ${totalFreeHours} freien Stunden.`
+  }
+
+  if (warningDays > 0) {
+    return `${warningDays} Tag${warningDays > 1 ? 'e' : ''} brauchen Aufmerksamkeit. Insgesamt sind noch ca. ${totalFreeHours} freie Stunden sichtbar.`
+  }
+
+  return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
+})
+
 let desktopSidebarQuery: MediaQueryList | null = null
 let onDesktopSidebarChange: ((event: MediaQueryListEvent) => void) | null = null
 
@@ -385,6 +494,12 @@ function formatDateTime(value?: string) {
 function formatSlotRange(start: Date, end: Date) {
   return `${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} bis ${end.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
 }
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+}
 </script>
 
 <template>
@@ -580,6 +695,72 @@ function formatSlotRange(start: Date, end: Date) {
               </p>
             </section>
           </div>
+
+          <section class="glass-card mt-4 p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Wochenblick</p>
+                <h2 class="mt-2 text-xl font-semibold text-text-primary">Nächste 7 Tage</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">{{ weekForecastSummary }}</p>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                Forecast
+              </div>
+            </div>
+
+            <div class="mt-5 overflow-x-auto">
+              <div class="grid min-w-[720px] gap-3 md:grid-cols-7">
+                <div
+                  v-for="day in weekForecastDays"
+                  :key="day.key"
+                  class="rounded-glass border p-4"
+                  :class="day.status === 'critical'
+                    ? 'border-priority-critical/25 bg-priority-critical/10'
+                    : day.status === 'warning'
+                      ? 'border-priority-high/25 bg-priority-high/10'
+                      : 'border-border-subtle bg-white/[0.03]'"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <p class="text-[11px] uppercase tracking-[0.22em] text-text-muted">
+                        {{ day.dayStart.toLocaleDateString('de-DE', { weekday: 'short' }) }}
+                      </p>
+                      <div class="mt-2 text-lg font-semibold text-text-primary">
+                        {{ day.dayStart.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) }}
+                      </div>
+                    </div>
+                    <span
+                      class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                      :class="day.status === 'critical'
+                        ? 'bg-priority-critical/15 text-priority-critical'
+                        : day.status === 'warning'
+                          ? 'bg-priority-high/15 text-priority-high'
+                          : 'bg-accent-green/15 text-accent-green'"
+                    >
+                      {{ day.statusLabel }}
+                    </span>
+                  </div>
+
+                  <div class="mt-4 space-y-2 text-xs text-text-secondary">
+                    <div>{{ Math.round((day.freeMinutes / 60) * 10) / 10 }}h frei</div>
+                    <div>{{ day.eventCount }} Termin{{ day.eventCount === 1 ? '' : 'e' }}</div>
+                    <div>{{ day.scheduledTasks.length }} geplante Aufgabe{{ day.scheduledTasks.length === 1 ? '' : 'n' }}</div>
+                    <div>{{ day.dueTasks.length }} Deadline{{ day.dueTasks.length === 1 ? '' : 's' }}</div>
+                  </div>
+
+                  <p class="mt-4 text-xs leading-5"
+                    :class="day.status === 'critical'
+                      ? 'text-priority-critical'
+                      : day.status === 'warning'
+                        ? 'text-priority-high'
+                        : 'text-text-secondary'"
+                  >
+                    {{ day.detail }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <div class="mt-6 flex items-center justify-between gap-3">
             <div class="rounded-full border border-border-subtle bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-text-muted">

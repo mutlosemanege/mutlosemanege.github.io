@@ -40,9 +40,9 @@ Rahmen:
 - [ ] Historie staerker als echte Wiederherstellungshilfe nutzen
 
 ## 22. Wochenblick und Forecast
-- [ ] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen
-- [ ] Frueh sichtbar machen, an welchen Tagen die Planung kippt oder unrealistisch wird
+- [x] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen
+- [x] Frueh sichtbar machen, an welchen Tagen die Planung kippt oder unrealistisch wird
 
 ## Startpunkt
 
-Phase 3 startete mit `Kalender-Recovery und Sync-Stabilitaet` und erweitert sich jetzt um vertrauenswuerdige Vorschau-Flows fuer automatische Planungen.
+Phase 3 startete mit `Kalender-Recovery und Sync-Stabilitaet` und erweitert sich jetzt um vertrauenswuerdige Vorschau-Flows fuer automatische Planungen und einen fruehen Wochen-Forecast.

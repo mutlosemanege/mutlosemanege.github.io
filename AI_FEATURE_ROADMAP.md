@@ -164,8 +164,8 @@ Rahmen:
 - [ ] Diese Aktionen direkt aus Diagnose und Planvarianten heraus anstossen koennen
 
 ### 21. Wochenblick und Forecast
-- [ ] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen
-- [ ] Frueh sichtbar machen, an welchen Tagen die Planung kippt oder unrealistisch wird
+- [x] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen
+- [x] Frueh sichtbar machen, an welchen Tagen die Planung kippt oder unrealistisch wird
 
 ### 22. Lern- und Vertrauens-Rueckblick
 - [ ] Einen Tages-/Wochenrueckblick fuer `was wurde geplant`, `was wurde verschoben`, `was hat funktioniert` ergaenzen
