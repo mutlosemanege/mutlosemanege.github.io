@@ -1,5 +1,6 @@
 import type { CalendarEvent } from '~/composables/useCalendar'
 import type { Task, UserPreferences, DeepWorkWindow, RoutineTemplate } from '~/types/task'
+import { getGermanHolidayEntriesForRange } from '../utils/germanHolidays.ts'
 
 type ReadonlyUserPreferences = Readonly<UserPreferences>
 
@@ -509,6 +510,16 @@ function buildPreferenceBlockers(
   endDate.setHours(23, 59, 59, 999)
 
   while (cursor <= endDate) {
+    if (prefs.respectPublicHolidays) {
+      for (const holiday of getGermanHolidayEntriesForRange(cursor, cursor, prefs.publicHolidayRegion)) {
+        const holidayStart = new Date(cursor)
+        holidayStart.setHours(0, 0, 0, 0)
+        const holidayEnd = new Date(cursor)
+        holidayEnd.setHours(23, 59, 59, 999)
+        blockers.push(createSyntheticEvent(holiday.name, holidayStart, holidayEnd))
+      }
+    }
+
     if (prefs.syncSleepSchedule) {
       const sleepStart = new Date(cursor)
       sleepStart.setHours(prefs.sleepStartHour, 0, 0, 0)

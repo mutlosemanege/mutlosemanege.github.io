@@ -1,4 +1,4 @@
-export type PlanningIntent = 'event' | 'task' | 'routine'
+﻿export type PlanningIntent = 'event' | 'task' | 'routine'
 export type PreferredPeriod = 'morning' | 'afternoon' | 'evening' | 'any'
 
 export interface PlanningTimePreference {
@@ -21,6 +21,11 @@ export interface ParsedPlanningRequest {
   timePreference?: PlanningTimePreference
 }
 
+interface RecurrenceMatch {
+  day: number
+  label: string
+}
+
 export function parsePlanningPrompt(
   text: string,
   fallbackDuration: number,
@@ -35,11 +40,18 @@ export function parsePlanningPrompt(
   const recurrence = extractRecurrence(normalized)
   const timePreference = extractTimePreference(normalized, fallbackDuration)
   const preferredPeriod = extractPreferredPeriod(normalized)
+  const explicitDate = extractSpecificDate(normalized, now)
   const weekday = recurrence?.day ?? extractWeekday(normalized)
+  const weekdayReferenceMode = extractWeekdayReferenceMode(normalized)
   let hasExplicitDate = false
   let rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open' = 'open'
 
-  if (normalized.includes('uebermorgen')) {
+  if (explicitDate) {
+    hasExplicitDate = true
+    rangeMode = 'exact-day'
+    dateFrom.setTime(explicitDate.getTime())
+    dateTo.setTime(explicitDate.getTime())
+  } else if (normalized.includes('uebermorgen')) {
     hasExplicitDate = true
     rangeMode = 'exact-day'
     dateFrom.setDate(dateFrom.getDate() + 2)
@@ -78,7 +90,7 @@ export function parsePlanningPrompt(
   if (weekday !== null) {
     const targetDate = rangeMode === 'next-week' || rangeMode === 'this-week' || rangeMode === 'weekend'
       ? findWeekdayInRange(dateFrom, dateTo, weekday)
-      : nextDateForWeekday(weekday, 0, now)
+      : resolveWeekdayReferenceDate(weekday, weekdayReferenceMode, now)
 
     if (targetDate) {
       hasExplicitDate = true
@@ -88,7 +100,7 @@ export function parsePlanningPrompt(
   }
 
   const explicitDuration = extractDuration(text)
-  const title = buildCleanTitle(text)
+  const title = buildCleanTitle(normalized)
   const intent = detectIntent(text, recurrence, intentMode)
 
   return {
@@ -153,6 +165,9 @@ export function extractPreferredPeriod(text: string): PreferredPeriod {
 }
 
 export function extractRecurrence(text: string) {
+  const recurringWeekday = extractRecurringWeekday(text)
+  if (recurringWeekday) return recurringWeekday
+
   if (!/(jeden|jede|immer|woechentlich|regelmaessig)/.test(text)) return null
   const day = extractWeekday(text)
   if (day === null) return null
@@ -175,7 +190,7 @@ export function extractWeekday(text: string): number | null {
   }
 
   for (const [name, day] of Object.entries(weekdayMap)) {
-    if (text.includes(name)) {
+    if (text.includes(name) || text.includes(`${name}s`)) {
       return day
     }
   }
@@ -195,7 +210,7 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
     }
   }
 
-  const rangeMatch = text.match(/(?:von\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:-|bis)\s*(\d{1,2})(?::(\d{2}))?\s*uhr?/)
+  const rangeMatch = text.match(/(?:von\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:-|bis)\s*(\d{1,2})(?::(\d{2}))?\s*uhr?/) 
   if (rangeMatch) {
     const startMinutes = toMinutes(rangeMatch[1], rangeMatch[2])
     const endMinutes = toMinutes(rangeMatch[3], rangeMatch[4])
@@ -240,9 +255,11 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
 
 export function buildCleanTitle(text: string) {
   return text
-    .replace(/\b(jeden|jede|immer|woechentlich|wöchentlich|regelmaessig|regelmäßig|heute|morgen|uebermorgen|übermorgen|naechste woche|nächste woche|diese woche|wochenende|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/gi, '')
-    .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spät|spaet)\b/gi, '')
+    .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
+    .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spaet)\b/gi, '')
     .replace(/\b(zwischen|um|ab|bis|von|und)\b/gi, '')
+    .replace(/\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\b/gi, '')
+    .replace(/\b\d{1,2}\.\s*(januar|februar|maerz|april|mai|juni|juli|august|september|oktober|november|dezember)\b/gi, '')
     .replace(/\b\d{1,2}(?::\d{2})?\s*(uhr)?\b/gi, '')
     .replace(/\b\d+(?:[.,]\d+)?\s*(min|minute|minuten|h|std|stunden)\b/gi, '')
     .replace(/\s+/g, ' ')
@@ -280,6 +297,119 @@ function findWeekdayInRange(from: Date, to: Date, weekday: number) {
   }
 
   return null
+}
+
+function extractRecurringWeekday(text: string): RecurrenceMatch | null {
+  const recurringMap: Record<string, number> = {
+    montags: 1,
+    dienstags: 2,
+    mittwochs: 3,
+    donnerstags: 4,
+    freitags: 5,
+    samstags: 6,
+    sonntags: 0,
+  }
+
+  for (const [name, day] of Object.entries(recurringMap)) {
+    if (text.includes(name)) {
+      return {
+        day,
+        label: `Jede Woche ${weekdayLabel(day)}`,
+      }
+    }
+  }
+
+  return null
+}
+
+function extractWeekdayReferenceMode(text: string) {
+  if (/\bnaechsten\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/.test(text)) {
+    return 'next' as const
+  }
+  if (/\b(kommenden|diesen|dieses)\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/.test(text)) {
+    return 'this' as const
+  }
+  return 'default' as const
+}
+
+function resolveWeekdayReferenceDate(
+  weekday: number,
+  mode: 'next' | 'this' | 'default',
+  now: Date,
+) {
+  if (mode === 'next') {
+    return nextDateForWeekday(weekday, 1, now)
+  }
+
+  return nextDateForWeekday(weekday, 0, now)
+}
+
+function extractSpecificDate(text: string, now: Date) {
+  const numericDateMatch = text.match(/\b(?:am\s+)?(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b/)
+  if (numericDateMatch) {
+    const day = Number(numericDateMatch[1])
+    const monthIndex = Number(numericDateMatch[2]) - 1
+    let year = numericDateMatch[3] ? Number(numericDateMatch[3]) : now.getFullYear()
+    if (year < 100) year += 2000
+    return normalizeFutureDateCandidate(day, monthIndex, year, now, !numericDateMatch[3])
+  }
+
+  const namedDateMatch = text.match(/\b(?:am\s+)?(\d{1,2})\.\s*(januar|februar|maerz|april|mai|juni|juli|august|september|oktober|november|dezember)\b/)
+  if (namedDateMatch) {
+    const day = Number(namedDateMatch[1])
+    const monthIndex = parseGermanMonthName(namedDateMatch[2])
+    if (monthIndex !== undefined) {
+      return normalizeFutureDateCandidate(day, monthIndex, now.getFullYear(), now, true)
+    }
+  }
+
+  return null
+}
+
+function normalizeFutureDateCandidate(
+  day: number,
+  monthIndex: number,
+  year: number,
+  now: Date,
+  allowRollOverToNextYear: boolean,
+) {
+  const candidate = new Date(year, monthIndex, day)
+  if (
+    Number.isNaN(candidate.getTime()) ||
+    candidate.getDate() !== day ||
+    candidate.getMonth() !== monthIndex
+  ) {
+    return null
+  }
+
+  candidate.setHours(0, 0, 0, 0)
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+
+  if (allowRollOverToNextYear && candidate < today) {
+    candidate.setFullYear(candidate.getFullYear() + 1)
+  }
+
+  return candidate
+}
+
+function parseGermanMonthName(name: string) {
+  const monthMap: Record<string, number> = {
+    januar: 0,
+    februar: 1,
+    maerz: 2,
+    april: 3,
+    mai: 4,
+    juni: 5,
+    juli: 6,
+    august: 7,
+    september: 8,
+    oktober: 9,
+    november: 10,
+    dezember: 11,
+  }
+
+  return monthMap[name]
 }
 
 function weekdayLabel(day: number) {

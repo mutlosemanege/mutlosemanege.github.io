@@ -31,6 +31,24 @@ export interface TaskScheduleBlock {
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'scheduled' | 'in_progress' | 'done' | 'missed'
 export type PlanningStyle = 'entspannt' | 'normal' | 'aggressiv' | 'deadline-first' | 'focus-first'
+export type GermanHolidayRegion =
+  | 'DE'
+  | 'BW'
+  | 'BY'
+  | 'BE'
+  | 'BB'
+  | 'HB'
+  | 'HH'
+  | 'HE'
+  | 'MV'
+  | 'NI'
+  | 'NW'
+  | 'RP'
+  | 'SL'
+  | 'SN'
+  | 'ST'
+  | 'SH'
+  | 'TH'
 
 export interface Project {
   id: string
@@ -76,6 +94,8 @@ export interface PlanningBehaviorSignals {
 export interface UserPreferences {
   planningStyle: PlanningStyle
   behaviorSignals: PlanningBehaviorSignals
+  respectPublicHolidays: boolean
+  publicHolidayRegion: GermanHolidayRegion
   workStartHour: number
   workEndHour: number
   personalStartHour: number
@@ -107,6 +127,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     missedCount: 0,
     rescheduledCount: 0,
   },
+  respectPublicHolidays: true,
+  publicHolidayRegion: 'DE',
   workStartHour: 9,
   workEndHour: 17,
   personalStartHour: 17,

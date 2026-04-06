@@ -12,6 +12,7 @@ const { parsePlanningPrompt } = await import('../app/utils/planningChatCore.ts')
 function buildPreferences(overrides = {}) {
   return {
     ...structuredClone(DEFAULT_PREFERENCES),
+    respectPublicHolidays: false,
     workDays: [1, 2, 3, 4, 5],
     deepWorkWindows: [],
     taskBufferMinutes: 0,
@@ -169,6 +170,28 @@ const cases = [
     }),
   },
   {
+    name: 'scheduler respektiert gesetzliche Feiertage der gewählten Region als Blocker',
+    run: () => withFixedNow('2026-12-25T08:00:00.000Z', () => {
+      const { scheduleTasks } = useScheduler()
+      const prefs = buildPreferences({
+        respectPublicHolidays: true,
+        publicHolidayRegion: 'DE',
+        workDays: [5],
+        workStartHour: 9,
+        workEndHour: 17,
+        lunchStartHour: 17,
+        lunchEndHour: 17,
+      })
+      const task = buildTask({
+        estimatedMinutes: 60,
+        deadline: '2026-12-25T23:59:59.000Z',
+      })
+
+      const schedule = scheduleTasks([task], [], prefs)
+      assert.equal(schedule.has(task.id), false)
+    }),
+  },
+  {
     name: 'reschedule-modus today bevorzugt einen Slot heute statt eine spaetere aehnliche Uhrzeit',
     run: () => withFixedNow('2026-04-06T08:00:00.000Z', () => {
       const { scheduleTasks } = useScheduler()
@@ -246,6 +269,20 @@ const cases = [
       assert.equal(exactTimeRequest.timePreference?.startMinutes, 12 * 60)
       assert.equal(exactTimeRequest.timePreference?.endMinutes, 13 * 60)
       assert.equal(exactTimeRequest.timePreference?.label, 'um 12:00')
+
+      const numericDateRequest = parsePlanningPrompt('Treffen mit Bro am 12.05. 12 Uhr', 60, 'auto', baseNow)
+      assert.equal(numericDateRequest.hasExplicitDate, true)
+      assert.equal(numericDateRequest.dateFrom.getMonth(), 4)
+      assert.equal(numericDateRequest.dateFrom.getDate(), 12)
+
+      const fridayRequest = parsePlanningPrompt('Treffen diesen Freitag 12 Uhr', 60, 'auto', baseNow)
+      assert.equal(fridayRequest.hasExplicitDate, true)
+      assert.equal(fridayRequest.dateFrom.getDay(), 5)
+      assert.equal(fridayRequest.timePreference?.exactStartMinutes, 12 * 60)
+
+      const recurringFridayRequest = parsePlanningPrompt('freitags Gym 18 Uhr', 60, 'auto', baseNow)
+      assert.equal(recurringFridayRequest.intent, 'routine')
+      assert.equal(recurringFridayRequest.recurrenceDay, 5)
     },
   },
 ]

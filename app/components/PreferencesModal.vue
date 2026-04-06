@@ -1,7 +1,8 @@
 ﻿<script setup lang="ts">
 import { v4 as uuidv4 } from 'uuid'
 import type { CalendarEvent } from '~/composables/useCalendar'
-import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle } from '~/types/task'
+import type { DeepWorkWindow, RoutineTemplate, RoutineRepeatMode, PlanningStyle, GermanHolidayRegion } from '~/types/task'
+import { getGermanHolidayRegionOptions } from '~/utils/germanHolidays'
 
 type ImportEntryType = 'routine' | 'fixed-event'
 
@@ -41,6 +42,8 @@ const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 // Lokale Kopie für das Formular
 const form = reactive({
   planningStyle: 'normal' as PlanningStyle,
+  respectPublicHolidays: true,
+  publicHolidayRegion: 'DE' as GermanHolidayRegion,
   workStartHour: 9,
   workEndHour: 17,
   personalStartHour: 17,
@@ -94,6 +97,7 @@ const behaviorSummary = computed(() => {
     rescheduled: signals.rescheduledCount,
   }
 })
+const holidayRegionOptions = getGermanHolidayRegionOptions()
 const importImagePreview = ref<string | null>(null)
 const importImageName = ref<string | null>(null)
 const importFeedback = ref<string | null>(null)
@@ -104,6 +108,8 @@ watch(() => props.show, (val) => {
   if (!val) return
   const p = preferences.value
   form.planningStyle = p.planningStyle
+  form.respectPublicHolidays = p.respectPublicHolidays
+  form.publicHolidayRegion = p.publicHolidayRegion
   form.workStartHour = p.workStartHour
   form.workEndHour = p.workEndHour
   form.personalStartHour = p.personalStartHour
@@ -601,6 +607,8 @@ function toDateKey(date: Date) {
 function handleSave() {
   updatePreferences({
     planningStyle: form.planningStyle,
+    respectPublicHolidays: form.respectPublicHolidays,
+    publicHolidayRegion: form.publicHolidayRegion,
     workStartHour: form.workStartHour,
     workEndHour: form.workEndHour,
     personalStartHour: form.personalStartHour,
@@ -906,6 +914,38 @@ function handleReset() {
               >
                 {{ dayNamesShort[day % 7] }}
               </button>
+            </div>
+          </div>
+
+          <div class="glass-card border border-accent-blue/20 p-4">
+            <h3 class="text-sm font-medium text-accent-blue">Feiertage</h3>
+            <p class="mt-1 text-xs text-text-secondary">
+              Gesetzliche Feiertage können je nach Region automatisch als blockierende Planungstage berücksichtigt werden.
+              Gemeinde-spezifische Ausnahmen sind dabei bewusst nicht enthalten.
+            </p>
+            <label class="mt-3 flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                v-model="form.respectPublicHolidays"
+                type="checkbox"
+                class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
+              >
+              Feiertage bei der Planung respektieren
+            </label>
+            <div class="mt-3">
+              <label class="mb-1 block text-xs text-text-muted">Region</label>
+              <select
+                v-model="form.publicHolidayRegion"
+                class="input-dark w-full px-3 py-2 text-sm"
+                :disabled="!form.respectPublicHolidays"
+              >
+                <option
+                  v-for="option in holidayRegionOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
             </div>
           </div>
 
