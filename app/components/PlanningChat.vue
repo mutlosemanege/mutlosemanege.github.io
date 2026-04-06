@@ -813,6 +813,9 @@ function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
 function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
   const suggestions: PreviewAlternative[] = []
   const seen = new Set<string>()
+  const baseCandidates = collectSlotCandidates(parsed)
+  const primaryCandidate = baseCandidates[0]
+  const primaryDay = primaryCandidate ? startOfPreviewDay(primaryCandidate.start) : null
 
   const pushCandidates = (
     candidates: SlotSuggestion[],
@@ -834,7 +837,44 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
     }
   }
 
-  pushCandidates(collectSlotCandidates(parsed))
+  if (primaryDay) {
+    pushCandidates(
+      baseCandidates.filter(candidate => isSamePreviewDay(candidate.start, primaryDay)),
+    )
+  } else {
+    pushCandidates(baseCandidates)
+  }
+
+  if (suggestions.length < 3 && primaryDay) {
+    const sameDayParsed = {
+      ...parsed,
+      dateFrom: new Date(primaryDay),
+      dateTo: new Date(primaryDay),
+      hasExplicitDate: true,
+    }
+
+    if (parsed.timePreference) {
+      const relaxedSameDayParsed = {
+        ...sameDayParsed,
+        timePreference: undefined,
+      }
+      pushCandidates(
+        collectSlotCandidates(relaxedSameDayParsed),
+        'Alternative am selben Tag mit gelockerter Uhrzeit.',
+      )
+    }
+
+    if (suggestions.length < 3 && parsed.preferredPeriod !== 'any') {
+      const relaxedPeriodParsed = {
+        ...sameDayParsed,
+        preferredPeriod: 'any' as const,
+      }
+      pushCandidates(
+        collectSlotCandidates(relaxedPeriodParsed),
+        'Alternative am selben Tag außerhalb des ursprünglichen Zeitfensters.',
+      )
+    }
+  }
 
   if (suggestions.length < 3) {
     const extendedParsed = {
@@ -906,6 +946,18 @@ function addPreviewDays(date: Date, days: number) {
   const copy = new Date(date)
   copy.setDate(copy.getDate() + days)
   return copy
+}
+
+function startOfPreviewDay(date: Date) {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function isSamePreviewDay(date: Date, day: Date) {
+  return date.getFullYear() === day.getFullYear() &&
+    date.getMonth() === day.getMonth() &&
+    date.getDate() === day.getDate()
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
