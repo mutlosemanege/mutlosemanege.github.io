@@ -6,7 +6,7 @@ import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Ta
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
-const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode, getDailyReflection, saveDailyReflection, getRecentDailyReflections } = usePreferences()
+const { preferences, getPreferredHours, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode, getDailyReflection, saveDailyReflection, getRecentDailyReflections } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { warnings, criticalCount } = useDeadlineWatcher()
 
@@ -124,6 +124,10 @@ const lifeAreaBalanceSummary = computed(() => {
 
   return `${lifeAreaSummary.value.length} Lebensbereiche sind aktuell parallel im Plan aktiv.`
 })
+
+function formatHourLabel(hour: number) {
+  return `${hour.toString().padStart(2, '0')}:00`
+}
 
 const todayCommit = computed(() => getDailyCommit())
 const todayMode = computed(() => getDailyMode())
@@ -252,6 +256,12 @@ const nextBestTaskReason = computed(() => {
   if (activeDailyMode.value === 'entspannt') return 'Wurde als machbarer Schritt für einen entspannteren Tag ausgewählt.'
   if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
   if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
+  if (task.isDeepWork && preferredDeepWorkHours.value[0] !== undefined) {
+    return `Passt zu deiner gelernten Fokuszeit rund um ${formatHourLabel(preferredDeepWorkHours.value[0])}.`
+  }
+  if (preferredCompletionHours.value[0] !== undefined) {
+    return `Passt gerade gut zu deiner starken Abschlusszeit rund um ${formatHourLabel(preferredCompletionHours.value[0])}.`
+  }
   if (task.priorityReason) return task.priorityReason
   if (lifeAreaSummary.value.length > 1) {
     return `${resolveLifeAreaLabel(inferLifeArea(task))} bekommt heute sichtbar Aufmerksamkeit im aktuellen Plan.`
@@ -442,6 +452,88 @@ const weekForecastSummary = computed(() => {
   }
 
   return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
+})
+const preferredCompletionHours = computed(() => getPreferredHours(false))
+const preferredDeepWorkHours = computed(() => getPreferredHours(true))
+const weekLifeAreaFocus = computed(() => {
+  const weekEnd = new Date(todayRange.value.end)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  const grouped = new Map<LifeArea, { area: LifeArea; total: number; urgent: number; scheduled: number }>()
+
+  for (const task of todayPendingTasks.value) {
+    const relevantDate = task.scheduledStart || task.deadline
+    if (relevantDate) {
+      const date = new Date(relevantDate)
+      if (date < todayRange.value.start || date > weekEnd) continue
+    }
+
+    const area = inferLifeArea(task)
+    const current = grouped.get(area) || { area, total: 0, urgent: 0, scheduled: 0 }
+    current.total += 1
+    if (task.priority === 'critical' || task.priority === 'high') current.urgent += 1
+    if (task.scheduledStart) current.scheduled += 1
+    grouped.set(area, current)
+  }
+
+  return [...grouped.values()].sort((a, b) => {
+    if (b.urgent !== a.urgent) return b.urgent - a.urgent
+    if (b.total !== a.total) return b.total - a.total
+    return b.scheduled - a.scheduled
+  })
+})
+const personalGuidance = computed(() => {
+  const leadArea = weekLifeAreaFocus.value[0] || null
+  const stableArea = weekLifeAreaFocus.value.find(entry => entry.scheduled >= 2) || leadArea
+
+  const why: string[] = []
+  const alternatives: string[] = []
+
+  if (preferredCompletionHours.value.length > 0) {
+    why.push(`Deine staerksten Abschlusszeiten liegen aktuell bei ${preferredCompletionHours.value.map(formatHourLabel).join(', ')}.`)
+  } else {
+    why.push('Es sind noch wenig starke Abschlusszeiten gelernt. Heute zaehlt vor allem klares Feedback auf echte Abschluesse.')
+  }
+
+  if (preferredDeepWorkHours.value.length > 0) {
+    why.push(`Deep-Work-Aufgaben gelingen dir bisher besonders rund um ${preferredDeepWorkHours.value.map(formatHourLabel).join(' und ')}.`)
+  }
+
+  if (leadArea) {
+    why.push(`${resolveLifeAreaLabel(leadArea.area)} bekommt in den naechsten Tagen mehr Aufmerksamkeit, weil dort ${leadArea.total} offene Aufgabe${leadArea.total === 1 ? '' : 'n'} und ${leadArea.urgent} dringende Signale zusammenlaufen.`)
+  }
+
+  if (stableArea) {
+    alternatives.push(`${resolveLifeAreaLabel(stableArea.area)} bewusst in deinen starken Stunden halten statt die Woche zu breit zu oeffnen.`)
+  }
+
+  if (preferredDeepWorkHours.value.length > 0) {
+    alternatives.push(`Fokusaufgaben moeglichst in ${preferredDeepWorkHours.value.slice(0, 2).map(formatHourLabel).join(' oder ')} legen.`)
+  } else {
+    alternatives.push('Mit einem ehrlichen Deep-Work-Abschluss lernt die App schneller, wann echte Fokuszeit fuer dich passt.')
+  }
+
+  if (lifeAreaSummary.value.length > 1) {
+    alternatives.push('Wenn ein Bereich zu viel Raum nimmt, nutze heute bewusst Commit oder Nicht-heute, um die Balance zu schuetzen.')
+  }
+
+  let uncertainty: string | null = null
+  if (preferences.value.behaviorSignals.completionCount < 5) {
+    uncertainty = 'Die Personalisierung basiert noch auf wenigen Abschluessen und wird mit den naechsten Tagen deutlich praeziser.'
+  }
+
+  const nextStep = leadArea
+    ? `Halte heute besonders ${resolveLifeAreaLabel(leadArea.area)} im Blick, aber gib den anderen aktiven Bereichen bewusst nur so viel Raum wie wirklich noetig.`
+    : 'Baue heute ein bis zwei ehrliche Abschluesse ein, damit die Personalisierung sichtbarer greifen kann.'
+
+  return {
+    leadArea,
+    stableArea,
+    why,
+    alternatives,
+    uncertainty,
+    nextStep,
+  }
 })
 const activeDailyModeMeta = computed(() => dailyModeOptions.find(option => option.value === activeDailyMode.value) || null)
 const recentDailyReflections = computed(() => getRecentDailyReflections(5))
@@ -1427,6 +1519,81 @@ function isSameCalendarDay(a: Date, b: Date) {
                 <div class="text-lg font-semibold text-text-primary">{{ learningReview.topHours[0] || 'noch offen' }}</div>
                 <div class="text-xs text-text-muted">Stärkste Abschlusszeit</div>
               </div>
+            </div>
+
+            <div class="mt-5 rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.2em] text-accent-blue">Persönliche Signale</p>
+                  <p class="mt-2 text-sm leading-6 text-text-secondary">
+                    So fließen deine gelernten Zeiten und aktuellen Bereichsschwerpunkte heute konkret in die Empfehlungen ein.
+                  </p>
+                </div>
+                <span class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-blue">
+                  Personalisiert
+                </span>
+              </div>
+
+              <div class="mt-4 grid gap-3 md:grid-cols-3">
+                <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                  <div class="text-lg font-semibold text-text-primary">
+                    {{ preferredCompletionHours[0] !== undefined ? formatHourLabel(preferredCompletionHours[0]) : 'noch offen' }}
+                  </div>
+                  <div class="text-xs text-text-muted">Starke Stunden</div>
+                </div>
+                <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                  <div class="text-lg font-semibold text-text-primary">
+                    {{ preferredDeepWorkHours[0] !== undefined ? formatHourLabel(preferredDeepWorkHours[0]) : 'noch offen' }}
+                  </div>
+                  <div class="text-xs text-text-muted">Deep-Work-Zeit</div>
+                </div>
+                <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-4 py-3">
+                  <div class="text-lg font-semibold text-text-primary">
+                    {{ personalGuidance.leadArea ? resolveLifeAreaLabel(personalGuidance.leadArea.area) : 'Ausgleich' }}
+                  </div>
+                  <div class="text-xs text-text-muted">Heute bevorzugt</div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-2">
+                <span
+                  v-if="preferredCompletionHours[0] !== undefined"
+                  class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-3 py-1 text-xs text-accent-blue"
+                >
+                  {{ formatHourLabel(preferredCompletionHours[0]) }} stark
+                </span>
+                <span
+                  v-if="preferredDeepWorkHours[0] !== undefined"
+                  class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-3 py-1 text-xs text-accent-purple-soft"
+                >
+                  Deep Work {{ formatHourLabel(preferredDeepWorkHours[0]) }}
+                </span>
+                <span
+                  v-if="personalGuidance.leadArea"
+                  class="rounded-full border px-3 py-1 text-xs"
+                  :class="lifeAreaColors[personalGuidance.leadArea.area]"
+                >
+                  Heute: {{ resolveLifeAreaLabel(personalGuidance.leadArea.area) }}
+                </span>
+                <span
+                  v-if="personalGuidance.stableArea && personalGuidance.stableArea.area !== personalGuidance.leadArea?.area"
+                  class="rounded-full border px-3 py-1 text-xs"
+                  :class="lifeAreaColors[personalGuidance.stableArea.area]"
+                >
+                  Mehrtagig: {{ resolveLifeAreaLabel(personalGuidance.stableArea.area) }}
+                </span>
+              </div>
+
+              <DecisionSummaryCard
+                class="mt-4"
+                title="Warum die App heute so gewichtet"
+                mode-label="Personalisierung"
+                tone="neutral"
+                :why="personalGuidance.why"
+                :uncertainty="personalGuidance.uncertainty"
+                :alternatives="personalGuidance.alternatives"
+                :next-step="personalGuidance.nextStep"
+              />
             </div>
 
             <DecisionSummaryCard

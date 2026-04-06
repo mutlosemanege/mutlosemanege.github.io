@@ -13,9 +13,9 @@ Rahmen:
 - [x] Aufgaben in Sidebar und Fokusbereichen mit Lebensbereich spiegeln
 
 ## 29. Sichtbare Personalisierung
-- [ ] Gelernte Muster noch direkter in Empfehlungen uebersetzen
-- [ ] Erklaeren, warum ein bestimmter Bereich heute mehr oder weniger Aufmerksamkeit bekommt
-- [ ] Persoenliche Schwerpunkte ueber mehrere Tage sichtbar machen
+- [x] Gelernte Muster noch direkter in Empfehlungen uebersetzen
+- [x] Erklaeren, warum ein bestimmter Bereich heute mehr oder weniger Aufmerksamkeit bekommt
+- [x] Persoenliche Schwerpunkte ueber mehrere Tage sichtbar machen
 
 ## 30. Kontinuierliche Planungsbegleitung
 - [ ] Morgenfokus, Mittagsanpassung und Abendabschluss enger miteinander verbinden
