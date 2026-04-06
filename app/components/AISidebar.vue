@@ -2528,6 +2528,7 @@ async function handleRetryCalendarAction() {
           ? 'relative flex h-full min-h-0 w-full flex-col border-l border-border-subtle bg-surface/55 backdrop-blur-glass'
           : 'relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-surface/95 shadow-2xl sm:my-4 sm:mr-4 sm:h-[calc(100dvh-2rem)] sm:w-[420px] sm:rounded-glass-lg sm:border sm:border-border-subtle sm:bg-surface-secondary/85'"
       >
+        <div class="task-room-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
         <div class="sticky top-0 z-10 border-b border-border-subtle bg-surface/88 px-4 py-4 backdrop-blur-glass sm:bg-transparent sm:px-5">
           <div class="flex items-start justify-between gap-4">
             <div v-if="!props.persistent" class="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-white/12 sm:hidden" />
@@ -3057,7 +3058,7 @@ async function handleRetryCalendarAction() {
       </div>
 
       <!-- Task List -->
-      <div class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
+      <div class="px-4 py-3">
         <div v-if="tasks.length === 0" class="py-8 text-center">
           <div class="glass-card border border-dashed border-border-strong px-4 py-8"><p class="text-sm text-text-secondary">Keine Aufgaben vorhanden.</p><p class="mt-1 text-xs text-text-muted">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p></div>
           
@@ -3371,6 +3372,7 @@ async function handleRetryCalendarAction() {
             </div>
           </section>
         </div>
+        </div>
       </div>
     </div>
   </div>
@@ -3639,6 +3641,11 @@ async function handleRetryCalendarAction() {
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+
+.task-room-scroll {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 </style>
 

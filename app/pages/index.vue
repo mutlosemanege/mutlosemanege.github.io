@@ -1171,7 +1171,8 @@ function isSameCalendarDay(a: Date, b: Date) {
 
       <div v-else class="flex min-h-0 flex-1 overflow-hidden">
         <main class="flex-1 overflow-y-auto px-4 pb-24 pt-4 lg:px-6 lg:pb-8">
-          <div class="grid gap-4 xl:grid-cols-[1.25fr,0.95fr,0.9fr]">
+          <div class="mobile-dashboard-stack">
+            <div class="mobile-dashboard-panel grid gap-4 xl:grid-cols-[1.25fr,0.95fr,0.9fr]">
             <section class="glass-card ambient-glow-purple relative overflow-hidden p-5">
               <div class="relative z-10 flex items-start justify-between gap-4">
                 <div>
@@ -1412,9 +1413,9 @@ function isSameCalendarDay(a: Date, b: Date) {
                 Heute ist kein längerer Fokusblock mehr frei. Kleinere Slots sind aber noch möglich.
               </p>
             </section>
-          </div>
+            </div>
 
-          <section class="glass-card mt-4 p-5">
+          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Lebensbereiche</p>
@@ -1454,7 +1455,7 @@ function isSameCalendarDay(a: Date, b: Date) {
             </p>
           </section>
 
-          <section class="glass-card mt-4 p-5">
+          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Wochenblick</p>
@@ -1520,7 +1521,7 @@ function isSameCalendarDay(a: Date, b: Date) {
             </div>
           </section>
 
-          <section class="glass-card mt-4 p-5">
+          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Rückblick</p>
@@ -1727,6 +1728,7 @@ function isSameCalendarDay(a: Date, b: Date) {
               </div>
             </div>
           </section>
+          </div>
 
           <div class="mt-6 flex items-center justify-between gap-3">
             <div class="rounded-full border border-border-subtle bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-text-muted">
@@ -1842,6 +1844,47 @@ function isSameCalendarDay(a: Date, b: Date) {
     />
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 1279px) {
+  .mobile-dashboard-stack {
+    display: flex;
+    gap: 1rem;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    padding-bottom: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(96, 165, 250, 0.75) rgba(255, 255, 255, 0.08);
+  }
+
+  .mobile-dashboard-stack::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .mobile-dashboard-stack::-webkit-scrollbar-track {
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .mobile-dashboard-stack::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: linear-gradient(90deg, rgba(168, 85, 247, 0.85), rgba(96, 165, 250, 0.85));
+  }
+
+  .mobile-dashboard-panel {
+    width: calc(100vw - 2rem);
+    min-width: calc(100vw - 2rem);
+    max-width: calc(100vw - 2rem);
+    flex-shrink: 0;
+    scroll-snap-align: center;
+    margin-top: 0 !important;
+  }
+}
+</style>
 
 
 
