@@ -283,6 +283,18 @@ const cases = [
       const recurringFridayRequest = parsePlanningPrompt('freitags Gym 18 Uhr', 60, 'auto', baseNow)
       assert.equal(recurringFridayRequest.intent, 'routine')
       assert.equal(recurringFridayRequest.recurrenceDay, 5)
+
+      const christmasDinnerRequest = parsePlanningPrompt('Essen Heillig Abend 18 Uhr', 120, 'auto', baseNow)
+      assert.equal(christmasDinnerRequest.hasExplicitDate, true)
+      assert.equal(christmasDinnerRequest.dateFrom.getMonth(), 11)
+      assert.equal(christmasDinnerRequest.dateFrom.getDate(), 24)
+      assert.equal(christmasDinnerRequest.timePreference?.exactStartMinutes, 18 * 60)
+
+      const nextYearHolidayRequest = parsePlanningPrompt('Essen Heiligabend 18 Uhr', 120, 'auto', new Date('2026-12-26T10:00:00.000Z'))
+      assert.equal(nextYearHolidayRequest.hasExplicitDate, true)
+      assert.equal(nextYearHolidayRequest.dateFrom.getFullYear(), 2027)
+      assert.equal(nextYearHolidayRequest.dateFrom.getMonth(), 11)
+      assert.equal(nextYearHolidayRequest.dateFrom.getDate(), 24)
     },
   },
 ]

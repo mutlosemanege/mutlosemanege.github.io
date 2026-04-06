@@ -40,7 +40,7 @@ export function parsePlanningPrompt(
   const recurrence = extractRecurrence(normalized)
   const timePreference = extractTimePreference(normalized, fallbackDuration)
   const preferredPeriod = extractPreferredPeriod(normalized)
-  const explicitDate = extractSpecificDate(normalized, now)
+  const explicitDate = extractSpecificDate(normalized, now) ?? extractNamedAnnualDate(normalized, now)
   const weekday = recurrence?.day ?? extractWeekday(normalized)
   const weekdayReferenceMode = extractWeekdayReferenceMode(normalized)
   let hasExplicitDate = false
@@ -256,6 +256,7 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
 export function buildCleanTitle(text: string) {
   return text
     .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
+    .replace(/\b(heiligabend|heilig abend|weihnachten|erster weihnachtstag|1\.?\s*weihnachtstag|zweiter weihnachtstag|2\.?\s*weihnachtstag|silvester|neujahr)\b/gi, '')
     .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spaet)\b/gi, '')
     .replace(/\b(zwischen|um|ab|bis|von|und)\b/gi, '')
     .replace(/\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\b/gi, '')
@@ -273,6 +274,8 @@ export function normalizeText(text: string) {
     .replace(/ö/g, 'oe')
     .replace(/ü/g, 'ue')
     .replace(/ß/g, 'ss')
+    .replace(/heillig/g, 'heilig')
+    .replace(/heilig\s+abend/g, 'heiligabend')
 }
 
 export function nextDateForWeekday(day: number, weekOffset: number, from: Date) {
@@ -360,6 +363,24 @@ function extractSpecificDate(text: string, now: Date) {
     const monthIndex = parseGermanMonthName(namedDateMatch[2])
     if (monthIndex !== undefined) {
       return normalizeFutureDateCandidate(day, monthIndex, now.getFullYear(), now, true)
+    }
+  }
+
+  return null
+}
+
+function extractNamedAnnualDate(text: string, now: Date) {
+  const annualDateMap: Array<{ pattern: RegExp; monthIndex: number; day: number }> = [
+    { pattern: /\bheiligabend\b/, monthIndex: 11, day: 24 },
+    { pattern: /\b(erster weihnachtstag|1\.?\s*weihnachtstag|weihnachten)\b/, monthIndex: 11, day: 25 },
+    { pattern: /\b(zweiter weihnachtstag|2\.?\s*weihnachtstag)\b/, monthIndex: 11, day: 26 },
+    { pattern: /\bsilvester\b/, monthIndex: 11, day: 31 },
+    { pattern: /\bneujahr\b/, monthIndex: 0, day: 1 },
+  ]
+
+  for (const entry of annualDateMap) {
+    if (entry.pattern.test(text)) {
+      return normalizeFutureDateCandidate(entry.day, entry.monthIndex, now.getFullYear(), now, true)
     }
   }
 
