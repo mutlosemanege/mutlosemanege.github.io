@@ -189,7 +189,7 @@ interface ScheduleReviewItem {
 }
 
 interface ScheduleReviewPreview {
-  source: 'auto-plan' | 'variant'
+  source: 'auto-plan' | 'variant' | 'reschedule'
   label: string
   plannedSchedule: Map<string, ScheduledTaskPlan>
   tasksToSchedule: Task[]
@@ -197,6 +197,10 @@ interface ScheduleReviewPreview {
   items: ScheduleReviewItem[]
   totalBlocks: number
   totalMinutes: number
+  contextText?: string
+  rescheduleTaskId?: string
+  rescheduleMode?: RescheduleMode
+  previousStart?: string
 }
 
 interface ActivityEntry {
@@ -447,7 +451,7 @@ function closeRescheduleDialog() {
 
 async function confirmReschedule() {
   if (!rescheduleTask.value) return
-  await markMissed(rescheduleTask.value, selectedRescheduleMode.value)
+  await previewReschedule(rescheduleTask.value, selectedRescheduleMode.value)
   closeRescheduleDialog()
 }
 
@@ -495,10 +499,11 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
     },
   })
 
+  const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
+
   if (schedule.has(task.id)) {
     const newStart = schedule.get(task.id)?.blocks[0]?.start
     const shiftLabel = describeRescheduleShift(previousStart, newStart)
-    const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
     planningFeedback.value = `"${task.title}" wurde neu eingeplant (${modeLabel}). ${shiftLabel}`
     decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, true, previousStart, newStart)
     addActivityEntry({
@@ -513,6 +518,53 @@ async function markMissed(task: Task, mode: RescheduleMode = 'same-time') {
       detail: `"${task.title}" konnte mit "${modeLabel}" noch nicht neu eingeplant werden.`,
     })
   }
+}
+
+async function previewReschedule(task: Task, mode: RescheduleMode = 'same-time') {
+  const previousStart = task.scheduledStart || task.scheduleBlocks?.[0]?.start
+  const currentEvents = await refreshCalendarEvents()
+  const taskForPreview: Task = {
+    ...task,
+    status: 'todo',
+    scheduleBlocks: undefined,
+    scheduledStart: undefined,
+    scheduledEnd: undefined,
+    calendarEventId: undefined,
+  }
+
+  const modeLabel = rescheduleModeOptions.find(option => option.value === mode)?.label || 'Neuplanung'
+  const preview = buildScheduleReviewPreview(
+    [taskForPreview],
+    currentEvents,
+    `Neu einplanen (${modeLabel})`,
+    'reschedule',
+    {
+      preferredStartByTaskId: {
+        [task.id]: mode === 'same-time' ? previousStart : mode === 'today' ? new Date().toISOString() : undefined,
+      },
+      rescheduleModeByTaskId: {
+        [task.id]: mode,
+      },
+    },
+  )
+
+  if (preview.plannedSchedule.size === 0) {
+    planningFeedback.value = `"${task.title}" konnte im Modus "${modeLabel}" noch nicht automatisch neu eingeplant werden.`
+    decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, false, previousStart)
+    return
+  }
+
+  const previewStart = preview.plannedSchedule.get(task.id)?.blocks[0]?.start
+  preview.contextText = previousStart && previewStart
+    ? `Bisher ${formatTaskDateTime(previousStart)}, neu voraussichtlich ${formatTaskDateTime(previewStart.toISOString())}. ${describeRescheduleShift(previousStart, previewStart)}`
+    : 'Die Aufgabe würde auf einen neuen freien Slot verschoben.'
+  preview.rescheduleTaskId = task.id
+  preview.rescheduleMode = mode
+  preview.previousStart = previousStart
+
+  scheduleReviewPreview.value = preview
+  planningFeedback.value = `Vorschau bereit: "${task.title}" kann mit "${modeLabel}" neu eingeplant werden.`
+  decisionTransparency.value = buildRescheduleDecisionTransparency(task, mode, true, previousStart, previewStart)
 }
 
 async function changePriority(task: Task, priority: Task['priority']) {
@@ -760,14 +812,16 @@ function buildScheduleReviewDecisionTransparency(preview: ScheduleReviewPreview)
   }
 
   return {
-    title: 'Warum diese Vorschau?',
+    title: preview.source === 'reschedule' ? 'Warum diese Neuplanung?' : 'Warum diese Vorschau?',
     why,
     uncertainty: preview.remainingTasks.length > 0
       ? 'Nicht alles passt im aktuellen Horizont. Prüfe die Restaufgaben danach gezielt weiter.'
       : null,
     alternatives: preview.source === 'variant'
       ? ['Andere Planvariante pruefen', 'Direkte Alternativ-Slots einzelner Aufgaben nutzen']
-      : ['Planvarianten vergleichen', 'Vor dem Anwenden einzelne Aufgaben manuell anpassen'],
+      : preview.source === 'reschedule'
+        ? ['Anderen Neuplanungs-Modus waehlen', 'Aufgabe manuell bearbeiten', 'Spaeter erneut pruefen']
+        : ['Planvarianten vergleichen', 'Vor dem Anwenden einzelne Aufgaben manuell anpassen'],
   }
 }
 
@@ -930,21 +984,47 @@ async function confirmScheduleReview() {
   applyingScheduleReview.value = true
 
   try {
+    if (preview.source === 'reschedule' && preview.rescheduleTaskId) {
+      const targetTask = tasks.value.find(task => task.id === preview.rescheduleTaskId)
+      if (targetTask && preview.rescheduleMode) {
+        await clearScheduledTaskBlocks(targetTask)
+        recordTaskMiss(preview.previousStart ? new Date(preview.previousStart) : new Date())
+        await updateTask(targetTask.id, {
+          status: 'missed',
+          scheduleBlocks: undefined,
+          scheduledStart: undefined,
+          scheduledEnd: undefined,
+          calendarEventId: undefined,
+        })
+      }
+    }
+
     const schedule = await applyPlannedSchedule(preview.plannedSchedule, preview.tasksToSchedule)
     const updatedEvents = [...calendarEvents.value]
     await refreshSchedulingInsights(schedule, preview.remainingTasks, updatedEvents)
 
-    if (preview.remainingTasks.length > 0) {
+    if (preview.source === 'reschedule') {
+      const item = preview.items[0]
+      planningFeedback.value = item
+        ? `"${item.title}" wurde nach Vorschau neu eingeplant.`
+        : 'Aufgabe wurde nach Vorschau neu eingeplant.'
+    } else if (preview.remainingTasks.length > 0) {
       planningFeedback.value = `${preview.label} hat ${schedule.size} Aufgaben eingeplant, ${preview.remainingTasks.length} bleiben noch offen.`
     } else {
       planningFeedback.value = `${preview.label} hat alle ${schedule.size} Aufgaben erfolgreich eingeplant.`
     }
 
     addActivityEntry({
-      title: preview.source === 'variant' ? 'Planvariante angewendet' : 'Auto-Planen bestätigt',
-      detail: preview.remainingTasks.length > 0
-        ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
-        : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
+      title: preview.source === 'variant'
+        ? 'Planvariante angewendet'
+        : preview.source === 'reschedule'
+          ? 'Neuplanung bestätigt'
+          : 'Auto-Planen bestätigt',
+      detail: preview.source === 'reschedule'
+        ? `${preview.label}: neue Zeit wurde nach Vorschau übernommen.`
+        : preview.remainingTasks.length > 0
+          ? `${preview.label}: ${schedule.size} eingeplant, ${preview.remainingTasks.length} weiter offen.`
+          : `${preview.label}: ${schedule.size} Aufgaben erfolgreich eingeplant.`,
     })
 
     closeScheduleReview()
@@ -1664,6 +1744,21 @@ async function applyScheduleForTasks(
   )
 
   return applyPlannedSchedule(plannedSchedule, tasksToSchedule)
+}
+
+async function clearScheduledTaskBlocks(task: Task) {
+  const calendarIds = task.scheduleBlocks?.map(block => block.calendarEventId).filter(Boolean) || []
+
+  if (calendarIds.length > 0) {
+    for (const calendarId of calendarIds) {
+      await deleteEvent(calendarId!)
+    }
+    return
+  }
+
+  if (task.calendarEventId) {
+    await deleteEvent(task.calendarEventId)
+  }
 }
 
 async function applyPlannedSchedule(
@@ -2570,6 +2665,13 @@ async function handleRetryCalendarAction() {
           </div>
 
           <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <div
+              v-if="scheduleReviewPreview.contextText"
+              class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3 text-sm text-accent-blue"
+            >
+              {{ scheduleReviewPreview.contextText }}
+            </div>
+
             <div class="grid gap-3 sm:grid-cols-4">
               <div class="rounded-glass border border-border-subtle bg-white/[0.04] px-3 py-3">
                 <div class="text-lg font-semibold text-text-primary">{{ scheduleReviewPreview.items.length }}</div>
@@ -2723,7 +2825,7 @@ async function handleRetryCalendarAction() {
               class="btn-primary px-4 py-2 text-sm"
               @click="confirmReschedule"
             >
-              Neu einplanen
+              Vorschau prüfen
             </button>
           </div>
         </div>

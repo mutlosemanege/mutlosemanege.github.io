@@ -147,7 +147,7 @@ Rahmen:
 ### 17. Review vor automatischen Aenderungen
 - [x] `Auto-Planen` zuerst als Vorschau zeigen, bevor Termine erstellt werden
 - [x] Planvarianten zuerst pruefen lassen, statt sofort anzuwenden
-- [ ] Rescheduling an dieselbe Review-Stufe anbinden
+- [x] Rescheduling an dieselbe Review-Stufe anbinden
 - [ ] Projektgenerator-Autoplan ebenfalls erst in einer Vorschau bestaetigen lassen
 
 ### 18. Einheitliche Entscheidungs-Karten
