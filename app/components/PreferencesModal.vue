@@ -47,6 +47,24 @@ const { createEvent, fetchEvents, syncStatus, canRetryLastAction, isRetryingLast
 const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const dayNamesShort = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
+function formatHourValue(value: number) {
+  const hours = Math.floor(value)
+  const minutes = Math.round((value - hours) * 60)
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function parseTimeInput(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0
+  return hours + (minutes / 60)
+}
+
+function applyHourValue(date: Date, value: number) {
+  const hours = Math.floor(value)
+  const minutes = Math.round((value - hours) * 60)
+  date.setHours(hours, minutes, 0, 0)
+}
+
 // Lokale Kopie für das Formular
 const form = reactive({
   planningStyle: 'normal' as PlanningStyle,
@@ -346,9 +364,9 @@ async function applyRoutineTemplates() {
     for (const routine of form.routineTemplates) {
       for (const date of collectRoutineDates(routine, now, 28)) {
         const start = new Date(date)
-        start.setHours(routine.startHour, 0, 0, 0)
+        applyHourValue(start, routine.startHour)
         const end = new Date(date)
-        end.setHours(routine.endHour, 0, 0, 0)
+        applyHourValue(end, routine.endHour)
         if (routine.endHour <= routine.startHour) {
           end.setDate(end.getDate() + 1)
         }
@@ -371,9 +389,9 @@ async function applyRoutineTemplates() {
         sleepDate.setDate(sleepDate.getDate() + dayOffset)
 
         const sleepStart = new Date(sleepDate)
-        sleepStart.setHours(form.sleepStartHour, 0, 0, 0)
+        applyHourValue(sleepStart, form.sleepStartHour)
         const sleepEnd = new Date(sleepDate)
-        sleepEnd.setHours(form.sleepEndHour, 0, 0, 0)
+        applyHourValue(sleepEnd, form.sleepEndHour)
         if (form.sleepEndHour <= form.sleepStartHour) {
           sleepEnd.setDate(sleepEnd.getDate() + 1)
         }
@@ -396,10 +414,10 @@ async function applyRoutineTemplates() {
 
           if (form.commuteToWorkMinutes > 0) {
             const commuteStart = new Date(date)
-            commuteStart.setHours(form.workStartHour, 0, 0, 0)
+            applyHourValue(commuteStart, form.workStartHour)
             commuteStart.setMinutes(commuteStart.getMinutes() - form.commuteToWorkMinutes)
             const commuteEnd = new Date(date)
-            commuteEnd.setHours(form.workStartHour, 0, 0, 0)
+            applyHourValue(commuteEnd, form.workStartHour)
 
             const createdToWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Hinweg zur Arbeit', tz)
             if (createdToWork === 'skipped') {
@@ -413,9 +431,9 @@ async function applyRoutineTemplates() {
 
           if (form.commuteFromWorkMinutes > 0) {
             const commuteStart = new Date(date)
-            commuteStart.setHours(form.workEndHour, 0, 0, 0)
+            applyHourValue(commuteStart, form.workEndHour)
             const commuteEnd = new Date(date)
-            commuteEnd.setHours(form.workEndHour, 0, 0, 0)
+            applyHourValue(commuteEnd, form.workEndHour)
             commuteEnd.setMinutes(commuteEnd.getMinutes() + form.commuteFromWorkMinutes)
 
             const createdFromWork = await createBlockedEvent('Arbeitsweg', commuteStart, commuteEnd, 'Rückweg von der Arbeit', tz)
@@ -484,9 +502,9 @@ async function applyImportEntries() {
         if (entry.alsoAddToCalendar) {
           for (const date of collectRoutineDates(routine, new Date(), 28)) {
             const start = new Date(date)
-            start.setHours(routine.startHour, 0, 0, 0)
+            applyHourValue(start, routine.startHour)
             const end = new Date(date)
-            end.setHours(routine.endHour, 0, 0, 0)
+            applyHourValue(end, routine.endHour)
             if (routine.endHour <= routine.startHour) {
               end.setDate(end.getDate() + 1)
             }
@@ -509,9 +527,9 @@ async function applyImportEntries() {
       }
 
       const start = new Date(`${entry.date}T00:00:00`)
-      start.setHours(entry.startHour, 0, 0, 0)
+      applyHourValue(start, entry.startHour)
       const end = new Date(`${entry.date}T00:00:00`)
-      end.setHours(entry.endHour, 0, 0, 0)
+      applyHourValue(end, entry.endHour)
       if (entry.endHour <= entry.startHour) {
         end.setDate(end.getDate() + 1)
       }
@@ -593,9 +611,9 @@ function importEntryDuplicateHint(entry: ImportReviewEntry) {
   if (!entry.date) return null
 
   const start = new Date(`${entry.date}T00:00:00`)
-  start.setHours(entry.startHour, 0, 0, 0)
+  applyHourValue(start, entry.startHour)
   const end = new Date(`${entry.date}T00:00:00`)
-  end.setHours(entry.endHour, 0, 0, 0)
+  applyHourValue(end, entry.endHour)
   if (entry.endHour <= entry.startHour) {
     end.setDate(end.getDate() + 1)
   }
@@ -639,10 +657,10 @@ function collectRoutineDates(routine: RoutineTemplate, from: Date, durationDays:
 
 function routineRepeatLabel(routine: RoutineTemplate) {
   if ((routine.repeatMode || 'weekly') === 'workdays') {
-    return 'An Arbeitstagen'
+    return `An Arbeitstagen · ${formatHourValue(routine.startHour)} bis ${formatHourValue(routine.endHour)}`
   }
 
-  return dayNames[routine.day ?? 1]
+  return `${dayNames[routine.day ?? 1]} · ${formatHourValue(routine.startHour)} bis ${formatHourValue(routine.endHour)}`
 }
 
 function upcomingRoutineLabels(routine: RoutineTemplate) {
@@ -825,25 +843,23 @@ async function handleRetryCalendarAction() {
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Start</label>
-                <select
-                  v-model.number="form.workStartHour"
+                <input
+                  :value="formatHourValue(form.workStartHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.workStartHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="h - 1" :value="h - 1">
-                    {{ String(h - 1).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Ende</label>
-                <select
-                  v-model.number="form.workEndHour"
+                <input
+                  :value="formatHourValue(form.workEndHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.workEndHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="h" :value="h">
-                    {{ String(h).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
             </div>
           </div>
@@ -856,25 +872,23 @@ async function handleRetryCalendarAction() {
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Start</label>
-                <select
-                  v-model.number="form.personalStartHour"
+                <input
+                  :value="formatHourValue(form.personalStartHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.personalStartHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="`personal-start-${h - 1}`" :value="h - 1">
-                    {{ String(h - 1).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Ende</label>
-                <select
-                  v-model.number="form.personalEndHour"
+                <input
+                  :value="formatHourValue(form.personalEndHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.personalEndHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="`personal-end-${h}`" :value="h">
-                    {{ String(h).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
             </div>
             <div class="mt-3">
@@ -910,25 +924,23 @@ async function handleRetryCalendarAction() {
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Schlafen ab</label>
-                <select
-                  v-model.number="form.sleepStartHour"
+                <input
+                  :value="formatHourValue(form.sleepStartHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.sleepStartHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="`sleep-start-${h - 1}`" :value="h - 1">
-                    {{ String(h - 1).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Aufstehen</label>
-                <select
-                  v-model.number="form.sleepEndHour"
+                <input
+                  :value="formatHourValue(form.sleepEndHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.sleepEndHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="`sleep-end-${h - 1}`" :value="h - 1">
-                    {{ String(h - 1).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
             </div>
             <p class="mt-2 text-xs text-text-secondary">
@@ -942,25 +954,23 @@ async function handleRetryCalendarAction() {
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Von</label>
-                <select
-                  v-model.number="form.lunchStartHour"
+                <input
+                  :value="formatHourValue(form.lunchStartHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.lunchStartHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="h - 1" :value="h - 1">
-                    {{ String(h - 1).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Bis</label>
-                <select
-                  v-model.number="form.lunchEndHour"
+                <input
+                  :value="formatHourValue(form.lunchEndHour)"
+                  type="time"
+                  step="300"
                   class="input-dark w-full px-3 py-2 text-sm"
+                  @input="form.lunchEndHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                 >
-                  <option v-for="h in 24" :key="h" :value="h">
-                    {{ String(h).padStart(2, '0') }}:00
-                  </option>
-                </select>
               </div>
             </div>
           </div>
@@ -1039,25 +1049,21 @@ async function handleRetryCalendarAction() {
                   <span class="text-sm text-text-primary">{{ dayNames[day] }}</span>
                 </label>
                 <template v-if="getDeepWorkForDay(day)">
-                  <select
-                    :value="getDeepWorkForDay(day)!.startHour"
+                  <input
+                    :value="formatHourValue(getDeepWorkForDay(day)!.startHour)"
+                    type="time"
+                    step="300"
                     class="input-dark min-w-0 px-2 py-1 text-sm"
-                    @change="updateDeepWorkHour(day, 'startHour', Number(($event.target as HTMLSelectElement).value))"
+                    @input="updateDeepWorkHour(day, 'startHour', parseTimeInput(($event.target as HTMLInputElement).value))"
                   >
-                    <option v-for="h in 24" :key="h - 1" :value="h - 1">
-                      {{ String(h - 1).padStart(2, '0') }}:00
-                    </option>
-                  </select>
                   <span class="text-text-muted">-</span>
-                  <select
-                    :value="getDeepWorkForDay(day)!.endHour"
+                  <input
+                    :value="formatHourValue(getDeepWorkForDay(day)!.endHour)"
+                    type="time"
+                    step="300"
                     class="input-dark min-w-0 px-2 py-1 text-sm"
-                    @change="updateDeepWorkHour(day, 'endHour', Number(($event.target as HTMLSelectElement).value))"
+                    @input="updateDeepWorkHour(day, 'endHour', parseTimeInput(($event.target as HTMLInputElement).value))"
                   >
-                    <option v-for="h in 24" :key="h" :value="h">
-                      {{ String(h).padStart(2, '0') }}:00
-                    </option>
-                  </select>
                 </template>
               </div>
             </div>
@@ -1194,22 +1200,20 @@ async function handleRetryCalendarAction() {
               >
                 Gilt an deinen aktiven Arbeitstagen
               </div>
-              <select
-                v-model.number="routineDraft.startHour"
+              <input
+                :value="formatHourValue(routineDraft.startHour)"
+                type="time"
+                step="300"
                 class="input-dark w-full px-3 py-2 text-sm"
+                @input="routineDraft.startHour = parseTimeInput(($event.target as HTMLInputElement).value)"
               >
-                <option v-for="h in 24" :key="`start-${h}`" :value="h - 1">
-                  Start {{ String(h - 1).padStart(2, '0') }}:00
-                </option>
-              </select>
-              <select
-                v-model.number="routineDraft.endHour"
+              <input
+                :value="formatHourValue(routineDraft.endHour)"
+                type="time"
+                step="300"
                 class="input-dark w-full px-3 py-2 text-sm"
+                @input="routineDraft.endHour = parseTimeInput(($event.target as HTMLInputElement).value)"
               >
-                <option v-for="h in 24" :key="`end-${h}`" :value="h">
-                  Ende {{ String(h).padStart(2, '0') }}:00
-                </option>
-              </select>
             </div>
 
               <textarea
@@ -1287,24 +1291,20 @@ async function handleRetryCalendarAction() {
                   </div>
                 </div>
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <select
-                    :value="routine.startHour"
+                  <input
+                    :value="formatHourValue(routine.startHour)"
+                    type="time"
+                    step="300"
                     class="input-dark w-full px-3 py-2 text-sm"
-                    @change="updateRoutineHour(routine.id, 'startHour', Number(($event.target as HTMLSelectElement).value))"
+                    @input="updateRoutineHour(routine.id, 'startHour', parseTimeInput(($event.target as HTMLInputElement).value))"
                   >
-                    <option v-for="h in 24" :key="`${routine.id}-start-${h}`" :value="h - 1">
-                      Start {{ String(h - 1).padStart(2, '0') }}:00
-                    </option>
-                  </select>
-                  <select
-                    :value="routine.endHour"
+                  <input
+                    :value="formatHourValue(routine.endHour)"
+                    type="time"
+                    step="300"
                     class="input-dark w-full px-3 py-2 text-sm"
-                    @change="updateRoutineHour(routine.id, 'endHour', Number(($event.target as HTMLSelectElement).value))"
+                    @input="updateRoutineHour(routine.id, 'endHour', parseTimeInput(($event.target as HTMLInputElement).value))"
                   >
-                    <option v-for="h in 24" :key="`${routine.id}-end-${h}`" :value="h">
-                      Ende {{ String(h).padStart(2, '0') }}:00
-                    </option>
-                  </select>
                 </div>
                 <div class="mt-3 rounded-glass border border-border-subtle bg-white/[0.04] p-3">
                   <div class="text-xs font-medium text-text-primary">Ausnahmen</div>
@@ -1490,22 +1490,20 @@ async function handleRetryCalendarAction() {
                     <div v-else class="rounded-glass border border-border-subtle bg-white/[0.03] px-3 py-2 text-xs text-text-secondary">
                       Feste Termine werden direkt in den Kalender eingetragen.
                     </div>
-                    <select
-                      v-model.number="entry.startHour"
+                    <input
+                      :value="formatHourValue(entry.startHour)"
+                      type="time"
+                      step="300"
                       class="input-dark w-full px-3 py-2 text-sm"
+                      @input="entry.startHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                     >
-                      <option v-for="h in 24" :key="`${entry.id}-import-start-${h}`" :value="h - 1">
-                        Start {{ String(h - 1).padStart(2, '0') }}:00
-                      </option>
-                    </select>
-                    <select
-                      v-model.number="entry.endHour"
+                    <input
+                      :value="formatHourValue(entry.endHour)"
+                      type="time"
+                      step="300"
                       class="input-dark w-full px-3 py-2 text-sm"
+                      @input="entry.endHour = parseTimeInput(($event.target as HTMLInputElement).value)"
                     >
-                      <option v-for="h in 24" :key="`${entry.id}-import-end-${h}`" :value="h">
-                        Ende {{ String(h).padStart(2, '0') }}:00
-                      </option>
-                    </select>
                   </div>
 
                   <textarea
@@ -1595,6 +1593,15 @@ async function handleRetryCalendarAction() {
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+
+select.input-dark,
+input[type='date'].input-dark,
+input[type='time'].input-dark {
+  color-scheme: dark;
+  background-color: rgba(15, 23, 42, 0.88);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: rgba(248, 250, 252, 0.95);
 }
 </style>
 

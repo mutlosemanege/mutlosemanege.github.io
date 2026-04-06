@@ -23,6 +23,12 @@ interface FindFreeSlotsOptions {
   ignoreSoftBlockers?: boolean
 }
 
+function applyHourValue(date: Date, value: number) {
+  const hours = Math.floor(value)
+  const minutes = Math.round((value - hours) * 60)
+  date.setHours(hours, minutes, 0, 0)
+}
+
 export function useScheduler() {
   const { preferences } = usePreferences()
   const slotCache = new Map<string, TimeSlot[]>()
@@ -87,16 +93,16 @@ export function useScheduler() {
   ): TimeSlot[] {
     const bufferMs = prefs.taskBufferMinutes * 60 * 1000
     const dayStart = new Date(day)
-    dayStart.setHours(prefs.workStartHour, 0, 0, 0)
+    applyHourValue(dayStart, prefs.workStartHour)
 
     const dayEnd = new Date(day)
-    dayEnd.setHours(prefs.workEndHour, 0, 0, 0)
+    applyHourValue(dayEnd, prefs.workEndHour)
 
     const lunchStart = new Date(day)
-    lunchStart.setHours(prefs.lunchStartHour, 0, 0, 0)
+    applyHourValue(lunchStart, prefs.lunchStartHour)
 
     const lunchEnd = new Date(day)
-    lunchEnd.setHours(prefs.lunchEndHour, 0, 0, 0)
+    applyHourValue(lunchEnd, prefs.lunchEndHour)
 
     // Belegte Zeiten sammeln (Events + Mittagspause)
     const busyPeriods: { start: Date; end: Date }[] = []
@@ -542,9 +548,9 @@ function buildPreferenceBlockers(
 
     if (prefs.syncSleepSchedule) {
       const sleepStart = new Date(cursor)
-      sleepStart.setHours(prefs.sleepStartHour, 0, 0, 0)
+      applyHourValue(sleepStart, prefs.sleepStartHour)
       const sleepEnd = new Date(cursor)
-      sleepEnd.setHours(prefs.sleepEndHour, 0, 0, 0)
+      applyHourValue(sleepEnd, prefs.sleepEndHour)
       if (prefs.sleepEndHour <= prefs.sleepStartHour) {
         sleepEnd.setDate(sleepEnd.getDate() + 1)
       }
@@ -555,18 +561,18 @@ function buildPreferenceBlockers(
     if (prefs.syncCommuteSchedule && prefs.workDays.includes(cursor.getDay()) && !isPublicHoliday) {
       if (prefs.commuteToWorkMinutes > 0) {
         const commuteStart = new Date(cursor)
-        commuteStart.setHours(prefs.workStartHour, 0, 0, 0)
+        applyHourValue(commuteStart, prefs.workStartHour)
         commuteStart.setMinutes(commuteStart.getMinutes() - prefs.commuteToWorkMinutes)
         const commuteEnd = new Date(cursor)
-        commuteEnd.setHours(prefs.workStartHour, 0, 0, 0)
+        applyHourValue(commuteEnd, prefs.workStartHour)
         blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
       }
 
       if (prefs.commuteFromWorkMinutes > 0) {
         const commuteStart = new Date(cursor)
-        commuteStart.setHours(prefs.workEndHour, 0, 0, 0)
+        applyHourValue(commuteStart, prefs.workEndHour)
         const commuteEnd = new Date(cursor)
-        commuteEnd.setHours(prefs.workEndHour, 0, 0, 0)
+        applyHourValue(commuteEnd, prefs.workEndHour)
         commuteEnd.setMinutes(commuteEnd.getMinutes() + prefs.commuteFromWorkMinutes)
         blockers.push(createSyntheticEvent('Arbeitsweg', commuteStart, commuteEnd))
       }
@@ -578,9 +584,9 @@ function buildPreferenceBlockers(
       if (routine.skipDates?.includes(toDateKey(cursor))) continue
 
       const start = new Date(cursor)
-      start.setHours(routine.startHour, 0, 0, 0)
+      applyHourValue(start, routine.startHour)
       const end = new Date(cursor)
-      end.setHours(routine.endHour, 0, 0, 0)
+      applyHourValue(end, routine.endHour)
       if (routine.endHour <= routine.startHour) {
         end.setDate(end.getDate() + 1)
       }

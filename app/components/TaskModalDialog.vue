@@ -28,6 +28,8 @@ const lifeArea = ref<LifeArea | ''>('')
 const projectId = ref('')
 const dependencyIds = ref<string[]>([])
 const progressPercent = ref(0)
+const durationPresets = [15, 30, 45, 60, 90, 120, 180]
+const remainingPercentPresets = [0, 25, 50, 75, 100]
 
 const availableDependencies = computed(() =>
   tasks.value.filter(task => task.id !== props.task?.id),
@@ -59,6 +61,11 @@ function resetForm() {
 
 watch(() => props.show, (show) => {
   if (show) resetForm()
+})
+
+const remainingMinutes = computed(() => {
+  const baseline = props.task?.originalEstimatedMinutes || estimatedMinutes.value
+  return Math.max(0, Math.round(baseline * (1 - (progressPercent.value / 100))))
 })
 
 function toggleDependency(taskId: string) {
@@ -119,13 +126,16 @@ function handleDelete() {
         <div class="absolute inset-0" @click="emit('close')" />
 
         <div class="glass-card-elevated relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-glass-xl sm:max-w-2xl sm:rounded-glass-lg">
-          <div class="border-b border-border-subtle px-5 py-4">
+          <div class="border-b border-accent-purple/20 bg-gradient-to-r from-accent-purple/12 via-accent-blue/10 to-accent-green/10 px-5 py-4">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Aufgabe</p>
                 <h2 class="mt-2 text-xl font-semibold text-text-primary">
                   {{ isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe' }}
                 </h2>
+                <p class="mt-2 text-sm text-text-secondary">
+                  Schnell erfassen, einfärben und realistisch einschätzen, wie viel davon noch offen ist.
+                </p>
               </div>
               <button type="button" class="btn-secondary inline-flex h-10 w-10 items-center justify-center" @click="emit('close')">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -158,11 +168,25 @@ function handleDelete() {
               </div>
 
               <div class="grid gap-4 sm:grid-cols-2">
-                <div>
+                <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
                   <label class="mb-2 block text-sm font-medium text-text-secondary">Dauer</label>
                   <input v-model.number="estimatedMinutes" min="15" step="15" type="number" class="input-dark w-full px-4 py-3">
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button
+                      v-for="preset in durationPresets"
+                      :key="preset"
+                      type="button"
+                      class="rounded-full border px-3 py-1 text-xs transition"
+                      :class="estimatedMinutes === preset
+                        ? 'border-accent-blue/30 bg-accent-blue/15 text-accent-blue'
+                        : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'"
+                      @click="estimatedMinutes = preset"
+                    >
+                      {{ preset }} Min.
+                    </button>
+                  </div>
                 </div>
-                <div>
+                <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
                   <label class="mb-2 block text-sm font-medium text-text-secondary">Priorität</label>
                   <select v-model="priority" class="input-dark w-full px-4 py-3">
                     <option value="critical">critical</option>
@@ -170,6 +194,12 @@ function handleDelete() {
                     <option value="medium">medium</option>
                     <option value="low">low</option>
                   </select>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span class="rounded-full border border-priority-critical/20 bg-priority-critical/10 px-2.5 py-1 text-[11px] text-priority-critical">critical</span>
+                    <span class="rounded-full border border-priority-high/20 bg-priority-high/10 px-2.5 py-1 text-[11px] text-priority-high">high</span>
+                    <span class="rounded-full border border-priority-medium/20 bg-priority-medium/10 px-2.5 py-1 text-[11px] text-priority-medium">medium</span>
+                    <span class="rounded-full border border-priority-low/20 bg-priority-low/10 px-2.5 py-1 text-[11px] text-priority-low">low</span>
+                  </div>
                 </div>
               </div>
 
@@ -221,9 +251,32 @@ function handleDelete() {
               </button>
 
               <div v-if="isEditing" class="grid gap-4 sm:grid-cols-2">
-                <div>
+                <div class="rounded-glass border border-accent-green/20 bg-accent-green/10 p-4">
                   <label class="mb-2 block text-sm font-medium text-text-secondary">Fortschritt</label>
                   <input v-model.number="progressPercent" min="0" max="100" step="5" type="number" class="input-dark w-full px-4 py-3">
+                  <input
+                    v-model.number="progressPercent"
+                    min="0"
+                    max="100"
+                    step="5"
+                    type="range"
+                    class="mt-3 w-full accent-[var(--color-accent-green)]"
+                  >
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button
+                      v-for="preset in remainingPercentPresets"
+                      :key="preset"
+                      type="button"
+                      class="rounded-full border px-3 py-1 text-xs transition"
+                      :class="progressPercent === preset
+                        ? 'border-accent-green/30 bg-accent-green/15 text-accent-green'
+                        : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'"
+                      @click="progressPercent = preset"
+                    >
+                      {{ preset }}%
+                    </button>
+                  </div>
+                  <p class="mt-3 text-xs text-accent-green">Noch offen: ca. {{ remainingMinutes }} Minuten</p>
                 </div>
                 <div class="rounded-glass border border-border-subtle bg-white/[0.03] px-4 py-3 text-sm text-text-secondary">
                   Der bestehende Planungsstatus bleibt beim Bearbeiten erhalten, solange du ihn hier nicht direkt änderst.
@@ -291,5 +344,14 @@ function handleDelete() {
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+
+select.input-dark,
+input[type='date'].input-dark,
+input[type='time'].input-dark {
+  color-scheme: dark;
+  background-color: rgba(15, 23, 42, 0.88);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: rgba(248, 250, 252, 0.95);
 }
 </style>
