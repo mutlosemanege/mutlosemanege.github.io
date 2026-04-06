@@ -171,12 +171,12 @@ function handleDelete() {
                 <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
                   <label class="mb-2 block text-sm font-medium text-text-secondary">Dauer</label>
                   <input v-model.number="estimatedMinutes" min="15" step="15" type="number" class="input-dark w-full px-4 py-3">
-                  <div class="mt-3 flex flex-wrap gap-2">
+                  <div class="preset-scroll mt-3 flex gap-2 overflow-x-auto pb-2">
                     <button
                       v-for="preset in durationPresets"
                       :key="preset"
                       type="button"
-                      class="rounded-full border px-3 py-1 text-xs transition"
+                      class="flex-shrink-0 rounded-full border px-3 py-1 text-xs transition"
                       :class="estimatedMinutes === preset
                         ? 'border-accent-blue/30 bg-accent-blue/15 text-accent-blue'
                         : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'"
@@ -262,12 +262,12 @@ function handleDelete() {
                     type="range"
                     class="mt-3 w-full accent-[var(--color-accent-green)]"
                   >
-                  <div class="mt-3 flex flex-wrap gap-2">
+                  <div class="preset-scroll mt-3 flex gap-2 overflow-x-auto pb-2">
                     <button
                       v-for="preset in remainingPercentPresets"
                       :key="preset"
                       type="button"
-                      class="rounded-full border px-3 py-1 text-xs transition"
+                      class="flex-shrink-0 rounded-full border px-3 py-1 text-xs transition"
                       :class="progressPercent === preset
                         ? 'border-accent-green/30 bg-accent-green/15 text-accent-green'
                         : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]'"
@@ -353,5 +353,24 @@ input[type='time'].input-dark {
   background-color: rgba(15, 23, 42, 0.88);
   border-color: rgba(148, 163, 184, 0.22);
   color: rgba(248, 250, 252, 0.95);
+}
+
+.preset-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.75) rgba(255, 255, 255, 0.08);
+}
+
+.preset-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.preset-scroll::-webkit-scrollbar-track {
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.preset-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.85), rgba(96, 165, 250, 0.85));
 }
 </style>
