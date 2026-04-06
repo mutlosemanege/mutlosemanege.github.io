@@ -19,7 +19,6 @@ interface GeneratedTask {
 interface GenerateProjectResult {
   projectName: string
   tasks: GeneratedTask[]
-  usage: { inputTokens: number; outputTokens: number }
 }
 
 const isProcessing = ref(false)

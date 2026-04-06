@@ -42,6 +42,7 @@ Required in `.env`:
 - `server/api/ai/prioritize.post.ts` — Claude Haiku ranks tasks by urgency/importance using tool_use (max 20 tasks per call)
 - `server/api/ai/generate-project.post.ts` — Claude Haiku generates project task breakdowns (3-12 tasks) with dependencies using tool_use. Supports project type hints (programming, video editing, content, learning, etc.)
 - Both endpoints use structured output via `tool_choice` to force tool responses
+- `server/middleware/security.ts` — Origin validation + IP-based rate limiting (10 req/min) for all `/api/ai/` routes. Input fields are length-limited and sanitized (control chars stripped) before prompt insertion. Raw errors are never forwarded to the client.
 
 **Scheduling engine** (`useScheduler`): greedy iterative algorithm that slots tasks into free calendar time, respecting work hours, lunch breaks, deep-work windows (with `minDeepWorkBlockMinutes` threshold), task priorities, deadlines, and dependency ordering. Dynamic planning window: min 21 days, up to 90 days, extending to latest deadline + 7 days. Uses a while-loop for correct multi-level dependency resolution. Exports `findFreeSlots` for use by PlanningChat.
 

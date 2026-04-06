@@ -15,29 +15,88 @@ interface PriorityResult {
   reason: string
 }
 
+const MAX_TITLE_LENGTH = 200
+const MAX_DESCRIPTION_LENGTH = 500
+const MAX_ID_LENGTH = 36        // UUID
+const MAX_DEPENDENCIES = 20
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Entfernt Steuerzeichen (inkl. Zeilenumbrüche) und kürzt auf maxLength. */
+function sanitizeForPrompt(text: string, maxLength: number): string {
+  return text
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function isValidISODate(value: string): boolean {
+  return ISO_DATE_RE.test(value) && !isNaN(new Date(value).getTime())
+}
+
+function validateTask(task: TaskInput, index: number): void {
+  if (typeof task.title !== 'string' || !task.title.trim()) {
+    throw createError({ statusCode: 400, message: `Task ${index}: title fehlt oder ungültig` })
+  }
+  if (
+    typeof task.estimatedMinutes !== 'number' ||
+    !isFinite(task.estimatedMinutes) ||
+    task.estimatedMinutes < 0 ||
+    task.estimatedMinutes > 43200 // max 30 Tage
+  ) {
+    throw createError({ statusCode: 400, message: `Task ${index}: estimatedMinutes ungültig` })
+  }
+  if (task.deadline !== undefined) {
+    if (typeof task.deadline !== 'string' || !isValidISODate(task.deadline)) {
+      throw createError({ statusCode: 400, message: `Task ${index}: deadline muss YYYY-MM-DD sein` })
+    }
+  }
+  if (!Array.isArray(task.dependencies)) {
+    throw createError({ statusCode: 400, message: `Task ${index}: dependencies muss ein Array sein` })
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const apiKey = process.env.ANTHROPIC_API_KEY
 
   if (!apiKey) {
-    throw createError({ statusCode: 500, message: 'ANTHROPIC_API_KEY nicht konfiguriert' })
+    throw createError({ statusCode: 500, message: 'KI-Dienst nicht konfiguriert' })
   }
 
   const body = await readBody<{ tasks: TaskInput[] }>(event)
 
-  if (!body.tasks || body.tasks.length === 0) {
+  if (!Array.isArray(body?.tasks) || body.tasks.length === 0) {
     throw createError({ statusCode: 400, message: 'Keine Tasks angegeben' })
   }
 
-  // Max 20 Tasks pro Call (Token-Sparend)
   const tasksToRank = body.tasks.slice(0, 20)
+
+  for (let i = 0; i < tasksToRank.length; i++) {
+    validateTask(tasksToRank[i], i + 1)
+  }
 
   const client = new Anthropic({ apiKey })
 
   const taskList = tasksToRank.map(t => {
-    let desc = `- ID: ${t.id}, Titel: "${t.title}", Dauer: ${t.estimatedMinutes}min`
+    const safeId = sanitizeForPrompt(String(t.id), MAX_ID_LENGTH)
+    const safeTitle = sanitizeForPrompt(t.title, MAX_TITLE_LENGTH)
+    const safeMinutes = Math.round(t.estimatedMinutes)
+
+    let desc = `- ID: ${safeId}, Titel: "${safeTitle}", Dauer: ${safeMinutes}min`
+
+    // deadline ist bereits als ISO-Datum validiert
     if (t.deadline) desc += `, Deadline: ${t.deadline}`
-    if (t.description) desc += `, Beschreibung: "${t.description}"`
-    if (t.dependencies.length > 0) desc += `, Abhaengig von: ${t.dependencies.join(', ')}`
+
+    if (t.description) {
+      desc += `, Beschreibung: "${sanitizeForPrompt(t.description, MAX_DESCRIPTION_LENGTH)}"`
+    }
+
+    const safeDeps = t.dependencies
+      .slice(0, MAX_DEPENDENCIES)
+      .filter(d => typeof d === 'string')
+      .map(d => sanitizeForPrompt(d, MAX_ID_LENGTH))
+
+    if (safeDeps.length > 0) desc += `, Abhaengig von: ${safeDeps.join(', ')}`
+
     return desc
   }).join('\n')
 
@@ -81,15 +140,17 @@ export default defineEventHandler(async (event) => {
 
     const toolBlock = response.content.find(block => block.type === 'tool_use')
     if (!toolBlock || toolBlock.type !== 'tool_use') {
-      throw createError({ statusCode: 500, message: 'Unerwartete AI-Antwort: Kein Tool-Use-Block' })
+      throw createError({ statusCode: 500, message: 'Unerwartete KI-Antwort' })
     }
 
     const result = toolBlock.input as { rankings: PriorityResult[] }
     return { rankings: result.rankings }
   } catch (e: any) {
+    if (e.statusCode) throw e  // H3-Fehler (inkl. 403/429 aus Middleware) durchleiten
     if (e.status) {
-      throw createError({ statusCode: e.status, message: `Anthropic API: ${e.message}` })
+      // Anthropic API-Fehler: keinen internen Fehlertext leaken
+      throw createError({ statusCode: 502, message: 'KI-Dienst nicht erreichbar' })
     }
-    throw e
+    throw createError({ statusCode: 500, message: 'Interner Serverfehler' })
   }
 })

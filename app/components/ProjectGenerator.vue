@@ -38,7 +38,6 @@ interface PreviewTask {
 
 const projectName = ref('')
 const previewTasks = ref<PreviewTask[]>([])
-const tokenUsage = ref({ inputTokens: 0, outputTokens: 0 })
 
 watch(() => props.show, (val) => {
   if (!val) return
@@ -67,7 +66,6 @@ async function handleGenerate() {
   if (result) {
     projectName.value = result.projectName
     previewTasks.value = result.tasks.map(t => ({ ...t, include: true }))
-    tokenUsage.value = result.usage
     step.value = 'review'
   }
 }
@@ -497,9 +495,6 @@ function addDays(date: Date, days: number) {
                   {{ previewTasks.filter(t => t.include).length }} Aufgaben, ca. {{ totalHours }} Stunden
                 </p>
               </div>
-              <span class="rounded-full bg-white/[0.05] px-3 py-1 text-[11px] text-text-muted">
-                {{ tokenUsage.inputTokens + tokenUsage.outputTokens }} Tokens
-              </span>
             </div>
 
             <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
