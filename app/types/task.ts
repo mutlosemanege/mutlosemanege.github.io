@@ -91,9 +91,16 @@ export interface PlanningBehaviorSignals {
   rescheduledCount: number
 }
 
+export interface DailyCommitState {
+  dateKey: string
+  committedTaskIds: readonly string[]
+  deferredTaskIds: readonly string[]
+}
+
 export interface UserPreferences {
   planningStyle: PlanningStyle
   behaviorSignals: PlanningBehaviorSignals
+  dailyCommit: DailyCommitState
   respectPublicHolidays: boolean
   publicHolidayRegion: GermanHolidayRegion
   workStartHour: number
@@ -126,6 +133,11 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     completionCount: 0,
     missedCount: 0,
     rescheduledCount: 0,
+  },
+  dailyCommit: {
+    dateKey: '',
+    committedTaskIds: [],
+    deferredTaskIds: [],
   },
   respectPublicHolidays: true,
   publicHolidayRegion: 'DE',

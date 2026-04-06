@@ -1,5 +1,5 @@
 import { DEFAULT_PREFERENCES } from '~/types/task'
-import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals } from '~/types/task'
+import type { UserPreferences, DeepWorkWindow, PlanningBehaviorSignals, DailyCommitState } from '~/types/task'
 
 const STORAGE_KEY = 'kalender-ai-preferences'
 
@@ -17,6 +17,10 @@ function loadPreferences(): UserPreferences {
         behaviorSignals: {
           ...DEFAULT_PREFERENCES.behaviorSignals,
           ...(parsed.behaviorSignals || {}),
+        },
+        dailyCommit: {
+          ...DEFAULT_PREFERENCES.dailyCommit,
+          ...(parsed.dailyCommit || {}),
         },
       }
     }
@@ -42,6 +46,10 @@ function hourKeyFromDate(date: Date) {
   return String(date.getHours()).padStart(2, '0')
 }
 
+function dateKeyFromDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function mergeBehaviorSignals(partial: Partial<PlanningBehaviorSignals>) {
   preferences.value = {
     ...preferences.value,
@@ -61,6 +69,44 @@ export function usePreferences() {
 
   function resetPreferences() {
     preferences.value = { ...DEFAULT_PREFERENCES }
+    savePreferences()
+  }
+
+  function getDailyCommit(date = new Date()): DailyCommitState {
+    const dateKey = dateKeyFromDate(date)
+    const current = preferences.value.dailyCommit
+    if (current.dateKey !== dateKey) {
+      return {
+        dateKey,
+        committedTaskIds: [],
+        deferredTaskIds: [],
+      }
+    }
+
+    return current
+  }
+
+  function setDailyCommit(committedTaskIds: string[], deferredTaskIds: string[], date = new Date()) {
+    preferences.value = {
+      ...preferences.value,
+      dailyCommit: {
+        dateKey: dateKeyFromDate(date),
+        committedTaskIds: [...new Set(committedTaskIds)],
+        deferredTaskIds: [...new Set(deferredTaskIds)],
+      },
+    }
+    savePreferences()
+  }
+
+  function clearDailyCommit(date = new Date()) {
+    preferences.value = {
+      ...preferences.value,
+      dailyCommit: {
+        dateKey: dateKeyFromDate(date),
+        committedTaskIds: [],
+        deferredTaskIds: [],
+      },
+    }
     savePreferences()
   }
 
@@ -135,5 +181,8 @@ export function usePreferences() {
     recordTaskCompletion,
     recordTaskMiss,
     getPreferredHours,
+    getDailyCommit,
+    setDailyCommit,
+    clearDailyCommit,
   }
 }

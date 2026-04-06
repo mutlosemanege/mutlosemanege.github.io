@@ -14,11 +14,11 @@ const emit = defineEmits<{
   'edit-task': [task: Task]
 }>()
 
-const { tasks, projects, getPendingTasks, getUnscheduledTasks, updateTask, updateProject, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
+const { tasks, projects, getPendingTasks, getUnscheduledTasks, createTask, updateTask, updateProject, deleteTask, deleteProjectWithTasks, archiveProject, restoreProject } = useTasks()
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction } = useCalendar()
-const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours } = usePreferences()
+const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours, getDailyCommit } = usePreferences()
 
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done' | 'missed'>('all')
@@ -39,6 +39,7 @@ const stats = computed(() => {
     unscheduled: getUnscheduledTasks().length,
   }
 })
+const todayCommit = computed(() => getDailyCommit())
 
 const todayWindow = computed(() => {
   const start = new Date()
@@ -149,6 +150,12 @@ interface SchedulingDiagnosis {
   code: 'dependency' | 'deadline' | 'deep-work' | 'work-window' | 'no-slot'
   severity: 'high' | 'medium' | 'low'
   summary: string
+  detail: string
+}
+
+interface ConflictAction {
+  id: 'shorten' | 'split' | 'weekend' | 'extend-deadline'
+  label: string
   detail: string
 }
 
@@ -1234,16 +1241,57 @@ const filteredTaskGroups = computed(() => {
     .map(group => ({
       ...group,
       fullTasks: group.tasks,
-      tasks: group.tasks.filter(matchesActiveFilter),
+      tasks: group.tasks
+        .filter(matchesActiveFilter)
+        .sort(sortTasksForDisplay),
     }))
     .filter(group => group.tasks.length > 0)
 })
+
+function sortTasksForDisplay(a: Task, b: Task) {
+  const aCommitRank = getDailyCommitRank(a)
+  const bCommitRank = getDailyCommitRank(b)
+  if (aCommitRank !== bCommitRank) return aCommitRank - bCommitRank
+
+  const statusOrder: Record<Task['status'], number> = {
+    todo: 0,
+    missed: 1,
+    scheduled: 2,
+    in_progress: 3,
+    done: 4,
+  }
+
+  if (statusOrder[a.status] !== statusOrder[b.status]) {
+    return statusOrder[a.status] - statusOrder[b.status]
+  }
+
+  const priorityDiff = priorityRank[b.priority] - priorityRank[a.priority]
+  if (priorityDiff !== 0) return priorityDiff
+
+  const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
+  const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
+  return aDeadline - bDeadline
+}
 
 function taskStatusLabel(task: Task) {
   if (task.status === 'done') return 'Erledigt'
   if (task.status === 'scheduled') return 'Eingeplant'
   if (task.status === 'missed') return 'Neu planen'
   return 'Offen'
+}
+
+function getDailyCommitRank(task: Task) {
+  if (todayCommit.value.committedTaskIds.includes(task.id)) return 0
+  if (todayCommit.value.deferredTaskIds.includes(task.id)) return 2
+  return 1
+}
+
+function isTodayCommitted(task: Task) {
+  return todayCommit.value.committedTaskIds.includes(task.id)
+}
+
+function isTodayDeferred(task: Task) {
+  return todayCommit.value.deferredTaskIds.includes(task.id)
 }
 
 function getGroupTasks(group: { tasks: Task[]; fullTasks?: Task[] }) {
@@ -1556,6 +1604,153 @@ function buildDiagnosisAlternative(code: SchedulingDiagnosis['code']) {
       return 'Arbeitsfenster erweitern oder Routine-, Schlaf- und Pufferzeiten pruefen.'
     case 'no-slot':
       return 'Den nächsten freien Termin akzeptieren oder die Aufgabe in kleinere Blöcke teilen.'
+  }
+}
+
+function getConflictActions(entry: SchedulingDiagnosis): ConflictAction[] {
+  const task = tasks.value.find(candidate => candidate.id === entry.taskId)
+  if (!task || task.status === 'done') return []
+
+  const actions: ConflictAction[] = []
+
+  if (task.estimatedMinutes >= 45) {
+    actions.push({
+      id: 'shorten',
+      label: 'Aufgabe kürzen',
+      detail: 'Reduziert den offenen Aufwand lokal um 25% und prüft danach erneut.',
+    })
+  }
+
+  if (task.estimatedMinutes >= 90) {
+    actions.push({
+      id: 'split',
+      label: 'In 2 Blöcke teilen',
+      detail: 'Teilt die Aufgabe in zwei Schritte und macht sie dadurch planbarer.',
+    })
+  }
+
+  if (entry.code === 'deadline' || entry.code === 'work-window' || entry.code === 'no-slot') {
+    actions.push({
+      id: 'weekend',
+      label: 'Auf Wochenende legen',
+      detail: 'Prüft einen Wochenend-Slot als Vorschau, ohne sofort etwas zu verändern.',
+    })
+  }
+
+  if (task.deadline) {
+    actions.push({
+      id: 'extend-deadline',
+      label: 'Deadline lockern',
+      detail: 'Schiebt die Deadline lokal um einen Tag nach hinten.',
+    })
+  }
+
+  return actions.slice(0, 4)
+}
+
+async function applyConflictAction(entry: SchedulingDiagnosis, actionId: ConflictAction['id']) {
+  const task = tasks.value.find(candidate => candidate.id === entry.taskId)
+  if (!task) return
+
+  if (actionId === 'shorten') {
+    const originalMinutes = task.originalEstimatedMinutes || task.estimatedMinutes
+    const reducedMinutes = Math.max(30, Math.ceil((task.estimatedMinutes * 0.75) / 15) * 15)
+    if (reducedMinutes >= task.estimatedMinutes) return
+
+    await updateTask(task.id, {
+      estimatedMinutes: reducedMinutes,
+      originalEstimatedMinutes: originalMinutes,
+    })
+    const refreshedEvents = await refreshCalendarEvents()
+    await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), refreshedEvents)
+    planningFeedback.value = `"${task.title}" wurde lokal auf ${reducedMinutes} Minuten gekürzt.`
+    addActivityEntry({
+      title: 'Aufgabe gekürzt',
+      detail: `"${task.title}" wurde von ${task.estimatedMinutes} auf ${reducedMinutes} Minuten reduziert.`,
+    })
+    return
+  }
+
+  if (actionId === 'split') {
+    const originalMinutes = task.originalEstimatedMinutes || task.estimatedMinutes
+    const firstPartMinutes = Math.max(30, Math.ceil((task.estimatedMinutes / 2) / 15) * 15)
+    const secondPartMinutes = Math.max(30, task.estimatedMinutes - firstPartMinutes)
+    if (secondPartMinutes < 30) return
+
+    await updateTask(task.id, {
+      estimatedMinutes: firstPartMinutes,
+      originalEstimatedMinutes: originalMinutes,
+    })
+
+    await createTask({
+      title: `${task.title} (Teil 2)`,
+      description: task.description,
+      estimatedMinutes: secondPartMinutes,
+      originalEstimatedMinutes: originalMinutes,
+      progressPercent: 0,
+      deadline: task.deadline,
+      priority: task.priority,
+      aiSuggestedPriority: task.aiSuggestedPriority,
+      priorityReason: task.priorityReason,
+      prioritySource: task.prioritySource,
+      status: 'todo',
+      projectId: task.projectId,
+      dependencies: [...task.dependencies, task.id],
+      scheduleBlocks: undefined,
+      scheduledStart: undefined,
+      scheduledEnd: undefined,
+      calendarEventId: undefined,
+      isDeepWork: task.isDeepWork,
+    })
+
+    const refreshedEvents = await refreshCalendarEvents()
+    await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), refreshedEvents)
+    planningFeedback.value = `"${task.title}" wurde in zwei Schritte aufgeteilt.`
+    addActivityEntry({
+      title: 'Aufgabe geteilt',
+      detail: `"${task.title}" wurde in ${firstPartMinutes} und ${secondPartMinutes} Minuten aufgeteilt.`,
+    })
+    return
+  }
+
+  if (actionId === 'extend-deadline') {
+    if (!task.deadline) return
+    const relaxedDeadline = new Date(task.deadline)
+    relaxedDeadline.setDate(relaxedDeadline.getDate() + 1)
+    await updateTask(task.id, { deadline: relaxedDeadline.toISOString() })
+    const refreshedEvents = await refreshCalendarEvents()
+    await refreshSchedulingInsights(new Map(), getUnscheduledTasks(), refreshedEvents)
+    planningFeedback.value = `Die Deadline von "${task.title}" wurde lokal um einen Tag verschoben.`
+    addActivityEntry({
+      title: 'Deadline gelockert',
+      detail: `"${task.title}" endet jetzt am ${relaxedDeadline.toLocaleDateString('de-DE')}.`,
+    })
+    return
+  }
+
+  if (actionId === 'weekend') {
+    const currentEvents = await refreshCalendarEvents()
+    const weekendPrefs: UserPreferences = {
+      ...preferences.value,
+      workDays: [...new Set([...preferences.value.workDays, 0, 6])].sort(),
+    }
+    const preview = buildScheduleReviewPreview(
+      [{ ...task, status: 'todo' }],
+      currentEvents,
+      `Wochenend-Slot für ${task.title}`,
+      'variant',
+      {},
+      weekendPrefs,
+    )
+
+    if (preview.plannedSchedule.size === 0) {
+      planningFeedback.value = `Für "${task.title}" wurde selbst mit Wochenende noch kein sauberer Slot gefunden.`
+      return
+    }
+
+    scheduleReviewPreview.value = preview
+    planningFeedback.value = `Vorschau bereit: "${task.title}" könnte über das Wochenende eingeplant werden.`
+    decisionTransparency.value = buildScheduleReviewDecisionTransparency(preview)
   }
 }
 
@@ -2261,6 +2456,24 @@ async function handleRetryCalendarAction() {
               :alternatives="decisionTransparency.alternatives"
               :next-step="decisionTransparency.nextStep"
             />
+
+            <div
+              v-if="todayCommit.committedTaskIds.length > 0"
+              class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 px-4 py-3 text-xs text-text-secondary"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-purple-soft">Tages-Commit aktiv</div>
+                  <div class="mt-1">
+                    {{ todayCommit.committedTaskIds.length }} Aufgabe{{ todayCommit.committedTaskIds.length === 1 ? '' : 'n' }} im Fokus,
+                    {{ todayCommit.deferredTaskIds.length }} bewusst nicht für heute.
+                  </div>
+                </div>
+                <span class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-purple-soft">
+                  Heute
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2317,6 +2530,22 @@ async function handleRetryCalendarAction() {
                       </span>
                     </div>
                     <p class="mt-1 text-[11px] text-text-secondary">{{ alternative.detail }}</p>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="getConflictActions(entry).length" class="mt-3 space-y-2">
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-purple-soft">Direkte Lösungen</div>
+                <div class="grid gap-2">
+                  <button
+                    v-for="action in getConflictActions(entry)"
+                    :key="`${entry.taskId}-${action.id}`"
+                    type="button"
+                    class="w-full rounded-glass border border-accent-purple/20 bg-accent-purple/10 px-3 py-2 text-left transition hover:border-accent-purple/35 hover:bg-accent-purple/15"
+                    @click="applyConflictAction(entry, action.id)"
+                  >
+                    <div class="text-xs font-medium text-text-primary">{{ action.label }}</div>
+                    <div class="mt-1 text-[11px] text-text-secondary">{{ action.detail }}</div>
                   </button>
                 </div>
               </div>
@@ -2574,6 +2803,18 @@ async function handleRetryCalendarAction() {
                         </span>
                         <span class="rounded-full border border-border-subtle bg-white/[0.04] px-1.5 py-0.5 text-xs text-text-secondary">
                           {{ taskStatusLabel(task) }}
+                        </span>
+                        <span
+                          v-if="isTodayCommitted(task)"
+                          class="rounded-full border border-accent-purple/20 bg-accent-purple/10 px-1.5 py-0.5 text-xs text-accent-purple-soft"
+                        >
+                          Heute committed
+                        </span>
+                        <span
+                          v-else-if="isTodayDeferred(task)"
+                          class="rounded-full border border-border-subtle bg-white/[0.04] px-1.5 py-0.5 text-xs text-text-muted"
+                        >
+                          Nicht heute
                         </span>
                       </div>
 

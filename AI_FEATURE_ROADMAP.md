@@ -155,13 +155,13 @@ Rahmen:
 - [x] Unterschied zwischen `Vorschau`, `Empfehlung` und `bereits angewendet` noch klarer sichtbar machen
 
 ### 19. Tages-Commit statt Vollplanung
-- [ ] `Diese 3 Dinge heute` als echten Commit-Flow einbauen
-- [ ] Uebrige Aufgaben danach bewusst als `nicht heute` markieren oder absenken
-- [ ] Tagesfokus spaeter in der Sidebar und in der Heute-Ansicht rueckspiegeln
+- [x] `Diese 3 Dinge heute` als echten Commit-Flow einbauen
+- [x] Uebrige Aufgaben danach bewusst als `nicht heute` markieren oder absenken
+- [x] Tagesfokus spaeter in der Sidebar und in der Heute-Ansicht rueckspiegeln
 
 ### 20. Konflikte in direkte Loesungen uebersetzen
-- [ ] Bei Engpaessen direkte Aktionen anbieten wie `Aufgabe kuerzen`, `in 2 Bloecke teilen`, `auf Wochenende legen`, `Deadline lockern`
-- [ ] Diese Aktionen direkt aus Diagnose und Planvarianten heraus anstossen koennen
+- [x] Bei Engpaessen direkte Aktionen anbieten wie `Aufgabe kuerzen`, `in 2 Bloecke teilen`, `auf Wochenende legen`, `Deadline lockern`
+- [x] Diese Aktionen direkt aus Diagnose und Planvarianten heraus anstossen koennen
 
 ### 21. Wochenblick und Forecast
 - [x] Einen kompakten Wochen-Ausblick mit freier Zeit, kritischen Tagen und Deadline-Druck ergaenzen

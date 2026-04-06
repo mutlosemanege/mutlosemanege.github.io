@@ -5,7 +5,7 @@ import type { Task } from '~/types/task'
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
-const { preferences } = usePreferences()
+const { preferences, getDailyCommit, setDailyCommit, clearDailyCommit } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { warnings, criticalCount } = useDeadlineWatcher()
 
@@ -21,6 +21,7 @@ const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
 const todayActionFeedback = ref<string | null>(null)
 const isRunningTodayAction = ref(false)
+const selectedCommitTaskIds = ref<string[]>([])
 
 const todayRange = computed(() => {
   const start = new Date()
@@ -41,6 +42,17 @@ const todayEvents = computed(() => {
 
 const todayPendingTasks = computed(() => {
   return tasks.value.filter(task => task.status !== 'done')
+})
+
+const todayCommit = computed(() => getDailyCommit())
+const todayCommittedTasks = computed(() => {
+  const committedIds = new Set(todayCommit.value.committedTaskIds)
+  return todayPendingTasks.value.filter(task => committedIds.has(task.id))
+})
+
+const todayDeferredTasks = computed(() => {
+  const deferredIds = new Set(todayCommit.value.deferredTaskIds)
+  return todayPendingTasks.value.filter(task => deferredIds.has(task.id))
 })
 
 const todayFreeSlots = computed(() => {
@@ -66,8 +78,16 @@ const todayFreeMinutes = computed(() => {
 
 const nextBestTask = computed(() => {
   const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 }
+  const committedIds = new Set(todayCommit.value.committedTaskIds)
+  const deferredIds = new Set(todayCommit.value.deferredTaskIds)
 
-  return [...todayPendingTasks.value]
+  const sourceTasks = todayPendingTasks.value
+    .filter(task => !deferredIds.has(task.id))
+
+  const committedTasks = sourceTasks.filter(task => committedIds.has(task.id))
+  const candidateTasks = committedTasks.length > 0 ? committedTasks : sourceTasks
+
+  return [...candidateTasks]
     .sort((a, b) => {
       const aScheduled = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity
       const bScheduled = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity
@@ -82,9 +102,40 @@ const nextBestTask = computed(() => {
     })[0] || null
 })
 
+const commitCandidateTasks = computed(() => {
+  const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 }
+  return [...todayPendingTasks.value]
+    .sort((a, b) => {
+      const aScheduled = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity
+      const bScheduled = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity
+      if (aScheduled !== bScheduled) return aScheduled - bScheduled
+
+      const priorityDiff = priorityRank[a.priority] - priorityRank[b.priority]
+      if (priorityDiff !== 0) return priorityDiff
+
+      const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Infinity
+      const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Infinity
+      return aDeadline - bDeadline
+    })
+    .slice(0, 6)
+})
+
+watch(commitCandidateTasks, (candidates) => {
+  if (todayCommit.value.committedTaskIds.length > 0) return
+  const validIds = new Set(candidates.map(task => task.id))
+  const nextSelection = selectedCommitTaskIds.value.filter(id => validIds.has(id))
+  if (nextSelection.length > 0) {
+    selectedCommitTaskIds.value = nextSelection
+    return
+  }
+
+  selectedCommitTaskIds.value = candidates.slice(0, 3).map(task => task.id)
+}, { immediate: true })
+
 const nextBestTaskReason = computed(() => {
   const task = nextBestTask.value
   if (!task) return 'Gerade ist nichts Dringendes offen.'
+  if (todayCommit.value.committedTaskIds.includes(task.id)) return 'Teil deines heutigen bewussten Fokus-Commits.'
   if (task.scheduledStart) return `Schon eingeplant für ${formatDateTime(task.scheduledStart)}.`
   if (task.deadline) return `Deadline am ${new Date(task.deadline).toLocaleDateString('de-DE')}.`
   if (task.priorityReason) return task.priorityReason
@@ -534,6 +585,40 @@ async function runTodayAction(action: () => Promise<void>) {
   }
 }
 
+function toggleCommitCandidate(taskId: string) {
+  const current = new Set(selectedCommitTaskIds.value)
+  if (current.has(taskId)) {
+    current.delete(taskId)
+  } else if (current.size < 3) {
+    current.add(taskId)
+  }
+  selectedCommitTaskIds.value = [...current]
+}
+
+function commitSelectedTasks() {
+  const committedTaskIds = selectedCommitTaskIds.value.filter(taskId =>
+    todayPendingTasks.value.some(task => task.id === taskId),
+  ).slice(0, 3)
+
+  if (committedTaskIds.length === 0) {
+    todayActionFeedback.value = 'Wähle zuerst ein bis drei Aufgaben für deinen heutigen Commit aus.'
+    return
+  }
+
+  const deferredTaskIds = todayPendingTasks.value
+    .filter(task => !committedTaskIds.includes(task.id))
+    .map(task => task.id)
+
+  setDailyCommit(committedTaskIds, deferredTaskIds)
+  todayActionFeedback.value = `Heute committed: ${committedTaskIds.length} Aufgabe${committedTaskIds.length === 1 ? '' : 'n'} im Fokus, ${deferredTaskIds.length} bewusst nicht für heute.`
+}
+
+function clearTodayCommit() {
+  clearDailyCommit()
+  selectedCommitTaskIds.value = commitCandidateTasks.value.slice(0, 3).map(task => task.id)
+  todayActionFeedback.value = 'Der Tages-Commit wurde gelöst. Alle offenen Aufgaben sind wieder neutral.'
+}
+
 async function planNextTaskToday() {
   if (!nextBestTask.value) return
 
@@ -770,6 +855,83 @@ function isSameCalendarDay(a: Date, b: Date) {
                   :alternatives="todayDecisionAlternatives"
                   :next-step="todayDecisionNextStep"
                 />
+                <div class="mt-4 rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-accent-purple-soft">Diese 3 Dinge heute</div>
+                      <p class="mt-2 text-sm leading-6 text-text-secondary">
+                        Triff eine bewusste Tagesentscheidung: maximal drei Aufgaben aktiv committen, den Rest sichtbar als nicht-heute markieren.
+                      </p>
+                    </div>
+                    <span class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-purple-soft">
+                      {{ todayCommit.committedTaskIds.length }}/3 gewählt
+                    </span>
+                  </div>
+
+                  <div v-if="todayCommittedTasks.length > 0" class="mt-4 space-y-2">
+                    <div
+                      v-for="task in todayCommittedTasks"
+                      :key="`commit-${task.id}`"
+                      class="rounded-glass border border-accent-purple/20 bg-white/[0.05] px-3 py-3"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                          <div class="text-sm font-medium text-text-primary">{{ task.title }}</div>
+                          <div class="mt-1 text-xs text-text-secondary">{{ task.priority }}<span v-if="task.deadline"> · Deadline {{ new Date(task.deadline).toLocaleDateString('de-DE') }}</span></div>
+                        </div>
+                        <span class="rounded-full bg-accent-purple/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-purple-soft">
+                          committed
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div class="text-xs text-text-secondary">{{ todayDeferredTasks.length }} weitere Aufgaben sind bewusst als nicht-heute markiert.</div>
+                      <button class="btn-secondary px-3 py-2 text-sm" @click="clearTodayCommit">
+                        Commit lösen
+                      </button>
+                    </div>
+                  </div>
+
+                  <div v-else class="mt-4 space-y-3">
+                    <div class="grid gap-2">
+                      <button
+                        v-for="task in commitCandidateTasks"
+                        :key="`candidate-${task.id}`"
+                        type="button"
+                        class="rounded-glass border px-3 py-3 text-left transition"
+                        :class="selectedCommitTaskIds.includes(task.id)
+                          ? 'border-accent-purple/30 bg-white/[0.07]'
+                          : 'border-border-subtle bg-white/[0.04] hover:border-border-strong hover:bg-white/[0.06]'"
+                        @click="toggleCommitCandidate(task.id)"
+                      >
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="min-w-0">
+                            <div class="text-sm font-medium text-text-primary">{{ task.title }}</div>
+                            <div class="mt-1 text-xs text-text-secondary">
+                              {{ task.priority }}<span v-if="task.deadline"> · Deadline {{ new Date(task.deadline).toLocaleDateString('de-DE') }}</span>
+                            </div>
+                          </div>
+                          <span
+                            class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                            :class="selectedCommitTaskIds.includes(task.id)
+                              ? 'bg-accent-purple/15 text-accent-purple-soft'
+                              : 'bg-white/[0.06] text-text-muted'"
+                          >
+                            {{ selectedCommitTaskIds.includes(task.id) ? 'gewählt' : 'optional' }}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div class="text-xs text-text-secondary">
+                        Bis zu drei Aufgaben aktiv wählen. Alles andere wird für heute bewusst entlastet.
+                      </div>
+                      <button class="btn-primary px-4 py-2 text-sm" @click="commitSelectedTasks">
+                        Diese Auswahl committen
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div class="mt-4 flex flex-wrap gap-2">
                   <button class="btn-primary px-4 py-2 text-sm disabled:opacity-50" :disabled="isRunningTodayAction" @click="runTodayAction(planNextTaskToday)">
                     Heute neu planen
