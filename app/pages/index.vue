@@ -1,4 +1,5 @@
 ﻿<script setup lang="ts">
+import TaskModal from '~/components/TaskModalDialog.vue'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import { resolveLifeAreaLabel } from '~/types/task'
 import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Task } from '~/types/task'
@@ -732,6 +733,34 @@ function goNext() {
   currentDate.value = d
 }
 
+function closeMobilePanels() {
+  showSidebar.value = false
+  showPlanningChat.value = false
+  showPreferences.value = false
+}
+
+function openTaskRoom() {
+  showPlanningChat.value = false
+  showPreferences.value = false
+  showSidebar.value = true
+}
+
+function openPlannerRoom() {
+  showSidebar.value = false
+  showPreferences.value = false
+  showPlanningChat.value = true
+}
+
+function goTodayInCalendar() {
+  closeMobilePanels()
+  goToday()
+}
+
+function toggleCalendarViewFromNav() {
+  closeMobilePanels()
+  currentView.value = currentView.value === 'month' ? 'week' : 'month'
+}
+
 function onSelectDate(dateStr: string) {
   selectedEvent.value = null
   selectedDate.value = dateStr
@@ -766,6 +795,7 @@ async function onDeleteEvent(eventId: string) {
 }
 
 function onOpenTask() {
+  closeMobilePanels()
   selectedTask.value = null
   selectedDate.value = undefined
   showTaskModal.value = true
@@ -1741,30 +1771,30 @@ function isSameCalendarDay(a: Date, b: Date) {
     </div>
 
     <nav class="fixed bottom-0 left-0 right-0 z-30 flex h-16 items-center justify-around border-t border-border-subtle bg-surface/90 px-2 backdrop-blur-glass-heavy lg:hidden">
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="goToday">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="goTodayInCalendar">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6h-5v6H4a1 1 0 0 1-1-1v-9.5Z" />
         </svg>
         Heute
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="currentView = currentView === 'month' ? 'week' : 'month'">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="toggleCalendarViewFromNav">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
         </svg>
         Kalender
       </button>
-      <button type="button" class="flex h-12 w-12 -translate-y-4 items-center justify-center rounded-full bg-gradient-to-br from-accent-purple to-accent-blue text-white shadow-glow-purple" @click="onOpenTask">
+      <button type="button" class="flex h-12 w-12 -translate-y-4 items-center justify-center rounded-full bg-gradient-to-br from-accent-purple to-accent-blue text-white shadow-glow-purple" title="Neue Aufgabe" @click="onOpenTask">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
         </svg>
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="showSidebar = true">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="openTaskRoom">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
         </svg>
         Aufgaben
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="showPlanningChat = true">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="openPlannerRoom">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l2.4 4.86L20 10l-4 3.89L17 20l-5-2.67L7 20l1-6.11L4 10l5.6-2.14L12 3Z" />
         </svg>

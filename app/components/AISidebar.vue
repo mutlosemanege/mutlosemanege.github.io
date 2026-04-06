@@ -3057,7 +3057,7 @@ async function handleRetryCalendarAction() {
       </div>
 
       <!-- Task List -->
-      <div class="flex-1 overflow-y-auto px-4 py-3">
+      <div class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
         <div v-if="tasks.length === 0" class="py-8 text-center">
           <div class="glass-card border border-dashed border-border-strong px-4 py-8"><p class="text-sm text-text-secondary">Keine Aufgaben vorhanden.</p><p class="mt-1 text-xs text-text-muted">Erstelle eine neue Aufgabe oder generiere ein KI-Projekt.</p></div>
           
