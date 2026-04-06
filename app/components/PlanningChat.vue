@@ -838,16 +838,16 @@ function availabilityLabelForSuggestion(start: Date, intent: PlanningIntent) {
 }
 
 function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
-  const suggestions: PreviewAlternative[] = []
+  const suggestionPools = new Map<string, PreviewAlternative[]>()
   const seen = new Set<string>()
-  const perDayCount = new Map<string, number>()
   const baseCandidates = collectSlotCandidates(parsed)
   const primaryCandidate = baseCandidates[0]
   const primaryDay = primaryCandidate ? startOfPreviewDay(primaryCandidate.start) : null
-  const maxSuggestions = 9
-  const maxPerDay = 3
+  const primaryDayKey = primaryDay ? toPreviewDayKey(primaryDay) : null
+  const maxSuggestions = 6
+  const maxPerDay = 2
 
-  const pushCandidates = (
+  const addCandidatesToPool = (
     candidates: SlotSuggestion[],
     suffixReason?: string,
   ) => {
@@ -855,31 +855,30 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
       const key = `${candidate.start.toISOString()}-${candidate.end.toISOString()}`
       if (seen.has(key)) continue
       const dayKey = toPreviewDayKey(candidate.start)
-      if ((perDayCount.get(dayKey) || 0) >= maxPerDay) continue
       seen.add(key)
-      perDayCount.set(dayKey, (perDayCount.get(dayKey) || 0) + 1)
-      suggestions.push({
+      const entries = suggestionPools.get(dayKey) || []
+      entries.push({
         key,
         dayKey,
         label: `${formatPreview(candidate.start.toISOString())} bis ${formatPreview(candidate.end.toISOString())}`,
         reason: suffixReason ? `${candidate.reason} ${suffixReason}` : candidate.reason,
         start: candidate.start,
         end: candidate.end,
-        isPrimary: suggestions.length === 0,
+        isPrimary: false,
       })
-      if (suggestions.length >= maxSuggestions) return
+      suggestionPools.set(dayKey, entries)
     }
   }
 
   if (primaryDay) {
-    pushCandidates(
+    addCandidatesToPool(
       baseCandidates.filter(candidate => isSamePreviewDay(candidate.start, primaryDay)),
     )
   } else {
-    pushCandidates(baseCandidates)
+    addCandidatesToPool(baseCandidates)
   }
 
-  if (suggestions.length < 3 && primaryDay) {
+  if (primaryDay) {
     const sameDayParsed = {
       ...parsed,
       dateFrom: new Date(primaryDay),
@@ -892,22 +891,42 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
         ...sameDayParsed,
         timePreference: undefined,
       }
-      pushCandidates(
+      addCandidatesToPool(
         collectSlotCandidates(relaxedSameDayParsed),
         'Alternative am selben Tag mit gelockerter Uhrzeit.',
       )
     }
 
-    if (suggestions.length < 3 && parsed.preferredPeriod !== 'any') {
+    if (parsed.preferredPeriod !== 'any') {
       const relaxedPeriodParsed = {
         ...sameDayParsed,
         preferredPeriod: 'any' as const,
       }
-      pushCandidates(
+      addCandidatesToPool(
         collectSlotCandidates(relaxedPeriodParsed),
         'Alternative am selben Tag außerhalb des ursprünglichen Zeitfensters.',
       )
     }
+  }
+
+  if (primaryDay) {
+    addCandidatesToPool(
+      baseCandidates.filter(candidate => !isSamePreviewDay(candidate.start, primaryDay)),
+      'Weitere Option an einem anderen Tag.',
+    )
+  }
+
+  const orderedDayKeys = [
+    ...(primaryDayKey ? [primaryDayKey] : []),
+    ...[...suggestionPools.keys()].filter(dayKey => dayKey !== primaryDayKey).sort(),
+  ]
+
+  const suggestions: PreviewAlternative[] = []
+  for (const dayKey of orderedDayKeys) {
+    const pool = suggestionPools.get(dayKey) || []
+    const selected = selectDiverseSuggestionsForDay(pool, parsed, maxPerDay)
+    suggestions.push(...selected)
+    if (suggestions.length >= maxSuggestions) break
   }
 
   if (suggestions.length < 3) {
@@ -916,33 +935,25 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
       dateTo: addPreviewDays(parsed.dateTo, 14),
       hasExplicitDate: false,
     }
-    pushCandidates(
-      collectSlotCandidates(extendedParsed),
-      'Alternative auf einem späteren freien Tag mit ähnlicher Zeitlage.',
-    )
+    const fallbackSuggestions = collectSlotCandidates(extendedParsed)
+      .filter(candidate => !suggestions.some(entry => entry.key === `${candidate.start.toISOString()}-${candidate.end.toISOString()}`))
+      .slice(0, 3 - suggestions.length)
+      .map(candidate => ({
+        key: `${candidate.start.toISOString()}-${candidate.end.toISOString()}`,
+        dayKey: toPreviewDayKey(candidate.start),
+        label: `${formatPreview(candidate.start.toISOString())} bis ${formatPreview(candidate.end.toISOString())}`,
+        reason: `${candidate.reason} Alternative auf einem späteren freien Tag mit ähnlicher Zeitlage.`,
+        start: candidate.start,
+        end: candidate.end,
+        isPrimary: false,
+      }))
+    suggestions.push(...fallbackSuggestions)
   }
 
-  if (suggestions.length < 3 && parsed.timePreference) {
-    const relaxedTimeParsed = {
-      ...parsed,
-      timePreference: undefined,
-      dateTo: addPreviewDays(parsed.dateTo, 21),
-      hasExplicitDate: false,
-    }
-    pushCandidates(
-      collectSlotCandidates(relaxedTimeParsed),
-      'Lockerere Alternative ohne feste Uhrzeit, falls dein Wunschslot belegt ist.',
-    )
-  }
-
-  if (primaryDay) {
-    pushCandidates(
-      baseCandidates.filter(candidate => !isSamePreviewDay(candidate.start, primaryDay)),
-      'Weitere Option an einem anderen Tag.',
-    )
-  }
-
-  return suggestions.slice(0, Math.max(3, Math.min(maxSuggestions, suggestions.length)))
+  return suggestions.slice(0, maxSuggestions).map((suggestion, index) => ({
+    ...suggestion,
+    isPrimary: index === 0,
+  }))
 }
 
 function applyAlternativeSuggestion(alternative: PreviewAlternative) {
@@ -1014,6 +1025,56 @@ function formatSuggestionDay(date: Date) {
     month: 'long',
     ...(sameYear ? {} : { year: 'numeric' }),
   })
+}
+
+function selectDiverseSuggestionsForDay(
+  pool: PreviewAlternative[],
+  parsed: ParsedPlanningRequest,
+  maxCount: number,
+) {
+  if (pool.length <= maxCount) return pool
+
+  const selected: PreviewAlternative[] = [pool[0]]
+  const remaining = pool.slice(1)
+
+  while (selected.length < maxCount && remaining.length > 0) {
+    let bestIndex = 0
+    let bestScore = -Infinity
+
+    for (let index = 0; index < remaining.length; index++) {
+      const candidate = remaining[index]
+      const score = buildSuggestionDiversityScore(candidate, selected, parsed)
+      if (score > bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    }
+
+    selected.push(remaining.splice(bestIndex, 1)[0])
+  }
+
+  return selected.sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+function buildSuggestionDiversityScore(
+  candidate: PreviewAlternative,
+  selected: PreviewAlternative[],
+  parsed: ParsedPlanningRequest,
+) {
+  const candidateMinutes = (candidate.start.getHours() * 60) + candidate.start.getMinutes()
+  const nearestDistance = Math.min(
+    ...selected.map(entry => Math.abs(candidateMinutes - ((entry.start.getHours() * 60) + entry.start.getMinutes()))),
+  )
+
+  let score = nearestDistance
+
+  if (parsed.timePreference?.exactStartMinutes !== undefined) {
+    score += Math.abs(candidateMinutes - parsed.timePreference.exactStartMinutes) * 0.35
+  } else if (parsed.timePreference?.startMinutes !== undefined) {
+    score += Math.abs(candidateMinutes - parsed.timePreference.startMinutes) * 0.2
+  }
+
+  return score
 }
 
 function buildDayWindow(day: Date, parsed: ParsedPlanningRequest, strictTime: boolean, strictPeriod: boolean) {
