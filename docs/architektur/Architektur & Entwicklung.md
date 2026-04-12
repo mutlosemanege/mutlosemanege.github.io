@@ -88,6 +88,7 @@ tool_choice: { type: 'tool', name: 'prioritize_tasks' }  // Erzwingt Struktur
 | Authentifizierung | [[skills/Google-OAuth2-Browser]] |
 | NLP-Parser | [[skills/Planungs-Chat-NLP]] |
 | Deadline-System | [[skills/Deadline-Watcher]] |
+| UI-Design | [[skills/Frontend-Design]] · [[skills/Glassmorphism-Redesign]] · [[skills/Tailwind-Design-System]] |
 
 ---
 

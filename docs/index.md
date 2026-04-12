@@ -42,7 +42,8 @@ _HUB_  (dieser Index)
 │           ├── [[architektur/skills/Nuxt-Serverless-KI]]
 │           ├── [[architektur/skills/Glassmorphism-Redesign]]
 │           ├── [[architektur/skills/Tailwind-Design-System]]
-│           └── [[architektur/skills/Deadline-Watcher]]
+│           ├── [[architektur/skills/Deadline-Watcher]]
+│           └── [[architektur/skills/Frontend-Design]]
 │
 ├── [[planung/00_Übersicht]]             Features, Roadmap, Redesign
 │     ├── [[planung/Planung & Design]]
@@ -92,7 +93,7 @@ _HUB_  (dieser Index)
 [[prompts/Prompt]] · [[prompts/PROMPT_white-mode]]
 
 ### Skills
-[[architektur/skills/00 Skills Übersicht]] · [[architektur/skills/Greedy-Scheduler]] · [[architektur/skills/Multi-Block-Scheduling]] · [[architektur/skills/Rescheduling-Modi]] · [[architektur/skills/KI-Priorisierung]] · [[architektur/skills/Nuxt-Serverless-KI]] · [[architektur/skills/Planungs-Chat-NLP]] · [[architektur/skills/IndexedDB-Vue3]] · [[architektur/skills/Deadline-Watcher]] · [[architektur/skills/Google-OAuth2-Browser]] · [[architektur/skills/Glassmorphism-Redesign]] · [[architektur/skills/Tailwind-Design-System]]
+[[architektur/skills/00 Skills Übersicht]] · [[architektur/skills/Greedy-Scheduler]] · [[architektur/skills/Multi-Block-Scheduling]] · [[architektur/skills/Rescheduling-Modi]] · [[architektur/skills/KI-Priorisierung]] · [[architektur/skills/Nuxt-Serverless-KI]] · [[architektur/skills/Planungs-Chat-NLP]] · [[architektur/skills/IndexedDB-Vue3]] · [[architektur/skills/Deadline-Watcher]] · [[architektur/skills/Google-OAuth2-Browser]] · [[architektur/skills/Glassmorphism-Redesign]] · [[architektur/skills/Tailwind-Design-System]] · [[architektur/skills/Frontend-Design]]
 
 ### Sonstiges
 [[claude-commands]]

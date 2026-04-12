@@ -2,7 +2,7 @@
 
 > ⬆ [[Architektur & Entwicklung]] · [[_INDEX]]
 > Verknüpft: [[AI_FEATURE_ROADMAP]] · [[REDESIGN-PROMPT]]
-> Skills: [[skills/Greedy-Scheduler]] · [[skills/KI-Priorisierung]] · [[skills/Nuxt-Serverless-KI]] · [[skills/Google-OAuth2-Browser]] · [[skills/IndexedDB-Vue3]]
+> Skills: [[skills/Greedy-Scheduler]] · [[skills/KI-Priorisierung]] · [[skills/Nuxt-Serverless-KI]] · [[skills/Google-OAuth2-Browser]] · [[skills/IndexedDB-Vue3]] · [[skills/Frontend-Design]]
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

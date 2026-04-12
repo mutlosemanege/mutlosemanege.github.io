@@ -45,8 +45,9 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
 ## Design
 
 ```
-[[Glassmorphism-Redesign]]   Farbpalette, Glass-CSS, Layout-Architektur
-  └── [[Tailwind-Design-System]]  Design Tokens, Breakpoints, Event-Farben
+[[Frontend-Design]]           Produktionsreife Interfaces, Ästhetik-Guidelines
+  └── [[Glassmorphism-Redesign]]   Farbpalette, Glass-CSS, Layout-Architektur
+        └── [[Tailwind-Design-System]]  Design Tokens, Breakpoints, Event-Farben
 ```
 
 ---
@@ -64,7 +65,8 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
 | [[IndexedDB-Vue3]] | Daten | [[../../CLAUDE]], Greedy-Scheduler |
 | [[Deadline-Watcher]] | Daten | IndexedDB-Vue3, Greedy-Scheduler |
 | [[Google-OAuth2-Browser]] | Auth | [[../../deployment/GOOGLE_SETUP]], [[../../deployment/NETLIFY_SETUP]] |
-| [[Glassmorphism-Redesign]] | Design | [[../../planung/REDESIGN-PROMPT]], Tailwind-Design-System |
+| [[Frontend-Design]] | Design | Glassmorphism-Redesign, Tailwind-Design-System |
+| [[Glassmorphism-Redesign]] | Design | [[../../planung/REDESIGN-PROMPT]], Tailwind-Design-System, Frontend-Design |
 | [[Tailwind-Design-System]] | Design | [[../../planung/REDESIGN-PROMPT]], Glassmorphism-Redesign |
 
 ---
