@@ -363,6 +363,28 @@ const cases = [
       assert.equal(recurringFridayRequest.intent, 'routine')
       assert.equal(recurringFridayRequest.recurrenceDay, 5)
 
+      const dailyRoutineRequest = parsePlanningPrompt('taeglich Lesen 20 Uhr', 45, 'auto', baseNow)
+      assert.equal(dailyRoutineRequest.intent, 'routine')
+      assert.equal(dailyRoutineRequest.recurrenceMode, 'daily')
+      assert.equal(dailyRoutineRequest.recurrenceLabel, 'Täglich')
+
+      const workdaysRoutineRequest = parsePlanningPrompt('mo-fr Gym 07:30 Uhr', 60, 'auto', baseNow)
+      assert.equal(workdaysRoutineRequest.intent, 'routine')
+      assert.equal(workdaysRoutineRequest.recurrenceMode, 'workdays')
+      assert.equal(workdaysRoutineRequest.recurrenceLabel, 'An Arbeitstagen')
+      assert.equal(workdaysRoutineRequest.timePreference?.exactStartMinutes, (7 * 60) + 30)
+
+      const frequencyRoutineRequest = parsePlanningPrompt('3x die Woche Gym', 60, 'auto', baseNow)
+      assert.equal(frequencyRoutineRequest.intent, 'routine')
+      assert.equal(frequencyRoutineRequest.recurrenceFrequencyPerWeek, 3)
+      assert.ok(frequencyRoutineRequest.ambiguityHints.some(hint => hint.includes('3x pro Woche')))
+      assert.equal(frequencyRoutineRequest.title, 'gym')
+
+      const highFrequencyRoutineRequest = parsePlanningPrompt('6mal die Woche Gym', 60, 'auto', baseNow)
+      assert.equal(highFrequencyRoutineRequest.intent, 'routine')
+      assert.equal(highFrequencyRoutineRequest.recurrenceFrequencyPerWeek, 6)
+      assert.equal(highFrequencyRoutineRequest.title, 'gym')
+
       const christmasDinnerRequest = parsePlanningPrompt('Essen Heillig Abend 18 Uhr', 120, 'auto', baseNow)
       assert.equal(christmasDinnerRequest.hasExplicitDate, true)
       assert.equal(christmasDinnerRequest.dateFrom.getMonth(), 11)

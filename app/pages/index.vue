@@ -6,6 +6,7 @@ import { resolveLifeAreaLabel } from '~/types/task'
 import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Task } from '~/types/task'
 
 type WorkspaceSection = 'balance' | 'forecast' | 'review'
+type AppSurface = 'calendar' | 'tasks' | 'planner' | 'insights' | 'settings' | 'more'
 
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
@@ -146,6 +147,15 @@ const workspaceSectionOptions: Array<{ value: WorkspaceSection; label: string; d
 const activeWorkspaceMeta = computed(() =>
   workspaceSectionOptions.find(option => option.value === activeWorkspaceSection.value) || workspaceSectionOptions[0],
 )
+
+const activeSurface = computed<AppSurface>(() => {
+  if (showPreferences.value) return 'settings'
+  if (showPlanningChat.value) return 'planner'
+  if (showSidebar.value) return 'tasks'
+  if (showWorkspacePanel.value) return 'insights'
+  if (showCommandCenter.value) return 'more'
+  return 'calendar'
+})
 
 const todayCommit = computed(() => getDailyCommit())
 const todayMode = computed(() => getDailyMode())
@@ -776,6 +786,16 @@ function closeWorkspacePanel() {
   showWorkspacePanel.value = false
 }
 
+function surfaceButtonClass(surface: AppSurface) {
+  return activeSurface.value === surface
+    ? 'border-accent-blue/30 bg-accent-blue/12 text-text-primary shadow-glow-blue'
+    : 'text-text-secondary hover:bg-white/[0.08] hover:text-text-primary'
+}
+
+function bottomNavItemClass(surface: AppSurface) {
+  return activeSurface.value === surface ? 'text-text-primary' : 'text-text-muted'
+}
+
 function openTaskRoom() {
   showPlanningChat.value = false
   showPreferences.value = false
@@ -1123,52 +1143,94 @@ function isSameCalendarDay(a: Date, b: Date) {
 
 <template>
   <div class="flex min-h-screen bg-base text-text-primary">
-    <aside class="ambient-glow-purple hidden w-16 flex-shrink-0 flex-col items-center border-r border-border-subtle bg-surface/85 py-4 lg:flex">
+    <aside class="ambient-glow-purple hidden w-20 flex-shrink-0 flex-col items-center border-r border-border-subtle bg-surface/85 px-2 py-4 xl:w-56 xl:items-stretch xl:px-3 lg:flex">
       <div class="relative z-10 flex h-10 w-10 items-center justify-center rounded-glass bg-gradient-to-br from-accent-purple to-accent-blue text-white shadow-glow-purple">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
         </svg>
       </div>
 
-      <div class="relative z-10 mt-8 flex flex-col items-center gap-2">
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Heute" @click="goToday">
+      <div class="relative z-10 mt-8 flex flex-col items-center gap-2 xl:items-stretch">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('calendar')"
+          title="Heute"
+          @click="goToday"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6h-5v6H4a1 1 0 0 1-1-1v-9.5Z" />
           </svg>
+          <span class="hidden xl:inline text-sm">Heute</span>
         </button>
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Kalender" @click="currentView = currentView === 'month' ? 'week' : 'month'">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('calendar')"
+          title="Kalender"
+          @click="currentView = currentView === 'month' ? 'week' : 'month'"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
           </svg>
+          <span class="hidden xl:inline text-sm">Kalender</span>
         </button>
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Aufgaben" @click="showSidebar = true">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('tasks')"
+          title="Aufgaben"
+          @click="openTaskRoom"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
           </svg>
+          <span class="hidden xl:inline text-sm">Aufgaben</span>
         </button>
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="KI Planer" @click="showPlanningChat = true">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('planner')"
+          title="KI Planer"
+          @click="openPlannerRoom"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l2.4 4.86L20 10l-4 3.89L17 20l-5-2.67L7 20l1-6.11L4 10l5.6-2.14L12 3Z" />
           </svg>
+          <span class="hidden xl:inline text-sm">KI</span>
         </button>
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Einblicke" @click="openWorkspacePanel('forecast')">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('insights')"
+          title="Einblicke"
+          @click="openWorkspacePanel('forecast')"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 19h16M7 16V9m5 7V5m5 11v-6" />
           </svg>
+          <span class="hidden xl:inline text-sm">Einblicke</span>
         </button>
       </div>
 
-      <div class="relative z-10 mt-auto flex flex-col items-center gap-2">
-        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Planung und Routinen" @click="showPreferences = true">
+      <div class="relative z-10 mt-auto flex flex-col items-center gap-2 xl:items-stretch">
+        <button
+          type="button"
+          class="btn-secondary inline-flex h-11 w-11 items-center justify-center xl:w-full xl:justify-start xl:gap-3 xl:px-3"
+          :class="surfaceButtonClass('settings')"
+          title="Planung und Routinen"
+          @click="showPreferences = true"
+        >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6Zm0 6h.008v.008H4.5V12Zm0 6h.008v.008H4.5V18Z" />
           </svg>
+          <span class="hidden xl:inline text-sm">Planung</span>
         </button>
         <img
           v-if="userProfile"
           :src="userProfile.picture"
           :alt="userProfile.name"
-          class="h-10 w-10 rounded-full border border-border-subtle object-cover"
+          class="h-10 w-10 rounded-full border border-border-subtle object-cover xl:mx-auto"
           referrerpolicy="no-referrer"
         >
       </div>
@@ -1920,13 +1982,13 @@ function isSameCalendarDay(a: Date, b: Date) {
     </div>
 
     <nav class="fixed bottom-0 left-0 right-0 z-30 flex min-h-16 items-center justify-around border-t border-border-subtle bg-surface/90 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-glass-heavy lg:hidden">
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="goTodayInCalendar">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs" :class="bottomNavItemClass('calendar')" @click="goTodayInCalendar">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6h-5v6H4a1 1 0 0 1-1-1v-9.5Z" />
         </svg>
         Heute
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="toggleCalendarViewFromNav">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs" :class="bottomNavItemClass('calendar')" @click="toggleCalendarViewFromNav">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
         </svg>
@@ -1937,17 +1999,17 @@ function isSameCalendarDay(a: Date, b: Date) {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
         </svg>
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="openTaskRoom">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs" :class="bottomNavItemClass('tasks')" @click="openTaskRoom">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
         </svg>
         Aufgaben
       </button>
-      <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="openPlannerRoom">
+      <button type="button" class="flex flex-col items-center gap-1 text-xs" :class="bottomNavItemClass('more')" @click="openCommandCenter">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l2.4 4.86L20 10l-4 3.89L17 20l-5-2.67L7 20l1-6.11L4 10l5.6-2.14L12 3Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h16M4 12h16M4 17h16" />
         </svg>
-        KI
+        Mehr
       </button>
     </nav>
 

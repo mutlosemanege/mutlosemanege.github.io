@@ -47,9 +47,9 @@ Link oder Referenz zum Debug-Prompt (siehe unten)
 
 **Kategorie:** KI  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [ ] in Bearbeitung  [x] behoben
 
-**Review 12.04.26:** Zeitangaben wie `heute`, `morgen`, `übermorgen`, `nächste Woche` und viele Datumsformen werden inzwischen erkannt. Offen ist vor allem noch die Frequenzlogik wie `6mal die Woche`, `täglich` oder `Mo-Fr`.
+**Review 12.04.26:** Zeitangaben wie `heute`, `morgen`, `übermorgen`, `nächste Woche` und viele Datumsformen werden inzwischen erkannt. Wiederholungen wie `täglich`, `werktags` und `Mo-Fr` sind jetzt als Routinen deutlich besser abgedeckt. Frequenzangaben wie `3x die Woche` oder `6mal die Woche` werden erkannt, setzen intent auf `routine`, geben einen Ambiguity-Hint und bieten Suggestion-Chips zur Auflösung an. Titelbereinigung für Frequenzmuster ergänzt (12.04.26).
 
 **Modul/Funktion:** KI-Planer (Chat/Prompt-Verarbeitung)  
 **Fehlertyp:** Mangelnde Nutzer-Intent-Erkennung
@@ -362,7 +362,7 @@ Diese sollten direkt über Seitenleiste zugänglich sein.
 **Priorität:** 🔴 Kritisch  
 **Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
 
-**Review 12.04.26:** Die globale Navigation ist besser gebündelt, und `Einblicke` bildet jetzt einen ersten separaten Workspace für Analyse- und Lernbereiche. Die Vision einer vollständig ausgebauten Seitenleiste bzw. Bereichsnavigation ist aber noch nicht komplett erreicht.
+**Review 12.04.26:** Die globale Navigation ist besser gebündelt, `Einblicke` bildet einen separaten Workspace, die Desktop-Rail zeigt jetzt klarere Bereichszugänge und Mobile bündelt Zusatzräume über `Mehr`. Eine vollständig ausgebaute Bereichsnavigation ist aber noch nicht komplett erreicht.
 
 **Modul/Funktion:** Seitenleiste/Sidebar + Mobile-Menü  
 **Fehlertyp:** Feature-Fehler

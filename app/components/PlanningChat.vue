@@ -32,8 +32,10 @@ interface ParsedPlanningRequest {
   hasExplicitDate: boolean
   preferredPeriod: PreferredPeriod
   intent: PlanningIntent
+  recurrenceMode?: RoutineTemplate['repeatMode']
   recurrenceDay?: number
   recurrenceLabel?: string
+  recurrenceFrequencyPerWeek?: number
   timePreference?: PlanningTimePreference
   ambiguityHints: string[]
 }
@@ -247,6 +249,24 @@ const clarificationOptions = computed<ClarificationOption[]>(() => {
     })
   }
 
+  if (parsedDetails.value.recurrenceFrequencyPerWeek) {
+    if (parsedDetails.value.recurrenceFrequencyPerWeek >= 5) {
+      addOption({
+        key: 'recurrence-workdays',
+        label: 'Werktags',
+        detail: 'Macht daraus eine klare Routine an Arbeitstagen.',
+        promptValue: `${prompt.value} werktags`,
+      })
+    }
+
+    addOption({
+      key: 'recurrence-daily',
+      label: 'Täglich',
+      detail: 'Macht daraus eine Routine für jeden Tag.',
+      promptValue: `${prompt.value} täglich`,
+    })
+  }
+
   return options.slice(0, 5)
 })
 
@@ -274,8 +294,7 @@ const routineDuplicateWarnings = computed(() => {
   if (!previewRoutine.value) return []
 
   const warnings: Array<{ label: string; reason: string }> = []
-  for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
-    const baseDate = nextDateForWeekday(previewRoutine.value.template.day, weekOffset, new Date())
+  for (const baseDate of collectRoutineOccurrenceDates(previewRoutine.value.template, 4)) {
     const start = new Date(baseDate)
     start.setHours(previewRoutine.value.template.startHour, 0, 0, 0)
     const end = new Date(baseDate)
@@ -521,6 +540,7 @@ async function handleCreateRoutine() {
   try {
     const existingRoutine = preferences.value.routineTemplates.find(entry =>
       entry.title.trim().toLowerCase() === previewRoutine.value!.template.title.trim().toLowerCase() &&
+      (entry.repeatMode || 'weekly') === (previewRoutine.value!.template.repeatMode || 'weekly') &&
       entry.day === previewRoutine.value!.template.day &&
       entry.startHour === previewRoutine.value!.template.startHour &&
       entry.endHour === previewRoutine.value!.template.endHour,
@@ -543,8 +563,7 @@ async function handleCreateRoutine() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const transientEvents: Array<{ summary: string; start: Date; end: Date }> = []
 
-    for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
-      const baseDate = nextDateForWeekday(previewRoutine.value.template.day, weekOffset, new Date())
+    for (const baseDate of collectRoutineOccurrenceDates(previewRoutine.value.template, 20)) {
       const start = new Date(baseDate)
       start.setHours(previewRoutine.value.template.startHour, 0, 0, 0)
       const end = new Date(baseDate)
@@ -816,8 +835,14 @@ function buildCleanTitle(text: string) {
 }
 
 function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
-  if (parsed.recurrenceDay === undefined) {
-    throw new Error('Für eine Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
+  const repeatMode = parsed.recurrenceMode || 'weekly'
+
+  if (!parsed.recurrenceMode && parsed.recurrenceFrequencyPerWeek) {
+    throw new Error(`Für ${parsed.recurrenceFrequencyPerWeek}x pro Woche brauche ich noch klare Tage oder eine Form wie "werktags" oder "täglich".`)
+  }
+
+  if (repeatMode === 'weekly' && parsed.recurrenceDay === undefined) {
+    throw new Error('Für eine wöchentliche Routine brauche ich einen Wochentag wie "jeden Mittwoch".')
   }
 
   const baseStartMinutes = parsed.timePreference?.exactStartMinutes ??
@@ -827,7 +852,7 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
   const startHour = Math.max(0, Math.min(23, Math.floor(baseStartMinutes / 60)))
   const endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(baseEndMinutes / 60)))
   const roundedToHour = baseStartMinutes % 60 !== 0 || baseEndMinutes % 60 !== 0
-  const nextDate = nextDateForWeekday(parsed.recurrenceDay, 0, new Date())
+  const nextDate = nextDateForRoutine(parsed)
   const nextStart = new Date(nextDate)
   nextStart.setHours(startHour, 0, 0, 0)
   const nextEnd = new Date(nextDate)
@@ -840,7 +865,8 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
     template: {
       id: uuidv4(),
       title: parsed.title,
-      day: parsed.recurrenceDay,
+      day: repeatMode === 'weekly' ? parsed.recurrenceDay : undefined,
+      repeatMode,
       startHour,
       endHour,
       description: `Aus Planungs-Chat erstellt: "${prompt.value.trim()}"`,
@@ -850,6 +876,65 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
     roundedToHour,
     reason: buildRoutineReason(parsed, nextStart, roundedToHour),
   }
+}
+
+function nextDateForRoutine(parsed: ParsedPlanningRequest) {
+  const repeatMode = parsed.recurrenceMode || 'weekly'
+  const now = new Date()
+  const cursor = new Date(now)
+  cursor.setHours(0, 0, 0, 0)
+
+  if (repeatMode === 'daily') {
+    return cursor
+  }
+
+  if (repeatMode === 'workdays') {
+    const workDays = preferences.value.workDays?.length ? preferences.value.workDays : [1, 2, 3, 4, 5]
+    for (let offset = 0; offset < 14; offset++) {
+      const candidate = new Date(cursor)
+      candidate.setDate(cursor.getDate() + offset)
+      if (workDays.includes(candidate.getDay())) {
+        return candidate
+      }
+    }
+    return cursor
+  }
+
+  return nextDateForWeekday(parsed.recurrenceDay!, 0, now)
+}
+
+function collectRoutineOccurrenceDates(template: RoutineTemplate, limit: number) {
+  const occurrences: Date[] = []
+  const repeatMode = template.repeatMode || 'weekly'
+  const cursor = new Date()
+  cursor.setHours(0, 0, 0, 0)
+
+  if (repeatMode === 'daily') {
+    for (let offset = 0; offset < limit; offset++) {
+      const candidate = new Date(cursor)
+      candidate.setDate(cursor.getDate() + offset)
+      occurrences.push(candidate)
+    }
+    return occurrences
+  }
+
+  if (repeatMode === 'workdays') {
+    const workDays = preferences.value.workDays?.length ? preferences.value.workDays : [1, 2, 3, 4, 5]
+    for (let offset = 0; offset < 28 && occurrences.length < limit; offset++) {
+      const candidate = new Date(cursor)
+      candidate.setDate(cursor.getDate() + offset)
+      if (workDays.includes(candidate.getDay())) {
+        occurrences.push(candidate)
+      }
+    }
+    return occurrences
+  }
+
+  for (let weekOffset = 0; weekOffset < limit; weekOffset++) {
+    occurrences.push(nextDateForWeekday(template.day!, weekOffset, new Date()))
+  }
+
+  return occurrences
 }
 
 function findBestSlot(parsed: ParsedPlanningRequest): SlotSuggestion | null {

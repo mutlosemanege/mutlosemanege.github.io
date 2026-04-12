@@ -323,7 +323,7 @@ function updateRoutineRepeatMode(id: string, value: RoutineRepeatMode) {
   if (!routine) return
 
   routine.repeatMode = value
-  if (value === 'workdays') {
+  if (value === 'workdays' || value === 'daily') {
     routine.day = undefined
   } else if (typeof routine.day !== 'number') {
     routine.day = form.workDays[0] ?? 1
@@ -698,10 +698,12 @@ function collectRoutineDates(routine: RoutineTemplate, from: Date, durationDays:
     const date = new Date(cursor)
     date.setDate(cursor.getDate() + offset)
 
-    const isWorkdayRoutine = (routine.repeatMode || 'weekly') === 'workdays'
-    const applies = isWorkdayRoutine
-      ? form.workDays.includes(date.getDay())
-      : routine.day === date.getDay()
+    const repeatMode = routine.repeatMode || 'weekly'
+    const applies = repeatMode === 'daily'
+      ? true
+      : repeatMode === 'workdays'
+        ? form.workDays.includes(date.getDay())
+        : routine.day === date.getDay()
 
     if (!applies) continue
     if ((routine.skipDates || []).includes(toDateKey(date))) continue
@@ -712,6 +714,10 @@ function collectRoutineDates(routine: RoutineTemplate, from: Date, durationDays:
 }
 
 function routineRepeatLabel(routine: RoutineTemplate) {
+  if ((routine.repeatMode || 'weekly') === 'daily') {
+    return `Täglich · ${formatHourValue(routine.startHour)} bis ${formatHourValue(routine.endHour)}`
+  }
+
   if ((routine.repeatMode || 'weekly') === 'workdays') {
     return `An Arbeitstagen · ${formatHourValue(routine.startHour)} bis ${formatHourValue(routine.endHour)}`
   }
@@ -1268,6 +1274,7 @@ async function handleRetryCalendarAction() {
                 class="input-dark w-full px-3 py-2 text-sm"
               >
                 <option value="weekly">Wöchentlich</option>
+                <option value="daily">Täglich</option>
                 <option value="workdays">An Arbeitstagen</option>
               </select>
               <select
@@ -1282,9 +1289,9 @@ async function handleRetryCalendarAction() {
               <div
                 v-else
                 class="flex items-center rounded-glass border border-dashed border-border-strong px-3 py-2 text-sm text-text-secondary"
-              >
-                Gilt an deinen aktiven Arbeitstagen
-              </div>
+                  >
+                    {{ routineDraft.repeatMode === 'daily' ? 'Gilt täglich' : 'Gilt an deinen aktiven Arbeitstagen' }}
+                  </div>
               <input
                 :value="formatHourValue(routineDraft.startHour)"
                 type="time"
@@ -1355,6 +1362,7 @@ async function handleRetryCalendarAction() {
                     @change="updateRoutineRepeatMode(routine.id, ($event.target as HTMLSelectElement).value as RoutineRepeatMode)"
                   >
                     <option value="weekly">Wöchentlich</option>
+                    <option value="daily">Täglich</option>
                     <option value="workdays">An Arbeitstagen</option>
                   </select>
                   <template v-if="(routine.repeatMode || 'weekly') === 'weekly'">
@@ -1372,7 +1380,7 @@ async function handleRetryCalendarAction() {
                     v-else
                     class="flex items-center rounded-glass border border-dashed border-border-strong px-3 py-2 text-sm text-text-secondary"
                   >
-                    Aktiv an Arbeitstagen
+                    {{ (routine.repeatMode || 'weekly') === 'daily' ? 'Aktiv täglich' : 'Aktiv an Arbeitstagen' }}
                   </div>
                 </div>
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1537,6 +1545,7 @@ async function handleRetryCalendarAction() {
                         class="input-dark w-full px-3 py-2 text-sm"
                       >
                         <option value="weekly">Wöchentlich</option>
+                        <option value="daily">Täglich</option>
                         <option value="workdays">An Arbeitstagen</option>
                       </select>
                       <select
@@ -1552,7 +1561,7 @@ async function handleRetryCalendarAction() {
                         v-else
                         class="flex items-center rounded-glass border border-dashed border-border-strong px-3 py-2 text-sm text-text-secondary"
                       >
-                        Gilt an deinen aktiven Arbeitstagen
+                        {{ entry.repeatMode === 'daily' ? 'Gilt täglich' : 'Gilt an deinen aktiven Arbeitstagen' }}
                       </div>
                     </template>
                     <input

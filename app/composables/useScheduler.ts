@@ -672,6 +672,10 @@ function routineAppliesOnDate(
   date: Date,
   workDays: readonly number[],
 ) {
+  if ((routine.repeatMode || 'weekly') === 'daily') {
+    return true
+  }
+
   if ((routine.repeatMode || 'weekly') === 'workdays') {
     return workDays.includes(date.getDay())
   }

@@ -72,7 +72,7 @@ export interface DeepWorkWindow {
   endHour: number
 }
 
-export type RoutineRepeatMode = 'weekly' | 'workdays'
+export type RoutineRepeatMode = 'weekly' | 'workdays' | 'daily'
 
 export interface RoutineTemplate {
   id: string

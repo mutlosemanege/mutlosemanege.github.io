@@ -16,13 +16,16 @@ export interface ParsedPlanningRequest {
   hasExplicitDate: boolean
   preferredPeriod: PreferredPeriod
   intent: PlanningIntent
+  recurrenceMode?: 'weekly' | 'workdays' | 'daily'
   recurrenceDay?: number
   recurrenceLabel?: string
+  recurrenceFrequencyPerWeek?: number
   timePreference?: PlanningTimePreference
   ambiguityHints: string[]
 }
 
 interface RecurrenceMatch {
+  repeatMode: 'weekly' | 'workdays' | 'daily'
   day: number
   label: string
 }
@@ -39,6 +42,7 @@ export function parsePlanningPrompt(
   dateTo.setDate(dateTo.getDate() + 7)
 
   const recurrence = extractRecurrence(normalized)
+  const recurrenceFrequencyPerWeek = extractRecurrenceFrequencyPerWeek(normalized)
   const timePreference = extractTimePreference(normalized, fallbackDuration)
   const preferredPeriod = extractPreferredPeriod(normalized)
   const explicitDate = extractSpecificDate(normalized, now) ?? extractNamedAnnualDate(normalized, now)
@@ -102,7 +106,7 @@ export function parsePlanningPrompt(
 
   const explicitDuration = extractDuration(text)
   const title = buildCleanTitle(normalized)
-  const intent = detectIntent(text, recurrence, intentMode)
+  const intent = detectIntent(text, recurrence, recurrenceFrequencyPerWeek, intentMode)
   const ambiguityHints = buildAmbiguityHints({
     hasExplicitDate,
     preferredPeriod,
@@ -111,6 +115,7 @@ export function parsePlanningPrompt(
     weekdayReferenceMode,
     rangeMode,
     intent,
+    recurrenceFrequencyPerWeek,
   })
 
   return {
@@ -121,8 +126,10 @@ export function parsePlanningPrompt(
     hasExplicitDate,
     preferredPeriod,
     intent,
+    recurrenceMode: recurrence?.repeatMode,
     recurrenceDay: recurrence?.day,
     recurrenceLabel: recurrence?.label,
+    recurrenceFrequencyPerWeek,
     timePreference,
     ambiguityHints,
   }
@@ -131,6 +138,7 @@ export function parsePlanningPrompt(
 export function detectIntent(
   text: string,
   recurrence: { day: number; label: string } | null,
+  recurrenceFrequencyPerWeek: number | null,
   intentMode: 'auto' | PlanningIntent = 'auto',
 ): PlanningIntent {
   if (intentMode === 'event') return 'event'
@@ -141,7 +149,7 @@ export function detectIntent(
   const taskHints = ['lernen', 'videoschnitt', 'video', 'schnitt', 'schneiden', 'bearbeiten', 'vorbereiten', 'schreiben', 'bauen', 'erledigen', 'review', 'recherche', 'arbeiten']
   const eventHints = ['treffen', 'call', 'meeting', 'mittag', 'essen', 'arzt', 'termin', 'party', 'date', 'feier']
 
-  if (recurrence) return 'routine'
+  if (recurrence || recurrenceFrequencyPerWeek !== null) return 'routine'
 
   const taskMatches = taskHints.filter(hint => normalized.includes(hint)).length
   const eventMatches = eventHints.filter(hint => normalized.includes(hint)).length
@@ -152,6 +160,15 @@ export function detectIntent(
   }
 
   return taskMatches > eventMatches ? 'task' : 'event'
+}
+
+export function extractRecurrenceFrequencyPerWeek(text: string) {
+  const match = text.match(/\b(\d{1,2})\s*(?:x|mal)\s*(?:pro\s*)?(?:die\s*)?woche\b/)
+  if (!match) return null
+
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+  return value
 }
 
 export function extractDuration(text: string): number | null {
@@ -179,11 +196,28 @@ export function extractRecurrence(text: string) {
   const recurringWeekday = extractRecurringWeekday(text)
   if (recurringWeekday) return recurringWeekday
 
+  if (/\b(taeglich|jeden tag)\b/.test(text)) {
+    return {
+      repeatMode: 'daily' as const,
+      day: -1,
+      label: 'Täglich',
+    }
+  }
+
+  if (/\b(werktags|arbeitstags|an arbeitstagen|mo-fr|mo bis fr|montag bis freitag)\b/.test(text)) {
+    return {
+      repeatMode: 'workdays' as const,
+      day: -1,
+      label: 'An Arbeitstagen',
+    }
+  }
+
   if (!/(jeden|jede|immer|woechentlich|regelmaessig)/.test(text)) return null
   const day = extractWeekday(text)
   if (day === null) return null
 
   return {
+    repeatMode: 'weekly' as const,
     day,
     label: `Jede Woche ${weekdayLabel(day)}`,
   }
@@ -266,7 +300,7 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
 
 export function buildCleanTitle(text: string) {
   return text
-    .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
+    .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|taeglich|jeden tag|werktags|arbeitstags|an arbeitstagen|mo-fr|mo bis fr|montag bis freitag|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
     .replace(/\b(heiligabend|heilig abend|weihnachten|erster weihnachtstag|1\.?\s*weihnachtstag|zweiter weihnachtstag|2\.?\s*weihnachtstag|silvester|neujahr)\b/gi, '')
     .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spaet)\b/gi, '')
     .replace(/\b(zwischen|um|ab|bis|von|und)\b/gi, '')
@@ -274,6 +308,7 @@ export function buildCleanTitle(text: string) {
     .replace(/\b\d{1,2}\.\s*(januar|februar|maerz|april|mai|juni|juli|august|september|oktober|november|dezember)\b/gi, '')
     .replace(/\b\d{1,2}(?::\d{2})?\s*(uhr)?\b/gi, '')
     .replace(/\b\d+(?:[.,]\d+)?\s*(min|minute|minuten|h|std|stunden)\b/gi, '')
+    .replace(/\b\d{1,2}\s*(?:x|mal)\s*(?:pro\s*)?(?:die\s*)?woche\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -327,6 +362,7 @@ function extractRecurringWeekday(text: string): RecurrenceMatch | null {
   for (const [name, day] of Object.entries(recurringMap)) {
     if (text.includes(name)) {
       return {
+        repeatMode: 'weekly',
         day,
         label: `Jede Woche ${weekdayLabel(day)}`,
       }
@@ -466,6 +502,7 @@ function buildAmbiguityHints(context: {
   weekdayReferenceMode: 'next' | 'this' | 'default'
   rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open'
   intent: PlanningIntent
+  recurrenceFrequencyPerWeek: number | null
 }) {
   const hints: string[] = []
 
@@ -481,6 +518,10 @@ function buildAmbiguityHints(context: {
 
   if (!context.timePreference && context.rangeMode !== 'exact-day' && context.intent !== 'routine') {
     hints.push('Ohne genaue Uhrzeit oder exakten Tag priorisiere ich zuerst sinnvolle freie Slots statt nur eine einzige starre Zeit.')
+  }
+
+  if (context.intent === 'routine' && context.recurrenceFrequencyPerWeek !== null) {
+    hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche wurde erkannt. Für die Umsetzung brauche ich noch klare Tage oder eine Form wie "werktags" oder "täglich".`)
   }
 
   return hints
