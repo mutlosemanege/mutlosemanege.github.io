@@ -9,6 +9,7 @@ Planung, Design, Feature-Roadmaps und Redesign.
 | Dokument | Beschreibung |
 |----------|--------------|
 | [[Planung & Design]] | Projektplanung, Design-Entscheidungen |
+| [[IDEEN_BACKLOG]] | Sammlung späterer Verbesserungs- und Produktideen |
 | [[Archiv]] | Historische Dokumente |
 | [[REDESIGN-PROMPT]] | Premium Dark-Mode Redesign Prompt |
 | [[REDESIGN_CHECKLIST]] | Redesign-Checkliste |
@@ -19,6 +20,7 @@ Planung, Design, Feature-Roadmaps und Redesign.
 Planung & Design
 ├── Projekt-Hub ← [[../index]]
 ├── Features planen → [[../ai/AI_FEATURE_ROADMAP]]
+├── Ideen sammeln → [[IDEEN_BACKLOG]]
 ├── Premium Redesign → [[REDESIGN-PROMPT]]
 │
 └── Historisch / Archiv
