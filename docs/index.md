@@ -47,6 +47,7 @@ _HUB_  (dieser Index)
 │
 ├── [[planung/00_Übersicht]]             Features, Roadmap, Redesign
 │     ├── [[planung/Planung & Design]]
+│     ├── [[planung/KI-Fehler und Design-Fehler]]
 │     ├── [[planung/Archiv]]
 │     ├── [[planung/REDESIGN-PROMPT]]
 │     └── [[planung/REDESIGN_CHECKLIST]]
@@ -81,7 +82,7 @@ _HUB_  (dieser Index)
 [[architektur/00_Übersicht]] · [[architektur/Architektur & Entwicklung]] · [[architektur/COMPONENT_TEMPLATE_ERROR_ANALYSIS]] · [[architektur/SECURITY_VALIDATION_REVIEW]]
 
 ### Planung
-[[planung/00_Übersicht]] · [[planung/Planung & Design]] · [[planung/Archiv]] · [[planung/REDESIGN-PROMPT]] · [[planung/REDESIGN_CHECKLIST]]
+[[planung/00_Übersicht]] · [[planung/Planung & Design]] · [[planung/KI-Fehler und Design-Fehler]] · [[planung/Archiv]] · [[planung/REDESIGN-PROMPT]] · [[planung/REDESIGN_CHECKLIST]]
 
 ### AI Features
 [[ai/00_Übersicht]] · [[ai/AI_FEATURE_ROADMAP]] · [[ai/AI_FEATURE_ROADMAP_PHASE_3]] · [[ai/AI_FEATURE_ROADMAP_PHASE_4]] · [[ai/AI_FEATURE_ROADMAP_PHASE_5]] · [[ai/Verbesserungen-KI-Features]]
