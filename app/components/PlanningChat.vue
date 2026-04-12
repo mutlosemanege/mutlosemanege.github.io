@@ -36,6 +36,8 @@ interface ParsedPlanningRequest {
   recurrenceDay?: number
   recurrenceLabel?: string
   recurrenceFrequencyPerWeek?: number
+  multipleWeekdays?: number[]
+  frequencyInPeriod?: number
   timePreference?: PlanningTimePreference
   ambiguityHints: string[]
 }
@@ -105,6 +107,9 @@ const error = ref<string | null>(null)
 const previewEvent = ref<Omit<CalendarEvent, 'id'> | null>(null)
 const previewTask = ref<Omit<Task, 'id' | 'createdAt' | 'updatedAt'> | null>(null)
 const previewRoutine = ref<RoutinePreview | null>(null)
+const previewMultiRoutines = ref<RoutinePreview[]>([])
+const previewMultiEventSlots = ref<Array<{ start: Date; end: Date }>>([])
+
 const parsedDetails = ref<ParsedPlanningRequest | null>(null)
 const previewTaskSlot = ref<{ start: Date; end: Date } | null>(null)
 const previewReason = ref<string | null>(null)
@@ -120,10 +125,10 @@ const examplePrompts = [
 const promptCharactersLeft = computed(() => MAX_CHAT_PROMPT_LENGTH - prompt.value.length)
 const decisionCardModeLabel = computed(() => {
   if (!parsedDetails.value) return null
-  return previewEvent.value || previewTask.value || previewRoutine.value ? 'Empfehlung' : 'Vorschau'
+  return previewEvent.value || previewTask.value || previewRoutine.value || previewMultiRoutines.value.length > 0 || previewMultiEventSlots.value.length > 0 ? 'Empfehlung' : 'Vorschau'
 })
 const decisionCardTone = computed(() => {
-  if (previewEvent.value || previewTask.value || previewRoutine.value) return 'preview'
+  if (previewEvent.value || previewTask.value || previewRoutine.value || previewMultiRoutines.value.length > 0 || previewMultiEventSlots.value.length > 0) return 'preview'
   if (error.value) return 'warning'
   return 'neutral'
 })
@@ -132,6 +137,8 @@ const decisionCardNextStep = computed(() => {
   if (previewTask.value && previewTaskSlot.value) return 'Wenn der Slot passt, kannst du die Aufgabe direkt mit Kalendereintrag anlegen.'
   if (previewTask.value) return 'Lege die Aufgabe jetzt an oder passe den Prompt an, damit der Chat einen direkten Slot suchen kann.'
   if (previewRoutine.value) return 'Speichere die Routine, wenn Wochentag und Uhrzeit wirklich zu deinem Rhythmus passen.'
+  if (previewMultiRoutines.value.length > 0) return `Prüfe die ${previewMultiRoutines.value.length} Tage — passen Wochentage und Uhrzeiten, kannst du alle auf einmal speichern.`
+  if (previewMultiEventSlots.value.length > 0) return `Prüfe die ${previewMultiEventSlots.value.length} vorgeschlagenen Slots — wenn die Zeiten passen, werden alle als Termine eingetragen.`
   return 'Verfeinere Datum, Uhrzeit oder Dauer, damit der Vorschlag genauer wird.'
 })
 const interpretedPromptSummary = computed(() => {
@@ -350,6 +357,8 @@ watch(() => props.show, (show) => {
   previewEvent.value = null
   previewTask.value = null
   previewRoutine.value = null
+  previewMultiRoutines.value = []
+  previewMultiEventSlots.value = []
   parsedDetails.value = null
   previewTaskSlot.value = null
   previewReason.value = null
@@ -369,6 +378,8 @@ async function handlePlan() {
   previewEvent.value = null
   previewTask.value = null
   previewRoutine.value = null
+  previewMultiRoutines.value = []
+  previewMultiEventSlots.value = []
   previewTaskSlot.value = null
   previewReason.value = null
   previewUncertainty.value = null
@@ -382,6 +393,35 @@ async function handlePlan() {
     const safeTitle = normalizeUserText(parsed.title, MAX_TASK_TITLE_LENGTH) || 'Neuer Eintrag'
     parsed.title = safeTitle
     parsedDetails.value = parsed
+
+    if (parsed.multipleWeekdays && parsed.multipleWeekdays.length >= 2) {
+      const routines = buildMultiRoutineFromWeekdays(parsed, parsed.multipleWeekdays)
+      previewMultiRoutines.value = routines
+      previewReason.value = `${routines.length}x wöchentlich: ${routines.map(r => weekdayLabel(r.template.day!)).join(', ')}`
+      previewUncertainty.value = null
+      return
+    }
+
+    if (parsed.recurrenceFrequencyPerWeek && !parsed.recurrenceMode) {
+      const slots = distributeNSlots(parsed.recurrenceFrequencyPerWeek, parsed, 1)
+      if (slots.length > 0) {
+        const routines = buildMultiRoutineFromSlots(parsed, slots)
+        previewMultiRoutines.value = routines
+        previewReason.value = `${routines.length}x wöchentlich: ${routines.map(r => weekdayLabel(r.template.day!)).join(', ')}`
+        previewUncertainty.value = routines.length < parsed.recurrenceFrequencyPerWeek ? `Nur ${routines.length} freie Slots gefunden — passe Dauer oder Uhrzeit an für mehr.` : null
+        return
+      }
+    }
+
+    if (parsed.frequencyInPeriod) {
+      const slots = distributeNSlots(parsed.frequencyInPeriod, parsed, 0)
+      if (slots.length > 0) {
+        previewMultiEventSlots.value = slots.map(s => ({ start: s.start, end: s.end }))
+        previewReason.value = `${slots.length} Slots in diesem Zeitraum gefunden`
+        previewUncertainty.value = slots.length < parsed.frequencyInPeriod ? `Nur ${slots.length} von ${parsed.frequencyInPeriod} freien Slots gefunden.` : null
+        return
+      }
+    }
 
     if (parsed.intent === 'routine') {
       const routine = buildRoutinePreview(parsed)
@@ -596,6 +636,86 @@ async function handleCreateRoutine() {
     emit('close')
   } catch (err: any) {
     error.value = err.message || calendarError.value || 'Routine konnte nicht erstellt werden.'
+  } finally {
+    isPlanning.value = false
+  }
+}
+
+async function handleCreateMultiRoutines() {
+  if (isPlanning.value || previewMultiRoutines.value.length === 0) return
+  isPlanning.value = true
+  error.value = null
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    for (const routine of previewMultiRoutines.value) {
+      const isDuplicate = preferences.value.routineTemplates.some(e =>
+        e.title.trim().toLowerCase() === routine.template.title.trim().toLowerCase()
+        && (e.repeatMode || 'weekly') === (routine.template.repeatMode || 'weekly')
+        && e.day === routine.template.day
+        && e.startHour === routine.template.startHour
+        && e.endHour === routine.template.endHour,
+      )
+      if (!isDuplicate) {
+        updatePreferences({
+          routineTemplates: [
+            ...preferences.value.routineTemplates,
+            {
+              ...routine.template,
+              title: normalizeUserText(routine.template.title, MAX_TASK_TITLE_LENGTH),
+              description: normalizeOptionalUserText(routine.template.description, MAX_LONG_TEXT_LENGTH),
+            },
+          ],
+        })
+      }
+
+      const transientEvents: Array<{ summary: string; start: Date; end: Date }> = []
+      for (const baseDate of collectRoutineOccurrenceDates(routine.template, 20)) {
+        const start = new Date(baseDate)
+        start.setHours(routine.template.startHour, 0, 0, 0)
+        const end = new Date(baseDate)
+        end.setHours(routine.template.endHour, 0, 0, 0)
+        if (routine.template.endHour <= routine.template.startHour) end.setDate(end.getDate() + 1)
+        if (hasMatchingExistingEvent(routine.template.title, start, end, transientEvents)) continue
+        const created = await createEvent({
+          summary: normalizeUserText(routine.template.title, MAX_TASK_TITLE_LENGTH),
+          description: normalizeOptionalUserText(routine.template.description || 'Aus Planungs-Chat als Routine angelegt', MAX_LONG_TEXT_LENGTH),
+          start: { dateTime: start.toISOString(), timeZone: tz },
+          end: { dateTime: end.toISOString(), timeZone: tz },
+        })
+        if (created?.id) transientEvents.push({ summary: routine.template.title, start, end })
+      }
+    }
+    emit('created')
+    emit('close')
+  } catch (err: any) {
+    error.value = err.message || calendarError.value || 'Routinen konnten nicht erstellt werden.'
+  } finally {
+    isPlanning.value = false
+  }
+}
+
+async function handleCreateMultiEvents() {
+  if (isPlanning.value || previewMultiEventSlots.value.length === 0 || !parsedDetails.value) return
+  isPlanning.value = true
+  error.value = null
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const title = normalizeUserText(parsedDetails.value.title, MAX_TASK_TITLE_LENGTH)
+    const desc = normalizeOptionalUserText(`Geplant aus Chat-Eingabe: "${shortenForFeedback(prompt.value.trim(), 140)}"`, MAX_LONG_TEXT_LENGTH)
+    for (const slot of previewMultiEventSlots.value) {
+      await createEvent({
+        summary: title,
+        description: desc,
+        start: { dateTime: slot.start.toISOString(), timeZone: tz },
+        end: { dateTime: slot.end.toISOString(), timeZone: tz },
+      })
+    }
+    emit('created')
+    emit('close')
+  } catch (err: any) {
+    error.value = err.message || calendarError.value || 'Termine konnten nicht erstellt werden.'
   } finally {
     isPlanning.value = false
   }
@@ -876,6 +996,86 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
     roundedToHour,
     reason: buildRoutineReason(parsed, nextStart, roundedToHour),
   }
+}
+
+function distributeNSlots(count: number, parsed: ParsedPlanningRequest, minGapDays: number): SlotSuggestion[] {
+  const from = new Date()
+  from.setHours(0, 0, 0, 0)
+  const to = new Date(from)
+  to.setDate(from.getDate() + Math.max(14, count * 3))
+
+  const searchParsed = { ...parsed, dateFrom: from, dateTo: to }
+  const allSlots = findFreeSlots(from, to, props.events, buildChatPlanningPreferences(searchParsed))
+
+  const selected: SlotSuggestion[] = []
+  let lastDayNum = -Infinity
+
+  for (const slot of allSlots) {
+    if (selected.length >= count) break
+    const dayNum = Math.floor(slot.start.getTime() / 86400000)
+    if (selected.some(s => s.start.toDateString() === slot.start.toDateString())) continue
+    if (dayNum - lastDayNum < minGapDays) continue
+    selected.push(slot)
+    lastDayNum = dayNum
+  }
+
+  return selected
+}
+
+function buildMultiRoutineFromSlots(parsed: ParsedPlanningRequest, slots: SlotSuggestion[]): RoutinePreview[] {
+  return slots.map((slot) => {
+    const startHour = slot.start.getHours()
+    const endHour = slot.end.getHours() || startHour + 1
+    const day = slot.start.getDay()
+    return {
+      template: {
+        id: uuidv4(),
+        title: parsed.title,
+        day,
+        repeatMode: 'weekly' as const,
+        startHour,
+        endHour,
+        description: `Aus Planungs-Chat erstellt: "${prompt.value.trim()}"`,
+      },
+      nextStart: slot.start,
+      nextEnd: slot.end,
+      roundedToHour: false,
+      reason: `${weekdayLabel(day)} um ${String(startHour).padStart(2, '0')}:00`,
+    }
+  })
+}
+
+function buildMultiRoutineFromWeekdays(parsed: ParsedPlanningRequest, weekdays: number[]): RoutinePreview[] {
+  const baseStartMinutes = parsed.timePreference?.exactStartMinutes
+    ?? parsed.timePreference?.startMinutes
+    ?? defaultStartMinutesForPeriod(parsed.preferredPeriod)
+  const baseEndMinutes = parsed.timePreference?.endMinutes ?? (baseStartMinutes + parsed.durationMinutes)
+  const startHour = Math.max(0, Math.min(23, Math.floor(baseStartMinutes / 60)))
+  const endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(baseEndMinutes / 60)))
+  const roundedToHour = baseStartMinutes % 60 !== 0 || baseEndMinutes % 60 !== 0
+
+  return weekdays.map((day) => {
+    const nextDate = nextDateForWeekday(day, 0, new Date())
+    const nextStart = new Date(nextDate)
+    nextStart.setHours(startHour, 0, 0, 0)
+    const nextEnd = new Date(nextDate)
+    nextEnd.setHours(endHour, 0, 0, 0)
+    return {
+      template: {
+        id: uuidv4(),
+        title: parsed.title,
+        day,
+        repeatMode: 'weekly' as const,
+        startHour,
+        endHour,
+        description: `Aus Planungs-Chat erstellt: "${prompt.value.trim()}"`,
+      },
+      nextStart,
+      nextEnd,
+      roundedToHour,
+      reason: `${weekdayLabel(day)} um ${String(startHour).padStart(2, '0')}:00`,
+    }
+  })
 }
 
 function nextDateForRoutine(parsed: ParsedPlanningRequest) {
@@ -2036,6 +2236,64 @@ async function handleRetryCalendarAction() {
                     @click="handleCreateRoutine"
                   >
                     Routine speichern
+                  </button>
+                </div>
+
+                <div v-else-if="previewMultiRoutines.length > 0 && parsedDetails" class="mt-4 space-y-3">
+                  <div class="rounded-glass border border-accent-green/20 bg-accent-green/10 p-4">
+                    <p class="text-sm font-medium text-text-primary">{{ parsedDetails.title }}</p>
+                    <p class="mt-1 text-sm text-text-secondary">{{ previewMultiRoutines.length }}x wöchentlich als Routinen</p>
+                    <div class="mt-3 space-y-1">
+                      <div
+                        v-for="(routine, i) in previewMultiRoutines"
+                        :key="i"
+                        class="flex items-center gap-2 text-sm text-text-secondary"
+                      >
+                        <span class="text-accent-green">·</span>
+                        {{ weekdayLabel(routine.template.day) }},
+                        {{ String(routine.template.startHour).padStart(2, '0') }}:00 – {{ String(routine.template.endHour).padStart(2, '0') }}:00
+                      </div>
+                    </div>
+                    <p class="mt-3 text-sm text-accent-green">
+                      Wird als {{ previewMultiRoutines.length }} Routine-Vorlagen gespeichert und jeweils für 4 Wochen eingetragen
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-accent-green w-full px-4 py-3 text-sm disabled:opacity-50"
+                    :disabled="isPlanning"
+                    @click="handleCreateMultiRoutines"
+                  >
+                    {{ previewMultiRoutines.length }} Routinen speichern
+                  </button>
+                </div>
+
+                <div v-else-if="previewMultiEventSlots.length > 0 && parsedDetails" class="mt-4 space-y-3">
+                  <div class="rounded-glass border border-accent-blue/20 bg-accent-blue/10 p-4">
+                    <p class="text-sm font-medium text-text-primary">{{ parsedDetails.title }}</p>
+                    <p class="mt-1 text-sm text-text-secondary">{{ previewMultiEventSlots.length }} Termine in diesem Zeitraum</p>
+                    <div class="mt-3 space-y-1">
+                      <div
+                        v-for="(slot, i) in previewMultiEventSlots"
+                        :key="i"
+                        class="flex items-center gap-2 text-sm text-text-secondary"
+                      >
+                        <span class="text-accent-blue">·</span>
+                        {{ formatPreview(slot.start.toISOString()) }} –
+                        {{ slot.end.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                      </div>
+                    </div>
+                    <p class="mt-3 text-sm text-accent-blue">
+                      Werden als {{ previewMultiEventSlots.length }} einzelne Kalendertermine eingetragen
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-primary w-full px-4 py-3 text-sm disabled:opacity-50"
+                    :disabled="isPlanning"
+                    @click="handleCreateMultiEvents"
+                  >
+                    {{ previewMultiEventSlots.length }} Termine erstellen
                   </button>
                 </div>
 

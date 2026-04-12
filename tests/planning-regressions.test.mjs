@@ -385,6 +385,28 @@ const cases = [
       assert.equal(highFrequencyRoutineRequest.recurrenceFrequencyPerWeek, 6)
       assert.equal(highFrequencyRoutineRequest.title, 'gym')
 
+      // Multi-weekday: plural forms → multipleWeekdays array
+      const multiWeekdayRequest = parsePlanningPrompt('Gym montags mittwochs freitags 07:00 Uhr', 60, 'auto', baseNow)
+      assert.equal(multiWeekdayRequest.intent, 'routine')
+      assert.deepStrictEqual(multiWeekdayRequest.multipleWeekdays, [1, 3, 5])
+      assert.equal(multiWeekdayRequest.recurrenceDay, undefined)
+      assert.equal(multiWeekdayRequest.title, 'gym')
+      assert.equal(multiWeekdayRequest.timePreference?.exactStartMinutes, 7 * 60)
+
+      // Frequency-in-period: "diese Woche N mal"
+      const freqInPeriodRequest = parsePlanningPrompt('diese Woche 4 mal lernen', 45, 'auto', baseNow)
+      assert.equal(freqInPeriodRequest.frequencyInPeriod, 4)
+      assert.equal(freqInPeriodRequest.recurrenceFrequencyPerWeek, null)
+      assert.ok(freqInPeriodRequest.ambiguityHints.some(h => h.includes('4x in diesem Zeitraum')))
+
+      // Ostern recognized as explicit date
+      // Easter 2026 = April 5 — baseNow is 2024-01-15 so "ostern" resolves to 2026-04-05
+      const easterRequest = parsePlanningPrompt('Osterabend essen mit Monique 19 Uhr', 120, 'auto', baseNow)
+      assert.equal(easterRequest.hasExplicitDate, true)
+      assert.equal(easterRequest.intent, 'event')
+      assert.ok(!easterRequest.title.toLowerCase().includes('osterabend'))
+      assert.equal(easterRequest.timePreference?.exactStartMinutes, 19 * 60)
+
       const christmasDinnerRequest = parsePlanningPrompt('Essen Heillig Abend 18 Uhr', 120, 'auto', baseNow)
       assert.equal(christmasDinnerRequest.hasExplicitDate, true)
       assert.equal(christmasDinnerRequest.dateFrom.getMonth(), 11)

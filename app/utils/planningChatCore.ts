@@ -20,6 +20,8 @@ export interface ParsedPlanningRequest {
   recurrenceDay?: number
   recurrenceLabel?: string
   recurrenceFrequencyPerWeek?: number
+  multipleWeekdays?: number[]
+  frequencyInPeriod?: number
   timePreference?: PlanningTimePreference
   ambiguityHints: string[]
 }
@@ -41,12 +43,14 @@ export function parsePlanningPrompt(
   const dateTo = new Date(now)
   dateTo.setDate(dateTo.getDate() + 7)
 
-  const recurrence = extractRecurrence(normalized)
+  const multipleWeekdays = extractMultipleWeekdays(normalized)
+  const recurrence = multipleWeekdays ? null : extractRecurrence(normalized)
   const recurrenceFrequencyPerWeek = extractRecurrenceFrequencyPerWeek(normalized)
+  const frequencyInPeriod = recurrenceFrequencyPerWeek === null ? extractFrequencyInPeriod(normalized) : null
   const timePreference = extractTimePreference(normalized, fallbackDuration)
   const preferredPeriod = extractPreferredPeriod(normalized)
   const explicitDate = extractSpecificDate(normalized, now) ?? extractNamedAnnualDate(normalized, now)
-  const weekday = recurrence?.day ?? extractWeekday(normalized)
+  const weekday = recurrence?.day ?? (multipleWeekdays ? multipleWeekdays[0] : null) ?? extractWeekday(normalized)
   const weekdayReferenceMode = extractWeekdayReferenceMode(normalized)
   let hasExplicitDate = false
   let rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open' = 'open'
@@ -106,7 +110,8 @@ export function parsePlanningPrompt(
 
   const explicitDuration = extractDuration(text)
   const title = buildCleanTitle(normalized)
-  const intent = detectIntent(text, recurrence, recurrenceFrequencyPerWeek, intentMode)
+  const effectiveRecurrenceForIntent = recurrence ?? (multipleWeekdays ? { day: multipleWeekdays[0], label: 'multi-day', repeatMode: 'weekly' as const } : null)
+  const intent = detectIntent(text, effectiveRecurrenceForIntent, recurrenceFrequencyPerWeek, intentMode)
   const ambiguityHints = buildAmbiguityHints({
     hasExplicitDate,
     preferredPeriod,
@@ -116,6 +121,8 @@ export function parsePlanningPrompt(
     rangeMode,
     intent,
     recurrenceFrequencyPerWeek,
+    multipleWeekdays,
+    frequencyInPeriod,
   })
 
   return {
@@ -128,8 +135,10 @@ export function parsePlanningPrompt(
     intent,
     recurrenceMode: recurrence?.repeatMode,
     recurrenceDay: recurrence?.day,
-    recurrenceLabel: recurrence?.label,
+    recurrenceLabel: multipleWeekdays ? `${multipleWeekdays.length}x wöchentlich` : recurrence?.label,
     recurrenceFrequencyPerWeek,
+    multipleWeekdays: multipleWeekdays ?? undefined,
+    frequencyInPeriod: frequencyInPeriod ?? undefined,
     timePreference,
     ambiguityHints,
   }
@@ -160,6 +169,34 @@ export function detectIntent(
   }
 
   return taskMatches > eventMatches ? 'task' : 'event'
+}
+
+export function extractMultipleWeekdays(text: string): number[] | null {
+  const pluralMap: Record<string, number> = {
+    montags: 1,
+    dienstags: 2,
+    mittwochs: 3,
+    donnerstags: 4,
+    freitags: 5,
+    samstags: 6,
+    sonntags: 0,
+  }
+
+  const found: number[] = []
+  for (const [name, day] of Object.entries(pluralMap)) {
+    if (text.includes(name)) found.push(day)
+  }
+
+  return found.length >= 2 ? found.sort((a, b) => a - b) : null
+}
+
+export function extractFrequencyInPeriod(text: string): number | null {
+  if (!text.includes('diese woche') && !text.includes('naechste woche')) return null
+  const match = text.match(/\b(\d{1,2})\s*(?:x|mal)\b/)
+  if (!match) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0 || value > 14) return null
+  return value
 }
 
 export function extractRecurrenceFrequencyPerWeek(text: string) {
@@ -301,7 +338,8 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
 export function buildCleanTitle(text: string) {
   return text
     .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|taeglich|jeden tag|werktags|arbeitstags|an arbeitstagen|mo-fr|mo bis fr|montag bis freitag|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
-    .replace(/\b(heiligabend|heilig abend|weihnachten|erster weihnachtstag|1\.?\s*weihnachtstag|zweiter weihnachtstag|2\.?\s*weihnachtstag|silvester|neujahr)\b/gi, '')
+    .replace(/\b(heiligabend|heilig abend|weihnachten|erster weihnachtstag|1\.?\s*weihnachtstag|zweiter weihnachtstag|2\.?\s*weihnachtstag|silvester|neujahr|valentinstag|tag der arbeit|erster mai|tag der deutschen einheit|dritter oktober|nikolaus|karfreitag|karsamstag|osterabend|ostersonntag|ostern|ostermontag|christi himmelfahrt|himmelfahrt|pfingstsonntag|pfingsten|pfingstmontag|muttertag)\b/gi, '')
+    .replace(/\b\d{1,2}\s*(?:x|mal)\s*(?:pro\s*)?(?:diese[rn]?\s+)?(?:die\s*)?woche\b/gi, '')
     .replace(/\b(morgens|vormittag|vormittags|nachmittag|nachmittags|mittags|abend|abends|frueh|spaet)\b/gi, '')
     .replace(/\b(zwischen|um|ab|bis|von|und)\b/gi, '')
     .replace(/\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\b/gi, '')
@@ -416,18 +454,88 @@ function extractSpecificDate(text: string, now: Date) {
   return null
 }
 
+function easterSunday(year: number): Date {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month, day)
+}
+
+function secondSundayInMay(year: number): Date {
+  let sundays = 0
+  for (let day = 1; day <= 31; day++) {
+    const date = new Date(year, 4, day)
+    if (date.getMonth() !== 4) break
+    if (date.getDay() === 0) {
+      sundays++
+      if (sundays === 2) return date
+    }
+  }
+  return new Date(year, 4, 14)
+}
+
 function extractNamedAnnualDate(text: string, now: Date) {
-  const annualDateMap: Array<{ pattern: RegExp; monthIndex: number; day: number }> = [
+  const year = now.getFullYear()
+
+  const fixedDates: Array<{ pattern: RegExp; monthIndex: number; day: number }> = [
     { pattern: /\bheiligabend\b/, monthIndex: 11, day: 24 },
     { pattern: /\b(erster weihnachtstag|1\.?\s*weihnachtstag|weihnachten)\b/, monthIndex: 11, day: 25 },
     { pattern: /\b(zweiter weihnachtstag|2\.?\s*weihnachtstag)\b/, monthIndex: 11, day: 26 },
     { pattern: /\bsilvester\b/, monthIndex: 11, day: 31 },
     { pattern: /\bneujahr\b/, monthIndex: 0, day: 1 },
+    { pattern: /\bvalentinstag\b/, monthIndex: 1, day: 14 },
+    { pattern: /\b(tag der arbeit|erster mai)\b/, monthIndex: 4, day: 1 },
+    { pattern: /\b(tag der deutschen einheit|dritter oktober)\b/, monthIndex: 9, day: 3 },
+    { pattern: /\bnikolaus\b/, monthIndex: 11, day: 6 },
   ]
 
-  for (const entry of annualDateMap) {
+  for (const entry of fixedDates) {
     if (entry.pattern.test(text)) {
-      return normalizeFutureDateCandidate(entry.day, entry.monthIndex, now.getFullYear(), now, true)
+      return normalizeFutureDateCandidate(entry.day, entry.monthIndex, year, now, true)
+    }
+  }
+
+  const easterOffsets: Array<{ pattern: RegExp; offset: number }> = [
+    { pattern: /\bkarfreitag\b/, offset: -2 },
+    { pattern: /\b(karsamstag|osterabend)\b/, offset: -1 },
+    { pattern: /\b(ostersonntag|ostern)\b/, offset: 0 },
+    { pattern: /\bostermontag\b/, offset: 1 },
+    { pattern: /\b(christi himmelfahrt|himmelfahrt)\b/, offset: 39 },
+    { pattern: /\b(pfingstsonntag|pfingsten)\b/, offset: 49 },
+    { pattern: /\bpfingstmontag\b/, offset: 50 },
+  ]
+
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+
+  for (const entry of easterOffsets) {
+    if (entry.pattern.test(text)) {
+      for (const y of [year, year + 1]) {
+        const base = easterSunday(y)
+        const result = new Date(base)
+        result.setDate(result.getDate() + entry.offset)
+        result.setHours(0, 0, 0, 0)
+        if (result >= today) return result
+      }
+    }
+  }
+
+  if (/\bmuttertag\b/.test(text)) {
+    for (const y of [year, year + 1]) {
+      const result = secondSundayInMay(y)
+      result.setHours(0, 0, 0, 0)
+      if (result >= today) return result
     }
   }
 
@@ -503,6 +611,8 @@ function buildAmbiguityHints(context: {
   rangeMode: 'exact-day' | 'next-week' | 'this-week' | 'weekend' | 'open'
   intent: PlanningIntent
   recurrenceFrequencyPerWeek: number | null
+  multipleWeekdays?: number[] | null
+  frequencyInPeriod?: number | null
 }) {
   const hints: string[] = []
 
@@ -520,8 +630,12 @@ function buildAmbiguityHints(context: {
     hints.push('Ohne genaue Uhrzeit oder exakten Tag priorisiere ich zuerst sinnvolle freie Slots statt nur eine einzige starre Zeit.')
   }
 
-  if (context.intent === 'routine' && context.recurrenceFrequencyPerWeek !== null) {
-    hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche wurde erkannt. Für die Umsetzung brauche ich noch klare Tage oder eine Form wie "werktags" oder "täglich".`)
+  if (context.intent === 'routine' && context.recurrenceFrequencyPerWeek !== null && !context.multipleWeekdays?.length) {
+    hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche wurde erkannt. Ich verteile die Einheiten automatisch auf freie Tage — oder gib konkrete Tage an wie "montags mittwochs freitags".`)
+  }
+
+  if (context.frequencyInPeriod) {
+    hints.push(`${context.frequencyInPeriod}x in diesem Zeitraum erkannt. Ich suche ${context.frequencyInPeriod} freie Slots und trage sie ein.`)
   }
 
   return hints

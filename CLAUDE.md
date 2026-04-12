@@ -104,9 +104,10 @@ Current middleware protections:
 
 ## Important Components
 
-- `app/pages/index.vue` - main shell, dashboard, calendar, mobile navigation
+- `app/pages/index.vue` - main shell, calendar, surface routing (`activeSurface`), mobile navigation
 - `app/components/AISidebar.vue` - task room, AI actions, schedule review, recovery
-- `app/components/PlanningChat.vue` - natural language planning modal
+- `app/components/CommandCenter.vue` - quick-access hub: search, KI-functions, event/task lookup
+- `app/components/PlanningChat.vue` - natural language planning modal (2100+ lines)
 - `app/components/PreferencesModal.vue` - planning rules, routines, imports
 - `app/components/ProjectGenerator.vue` - AI project breakdown flow
 - `app/components/TaskModalDialog.vue` - current task create/edit modal
@@ -114,10 +115,13 @@ Current middleware protections:
 - `app/components/NavBar.vue` - top navigation
 - `app/components/CalendarGrid.vue` - month view
 - `app/components/WeekView.vue` - week view
+- `app/utils/planningChatCore.ts` - all parser logic for PlanningChat (exported, tested)
 
-Important note:
-- The active task modal file is `TaskModalDialog.vue`.
-- Older docs may still mention `TaskModal.vue`.
+Important notes:
+- The active task modal file is `TaskModalDialog.vue`. Older docs may still mention `TaskModal.vue`.
+- `CommandCenter.vue` is the entry point for search and direct KI-function access (replaces old sidebar shortcuts).
+- `PlanningChat.vue` uses `parsePlanningPromptCore` (imported from `planningChatCore.ts`) in `handlePlan()`. The file also contains a local dead-code `parsePlanningPrompt` function — do not confuse the two.
+- `PlanningChat.vue` has a local duplicate of the `ParsedPlanningRequest` interface — must be kept in sync with `planningChatCore.ts`.
 
 ## Current Product State
 
@@ -127,6 +131,10 @@ Implemented and active in the app:
 - rescheduling with multiple modes
 - project generation with review-first scheduling
 - planning chat with parser, clarifications, grouped suggestions, and selectable alternatives
+- routine repeat modes: `weekly` (specific weekday), `workdays` (Mo–Fr), `daily` (every day)
+- frequency detection in chat: "3x die Woche" → auto-distributes N slots as weekly routines; "montags mittwochs freitags" → multi-routine creation; "diese Woche 4 mal" → frequencyInPeriod creates N events in period
+- German public holidays recognized in chat: Easter family (Karfreitag, Ostermontag, Himmelfahrt, Pfingsten), Valentinstag, Muttertag, Nikolaus, Tag der Arbeit, Tag der Deutschen Einheit
+- command center for quick search and direct KI-function access
 - routines, sleep, commute, holiday, and other planning blockers
 - recovery/undo flows for important planning actions
 - dashboard cards for today, week forecast, personalization, and reflection
@@ -152,6 +160,8 @@ Supporting docs:
 - AI/planning behavior is partly heuristic and partly local, not fully model-driven
 - The app relies on browser APIs and local state; some flows still need real-device browser smoke testing
 - Older docs may reference outdated component names or earlier file locations
+- PlanningChat uses regex/algorithmic NLP — no LLM call in the chat itself. Vague free-text like "ich will mehr Sport machen" is not understood. Complex scheduling constraints like "mit Ruhetag alle 3 Tage" are not implemented (needs LLM).
+- PlanningChat cannot answer queries about the calendar ("wann bin ich frei?") — it only creates entries, it does not respond to questions about existing events.
 
 ## Deployment
 
