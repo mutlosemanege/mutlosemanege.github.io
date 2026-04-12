@@ -1,8 +1,11 @@
 ﻿<script setup lang="ts">
 import TaskModal from '~/components/TaskModalDialog.vue'
+import CommandCenter from '~/components/CommandCenter.vue'
 import type { CalendarEvent } from '~/composables/useCalendar'
 import { resolveLifeAreaLabel } from '~/types/task'
 import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Task } from '~/types/task'
+
+type WorkspaceSection = 'balance' | 'forecast' | 'review'
 
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
@@ -13,11 +16,15 @@ const { warnings, criticalCount } = useDeadlineWatcher()
 
 const currentView = ref<'month' | 'week'>('month')
 const currentDate = ref(new Date())
+const calendarSectionRef = ref<HTMLElement | null>(null)
 const showModal = ref(false)
 const showTaskModal = ref(false)
 const showPreferences = ref(false)
 const showSidebar = ref(false)
 const showPlanningChat = ref(false)
+const showCommandCenter = ref(false)
+const showWorkspacePanel = ref(false)
+const activeWorkspaceSection = ref<WorkspaceSection>('forecast')
 const selectedEvent = ref<CalendarEvent | null>(null)
 const selectedTask = ref<Task | null>(null)
 const selectedDate = ref<string | undefined>(undefined)
@@ -129,6 +136,16 @@ const lifeAreaBalanceSummary = computed(() => {
 function formatHourLabel(hour: number) {
   return `${hour.toString().padStart(2, '0')}:00`
 }
+
+const workspaceSectionOptions: Array<{ value: WorkspaceSection; label: string; detail: string }> = [
+  { value: 'balance', label: 'Balance', detail: 'Lebensbereiche und aktuelle Gewichte' },
+  { value: 'forecast', label: 'Wochenblick', detail: 'Druck, freie Zeit und Forecast' },
+  { value: 'review', label: 'Rückblick', detail: 'Lernen, Signale und Morgenbrief' },
+]
+
+const activeWorkspaceMeta = computed(() =>
+  workspaceSectionOptions.find(option => option.value === activeWorkspaceSection.value) || workspaceSectionOptions[0],
+)
 
 const todayCommit = computed(() => getDailyCommit())
 const todayMode = computed(() => getDailyMode())
@@ -709,8 +726,13 @@ watch([isLoggedIn, timeRange], ([loggedIn]) => {
   }
 }, { immediate: true })
 
-function goToday() {
+async function goToday() {
   currentDate.value = new Date()
+  await nextTick()
+  calendarSectionRef.value?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
 }
 
 function goPrev() {
@@ -737,6 +759,21 @@ function closeMobilePanels() {
   showSidebar.value = false
   showPlanningChat.value = false
   showPreferences.value = false
+  showCommandCenter.value = false
+}
+
+function openCommandCenter() {
+  closeMobilePanels()
+  showCommandCenter.value = true
+}
+
+function openWorkspacePanel(section: WorkspaceSection = 'forecast') {
+  activeWorkspaceSection.value = section
+  showWorkspacePanel.value = true
+}
+
+function closeWorkspacePanel() {
+  showWorkspacePanel.value = false
 }
 
 function openTaskRoom() {
@@ -822,6 +859,20 @@ async function onDeleteTask(taskId: string) {
 
 async function onPlanningChatCreated() {
   await fetchEvents(timeRange.value.timeMin, timeRange.value.timeMax)
+}
+
+function onSelectTaskFromCommandCenter(task: Task) {
+  closeMobilePanels()
+  selectedTask.value = task
+  selectedDate.value = undefined
+  showTaskModal.value = true
+}
+
+function onSelectEventFromCommandCenter(event: CalendarEvent) {
+  closeMobilePanels()
+  selectedEvent.value = event
+  selectedDate.value = undefined
+  showModal.value = true
 }
 
 async function clearTaskSchedule(task: Task) {
@@ -1100,6 +1151,11 @@ function isSameCalendarDay(a: Date, b: Date) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l2.4 4.86L20 10l-4 3.89L17 20l-5-2.67L7 20l1-6.11L4 10l5.6-2.14L12 3Z" />
           </svg>
         </button>
+        <button type="button" class="btn-secondary inline-flex h-11 w-11 items-center justify-center" title="Einblicke" @click="openWorkspacePanel('forecast')">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 19h16M7 16V9m5 7V5m5 11v-6" />
+          </svg>
+        </button>
       </div>
 
       <div class="relative z-10 mt-auto flex flex-col items-center gap-2">
@@ -1128,6 +1184,7 @@ function isSameCalendarDay(a: Date, b: Date) {
         @open-task="onOpenTask"
         @open-planner="showPlanningChat = true"
         @toggle-sidebar="showSidebar = !showSidebar"
+        @open-command-center="openCommandCenter"
         @go-today="goToday"
         @go-prev="goPrev"
         @go-next="goNext"
@@ -1415,7 +1472,97 @@ function isSameCalendarDay(a: Date, b: Date) {
             </section>
             </div>
 
-          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
+          <section class="glass-card mt-4 p-5">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Einblicke</p>
+                <h2 class="mt-2 text-xl font-semibold text-text-primary">Analyse nur dann, wenn du sie gerade brauchst</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
+                  Die Startseite bleibt auf Tagesfokus und Kalender konzentriert. Wochenblick, Lebensbereiche und Rückblick öffnest du gezielt als eigenen Workspace-Bereich.
+                </p>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                {{ showWorkspacePanel ? `${activeWorkspaceMeta.label} offen` : 'Standardansicht aktiv' }}
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                v-for="option in workspaceSectionOptions"
+                :key="option.value"
+                type="button"
+                class="rounded-full border px-3 py-2 text-left text-xs transition"
+                :class="showWorkspacePanel && activeWorkspaceSection === option.value
+                  ? 'border-accent-blue/30 bg-accent-blue/12 text-accent-blue'
+                  : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-strong hover:bg-white/[0.06] hover:text-text-primary'"
+                @click="openWorkspacePanel(option.value)"
+              >
+                <span class="font-medium">{{ option.label }}</span>
+                <span class="ml-1 hidden sm:inline">{{ option.detail }}</span>
+              </button>
+
+              <button
+                v-if="showWorkspacePanel"
+                type="button"
+                class="btn-secondary px-4 py-2 text-sm"
+                @click="closeWorkspacePanel"
+              >
+                Einblicke ausblenden
+              </button>
+            </div>
+          </section>
+
+          <section v-if="showWorkspacePanel && activeWorkspaceSection === 'focus'" class="mobile-dashboard-panel glass-card mt-4 p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Freie Fokusblöcke</p>
+                <h2 class="mt-2 text-xl font-semibold text-text-primary">Ruhige Zeitfenster für echte Hebel</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
+                  Hier siehst du gezielt die Blöcke, in denen Deep Work heute oder als nächster Schritt realistisch ist.
+                </p>
+              </div>
+              <div class="rounded-full border border-border-subtle bg-white/[0.04] px-3 py-1 text-[11px] text-text-secondary">
+                {{ todayFocusSlots.length }} sichtbar
+              </div>
+            </div>
+
+            <div v-if="todayFocusSlots.length > 0" class="mt-5 grid gap-3 md:grid-cols-3">
+              <div
+                v-for="slot in todayFocusSlots"
+                :key="`workspace-focus-${slot.start.toISOString()}`"
+                class="rounded-glass border border-accent-purple/15 bg-accent-purple/8 px-4 py-3"
+              >
+                <div class="text-sm font-medium text-text-primary">{{ formatSlotRange(slot.start, slot.end) }}</div>
+                <div class="mt-1 text-xs text-text-secondary">
+                  {{ Math.round((slot.end.getTime() - slot.start.getTime()) / 60000) }} Minuten ruhige Zeit
+                </div>
+              </div>
+            </div>
+
+            <p v-else class="mt-5 text-sm leading-6 text-text-secondary">
+              Heute ist kein längerer Fokusblock mehr frei. Kleinere Slots sind aber noch möglich.
+            </p>
+
+            <DecisionSummaryCard
+              class="mt-5"
+              title="Wie du den Fokusbereich nutzen solltest"
+              mode-label="Einblicke"
+              tone="preview"
+              :why="[
+                'Die Landing Page bleibt bewusst kompakt. Fokusfenster liegen deshalb nur noch im Workspace statt dauerhaft im Sichtfluss.',
+                todayFocusSlots.length > 0
+                  ? `Gerade sind ${todayFocusSlots.length} fokustaugliche Slots sichtbar.`
+                  : 'Heute ist aktuell kein langer Deep-Work-Block mehr frei.'
+              ]"
+              :alternatives="[
+                'Direkt in den Aufgabenraum wechseln und Auto-Planen prüfen.',
+                'Im KI-Planer einen Termin oder Fokusblock per Sprache anlegen.'
+              ]"
+              next-step="Öffne danach eine wichtige Aufgabe oder plane sie gezielt in einen der sichtbaren Fokusblöcke."
+            />
+          </section>
+
+          <section v-if="showWorkspacePanel && activeWorkspaceSection === 'balance'" class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-purple-soft">Lebensbereiche</p>
@@ -1455,7 +1602,7 @@ function isSameCalendarDay(a: Date, b: Date) {
             </p>
           </section>
 
-          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
+          <section v-if="showWorkspacePanel && activeWorkspaceSection === 'forecast'" class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-blue">Wochenblick</p>
@@ -1521,7 +1668,7 @@ function isSameCalendarDay(a: Date, b: Date) {
             </div>
           </section>
 
-          <section class="mobile-dashboard-panel glass-card mt-4 p-5">
+          <section v-if="showWorkspacePanel && activeWorkspaceSection === 'review'" class="mobile-dashboard-panel glass-card mt-4 p-5">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-green">Rückblick</p>
@@ -1743,7 +1890,7 @@ function isSameCalendarDay(a: Date, b: Date) {
             </div>
           </div>
 
-          <div class="mt-6">
+          <div ref="calendarSectionRef" class="mt-6 scroll-mt-24 lg:scroll-mt-28">
             <CalendarGrid
               v-if="currentView === 'month'"
               :current-date="currentDate"
@@ -1841,6 +1988,21 @@ function isSameCalendarDay(a: Date, b: Date) {
       :events="events"
       @close="showPlanningChat = false"
       @created="onPlanningChatCreated"
+    />
+
+    <CommandCenter
+      :show="showCommandCenter"
+      :tasks="tasks"
+      :events="events"
+      @close="showCommandCenter = false"
+      @go-today="goToday"
+      @open-task="onOpenTask"
+      @open-planner="openPlannerRoom"
+      @open-sidebar="openTaskRoom"
+      @open-settings="showPreferences = true"
+      @open-insights="openWorkspacePanel()"
+      @select-task="onSelectTaskFromCommandCenter"
+      @select-event="onSelectEventFromCommandCenter"
     />
   </div>
 </template>

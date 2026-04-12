@@ -49,6 +49,8 @@ Link oder Referenz zum Debug-Prompt (siehe unten)
 **Priorität:** 🟠 Hoch  
 **Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
 
+**Review 12.04.26:** Zeitangaben wie `heute`, `morgen`, `übermorgen`, `nächste Woche` und viele Datumsformen werden inzwischen erkannt. Offen ist vor allem noch die Frequenzlogik wie `6mal die Woche`, `täglich` oder `Mo-Fr`.
+
 **Modul/Funktion:** KI-Planer (Chat/Prompt-Verarbeitung)  
 **Fehlertyp:** Mangelnde Nutzer-Intent-Erkennung
 
@@ -88,7 +90,7 @@ IF Algorithmus:
 
 **Kategorie:** KI + Design  
 **Priorität:** 🟢 Niedrig  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [ ] in Bearbeitung  [x] behoben
 
 **Modul/Funktion:** Header Button "heute"  
 **Fehlertyp:** Unvollständige Funktionalität
@@ -115,7 +117,9 @@ Button klicken → Kalender scrollt zu aktuellem Tag
 
 **Kategorie:** Design  
 **Priorität:** 🔴 Kritisch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Die Seite ist weiterhin reichhaltiger als die ursprüngliche Minimal-Vision. Ein erster Navigations-Cluster wurde aber entschlackt, und Analysebereiche wie `Wochenblick`, `Lebensbereiche` und `Rückblick` hängen jetzt hinter einem gezielten `Einblicke`-Workspace statt immer im Hauptfluss.
 
 **Modul/Funktion:** Gesamt-Seitenlayout  
 **Fehlertyp:** Information Architecture
@@ -140,7 +144,9 @@ Die Seite hat zu viele Infos gleichzeitig, ist unintuitiv.
 
 **Kategorie:** Design  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Der Header wurde reduziert und die Suche ist jetzt eine eigene Schnellzugriffs-Oberfläche statt eines versteckten Sidebar-Shortcuts. Der größere IA-Umbau bleibt offen, aber der Header ist nicht mehr der Hauptabladeplatz für Nebenfunktionen.
 
 **Modul/Funktion:** Header/Navigation  
 **Fehlertyp:** UX-Überladung
@@ -162,7 +168,9 @@ Header sollte nur folgende Elemente enthalten:
 
 **Kategorie:** Design  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Sticky Header und vertikales Scrolling sind deutlich stabiler als im Ursprungsticket. Offene Restthemen liegen vor allem in der mobilen Gesamt-IA und einzelnen Swipe-/Overflow-Kanten.
 
 **Modul/Funktion:** Mobile-Layout / Responsive Design  
 **Fehlertyp:** CSS/Layout-Bug
@@ -192,7 +200,9 @@ Wahrscheinlich: Falsches CSS für Position/Overflow
 
 **Kategorie:** Design  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [ ] in Bearbeitung  [x] behoben
+
+**Review 12.04.26:** Der mobile Aufgabenraum ist inzwischen als eigener Vollbild-/Overlay-Bereich mit eigenem Scrollcontainer umgesetzt.
 
 **Modul/Funktion:** Aufgabenraum (Mobile)  
 **Fehlertyp:** Layout-Bug
@@ -214,7 +224,9 @@ Aufgabenraum ist auf Mobile vollständig lesbar/nutzbar
 
 **Kategorie:** Integration  
 **Priorität:** 🔴 Kritisch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Google Calendar CRUD funktioniert, aber ein echter periodischer Hintergrund-Sync fehlt noch.
 
 **Modul/Funktion:** Google Calendar API / Sync  
 **Fehlertyp:** Daten-Sync-Fehler
@@ -242,7 +254,9 @@ Manuell in Google Calendar hinzugefügte Events erscheinen nicht in der Webapp.
 
 **Kategorie:** Integration  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Das ursprüngliche Problem wirkt eher wie eine OAuth-/Google-Konfigurationsfrage außerhalb des Repos. Ein echter Account-Switcher in der App fehlt aber weiterhin.
 
 **Modul/Funktion:** Google OAuth/Account-Management  
 **Fehlertyp:** Authentifizierung
@@ -264,7 +278,9 @@ OAuth-Konfiguration nur für ein spezifisches Konto
 
 **Kategorie:** KI + Feature  
 **Priorität:** 🟠 Hoch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Routinen, Schlaf, Arbeitsweg und weitere Regeln können bereits als Planungsblocker und Kalenderblöcke genutzt werden. Ein feinerer Deploy-Flow pro Abschnitt ist noch offen.
 
 **Modul/Funktion:** Routinen & Planungsregeln  
 **Fehlertyp:** Feature-Unvollständigkeit
@@ -296,7 +312,9 @@ Diese sollten dann intelligent mit anderen Funktionen interagieren:
 
 **Kategorie:** Design + Feature  
 **Priorität:** 🟡 Mittel  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [ ] in Bearbeitung  [x] behoben
+
+**Review 12.04.26:** Der Suchbutton öffnet jetzt eine eigene Schnellzugriffs- und Suchoberfläche statt direkt den Aufgabenraum.
 
 **Modul/Funktion:** Suchleiste  
 **Fehlertyp:** Falsche Navigation
@@ -319,7 +337,9 @@ Eigene Such-UI mit:
 
 **Kategorie:** Design + Navigation  
 **Priorität:** 🟡 Mittel  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [ ] in Bearbeitung  [x] behoben
+
+**Review 12.04.26:** KI-Planer, Priorisierung, Auto-Planen und Projektgenerator sind jetzt direkt über Schnellzugriff, Desktop-Leiste und Mobile-Navigation erreichbar.
 
 **Modul/Funktion:** Navigation (fehlt)  
 **Fehlertyp:** Fehlende Links
@@ -340,7 +360,9 @@ Diese sollten direkt über Seitenleiste zugänglich sein.
 
 **Kategorie:** Design  
 **Priorität:** 🔴 Kritisch  
-**Status:** [ ] offen  [ ] in Bearbeitung  [ ] behoben
+**Status:** [ ] offen  [x] in Bearbeitung  [ ] behoben
+
+**Review 12.04.26:** Die globale Navigation ist besser gebündelt, und `Einblicke` bildet jetzt einen ersten separaten Workspace für Analyse- und Lernbereiche. Die Vision einer vollständig ausgebauten Seitenleiste bzw. Bereichsnavigation ist aber noch nicht komplett erreicht.
 
 **Modul/Funktion:** Seitenleiste/Sidebar + Mobile-Menü  
 **Fehlertyp:** Feature-Fehler
@@ -445,4 +467,3 @@ AUFGABE:
 2. **Prioritäten definieren**: Welche zuerst beheben?
 3. **Prompts anpassen**: Debug-Prompts für jeden Fehler verfeinern
 4. **Tracking**: Welche Fehler sind gelöst?
-

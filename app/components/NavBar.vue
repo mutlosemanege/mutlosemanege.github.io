@@ -13,6 +13,7 @@ const emit = defineEmits<{
   'open-task': []
   'open-planner': []
   'toggle-sidebar': []
+  'open-command-center': []
   'go-today': []
   'go-prev': []
   'go-next': []
@@ -117,57 +118,20 @@ function getWeekNumber(date: Date) {
           <template v-if="isLoggedIn">
             <button
               type="button"
-              class="btn-secondary hidden h-10 w-10 items-center justify-center lg:inline-flex"
-              title="Aufgaben suchen"
-              @click="emit('toggle-sidebar')"
+              class="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
+              title="Suchen und Schnellzugriff"
+              @click="emit('open-command-center')"
             >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
               </svg>
-            </button>
-            <button
-              type="button"
-              class="btn-primary hidden items-center gap-2 px-4 py-2 text-sm lg:inline-flex"
-              @click="emit('open-task')"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5" />
-              </svg>
-              Aufgabe
-            </button>
-            <button
-              type="button"
-              class="btn-secondary hidden items-center gap-2 px-4 py-2 text-sm lg:inline-flex"
-              @click="emit('open-planner')"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.813 15.904 9 18l-1.813-2.096A8.959 8.959 0 0 1 3 9c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9a8.96 8.96 0 0 1-2.187-.27Z" />
-              </svg>
-              KI Planer
-            </button>
-            <button
-              type="button"
-              class="btn-secondary relative inline-flex h-10 w-10 items-center justify-center"
-              title="Hinweise"
-              @click="emit('toggle-sidebar')"
-            >
+              <span class="hidden sm:inline">Suchen</span>
               <span
                 v-if="warningsCount"
-                class="absolute right-2 top-2 h-2 w-2 rounded-full bg-priority-critical shadow-glow-purple"
-              />
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .53-.21 1.04-.59 1.4L4 17h5m6 0a3 3 0 1 1-6 0m6 0H9" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              class="btn-secondary inline-flex h-10 w-10 items-center justify-center"
-              title="Planung und Routinen"
-              @click="emit('open-settings')"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6Zm0 6h.008v.008H4.5V12Zm0 6h.008v.008H4.5V18Z" />
-              </svg>
+                class="rounded-full bg-priority-critical/15 px-2 py-0.5 text-[11px] font-semibold text-priority-critical"
+              >
+                {{ warningsCount }}
+              </span>
             </button>
             <template v-if="userProfile">
               <button
