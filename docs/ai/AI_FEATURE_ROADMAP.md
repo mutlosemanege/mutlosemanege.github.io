@@ -1,7 +1,7 @@
 # AI Feature Roadmap
 
-> ⬆ [[Planung & Design]] · [[_INDEX]]
-> Geschwister: [[REDESIGN-PROMPT]] · Verknüpft: [[CLAUDE]]
+> ⬆ [[../index]] · [[../planung/00_Übersicht]]
+> Geschwister: [[../planung/REDESIGN-PROMPT]] · Verknüpft: [[../CLAUDE]]
 
 Diese Liste ist unsere gemeinsame Arbeitsgrundlage fuer die naechsten KI- und Planungsverbesserungen.
 

@@ -1,6 +1,6 @@
 # Setup & Deployment
 
-> ⬆ [[_INDEX]]
+> ⬆ [[../index]] · [[00_Übersicht]]
 
 Alles was du brauchst um Kalender-AI einzurichten, lokal zu entwickeln und zu deployen.
 
@@ -10,9 +10,10 @@ Alles was du brauchst um Kalender-AI einzurichten, lokal zu entwickeln und zu de
 
 ```
 Setup & Deployment
-├── [[README]]           — Projektübersicht, lokale Entwicklung, Stack
-├── [[GOOGLE_SETUP]]     — Google Cloud, Calendar API, OAuth2 einrichten
-└── [[NETLIFY_SETUP]]    — Netlify Deployment, Anthropic API-Key, Serverless
+├── [[00_Übersicht]]         — Diese Übersicht
+├── [[../README]]             — Projektübersicht, lokale Entwicklung, Stack
+├── [[GOOGLE_SETUP]]          — Google Cloud, Calendar API, OAuth2 einrichten
+└── [[NETLIFY_SETUP]]         — Netlify Deployment, Anthropic API-Key, Serverless
 ```
 
 ---
@@ -21,7 +22,7 @@ Setup & Deployment
 
 1. **[[GOOGLE_SETUP]]** — Zuerst: Google Cloud Projekt + OAuth2 Client ID erstellen
 2. **[[NETLIFY_SETUP]]** — Dann: Netlify Site anlegen + Umgebungsvariablen setzen
-3. **[[README]]** — Danach: Lokale Entwicklung starten (`npm run dev`)
+3. **[[../README]]** — Danach: Lokale Entwicklung starten (`npm run dev`)
 
 ---
 
@@ -64,4 +65,4 @@ git push origin main  # Netlify baut automatisch
 
 ---
 
-*Übergeordnet: [[_INDEX]]*
+*Übergeordnet: [[../index]]*

@@ -1,6 +1,6 @@
 # Skills & Wissen — Übersicht
 
-> ⬆ [[../_INDEX]] · [[../Architektur & Entwicklung]]
+> ⬆ [[../index]] · [[../00_Übersicht]]
 
 Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentiert ein konkretes Problem, die gewählte Lösung und die dabei gelernten Muster.
 
@@ -39,7 +39,7 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
 
 ```
 [[Google-OAuth2-Browser]]    PKCE-Flow, Script-Polling, Token im Memory
-  └── Anleitung: [[../GOOGLE_SETUP]]
+  └── Anleitung: [[../../deployment/GOOGLE_SETUP]]
 ```
 
 ## Design
@@ -55,18 +55,18 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
 
 | Skill | Kategorie | Verknüpfte Dateien |
 |-------|-----------|-------------------|
-| [[Greedy-Scheduler]] | Scheduling | CLAUDE, AI_FEATURE_ROADMAP |
+| [[Greedy-Scheduler]] | Scheduling | [[../../CLAUDE]], [[../../ai/AI_FEATURE_ROADMAP]] |
 | [[Multi-Block-Scheduling]] | Scheduling | Greedy-Scheduler, Rescheduling-Modi |
 | [[Rescheduling-Modi]] | Scheduling | Greedy-Scheduler, Multi-Block |
-| [[KI-Priorisierung]] | KI | Nuxt-Serverless-KI, CLAUDE |
-| [[Nuxt-Serverless-KI]] | KI | NETLIFY_SETUP, KI-Priorisierung |
-| [[Planungs-Chat-NLP]] | NLP | Greedy-Scheduler, AI_FEATURE_ROADMAP |
-| [[IndexedDB-Vue3]] | Daten | CLAUDE, Greedy-Scheduler |
+| [[KI-Priorisierung]] | KI | Nuxt-Serverless-KI, [[../../CLAUDE]] |
+| [[Nuxt-Serverless-KI]] | KI | [[../../deployment/NETLIFY_SETUP]], KI-Priorisierung |
+| [[Planungs-Chat-NLP]] | NLP | Greedy-Scheduler, [[../../ai/AI_FEATURE_ROADMAP]] |
+| [[IndexedDB-Vue3]] | Daten | [[../../CLAUDE]], Greedy-Scheduler |
 | [[Deadline-Watcher]] | Daten | IndexedDB-Vue3, Greedy-Scheduler |
-| [[Google-OAuth2-Browser]] | Auth | GOOGLE_SETUP, NETLIFY_SETUP |
-| [[Glassmorphism-Redesign]] | Design | REDESIGN-PROMPT, Tailwind-Design-System |
-| [[Tailwind-Design-System]] | Design | REDESIGN-PROMPT, Glassmorphism-Redesign |
+| [[Google-OAuth2-Browser]] | Auth | [[../../deployment/GOOGLE_SETUP]], [[../../deployment/NETLIFY_SETUP]] |
+| [[Glassmorphism-Redesign]] | Design | [[../../planung/REDESIGN-PROMPT]], Tailwind-Design-System |
+| [[Tailwind-Design-System]] | Design | [[../../planung/REDESIGN-PROMPT]], Glassmorphism-Redesign |
 
 ---
 
-*Übergeordnet: [[../_INDEX]]*
+*Übergeordnet: [[../index]]*

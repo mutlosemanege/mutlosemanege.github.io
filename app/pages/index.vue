@@ -7,7 +7,7 @@ import type { DailyPlanningMode, DailyReflectionTag, LifeArea, PlanningStyle, Ta
 const { isLoggedIn, userProfile, error: authError, initClient } = useGoogleAuth()
 const { events, isLoading, error: calError, fetchEvents, createEvent, updateEvent, deleteEvent } = useCalendar()
 const { tasks, init: initTasks, createTask, updateTask, deleteTask: removeTask } = useTasks()
-const { preferences, getPreferredHours, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode, getDailyReflection, saveDailyReflection, getRecentDailyReflections } = usePreferences()
+const { preferences, getPreferredHours, getSuggestedDeepWorkHours, getDailyCommit, setDailyCommit, clearDailyCommit, getDailyMode, setDailyMode, clearDailyMode, getDailyReflection, saveDailyReflection, getRecentDailyReflections } = usePreferences()
 const { findFreeSlots } = useScheduler()
 const { warnings, criticalCount } = useDeadlineWatcher()
 
@@ -455,7 +455,7 @@ const weekForecastSummary = computed(() => {
   return `Die naechsten 7 Tage wirken aktuell stabil mit ca. ${totalFreeHours} freien Stunden im sichtbaren Plan.`
 })
 const preferredCompletionHours = computed(() => getPreferredHours(false))
-const preferredDeepWorkHours = computed(() => getPreferredHours(true))
+const preferredDeepWorkHours = computed(() => getSuggestedDeepWorkHours())
 const weekLifeAreaFocus = computed(() => {
   const weekEnd = new Date(todayRange.value.end)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -1170,7 +1170,7 @@ function isSameCalendarDay(a: Date, b: Date) {
       </div>
 
       <div v-else class="flex min-h-0 flex-1 overflow-hidden">
-        <main class="flex-1 overflow-y-auto px-4 pb-24 pt-4 lg:px-6 lg:pb-8">
+        <main class="min-w-0 flex-1 overflow-y-auto px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 lg:px-6 lg:pb-8">
           <div class="mobile-dashboard-stack">
             <div class="mobile-dashboard-panel grid gap-4 xl:grid-cols-[1.25fr,0.95fr,0.9fr]">
             <section class="glass-card ambient-glow-purple relative overflow-hidden p-5">
@@ -1772,7 +1772,7 @@ function isSameCalendarDay(a: Date, b: Date) {
       </div>
     </div>
 
-    <nav class="fixed bottom-0 left-0 right-0 z-30 flex h-16 items-center justify-around border-t border-border-subtle bg-surface/90 px-2 backdrop-blur-glass-heavy lg:hidden">
+    <nav class="fixed bottom-0 left-0 right-0 z-30 flex min-h-16 items-center justify-around border-t border-border-subtle bg-surface/90 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-glass-heavy lg:hidden">
       <button type="button" class="flex flex-col items-center gap-1 text-xs text-text-muted" @click="goTodayInCalendar">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6h-5v6H4a1 1 0 0 1-1-1v-9.5Z" />
@@ -1850,11 +1850,15 @@ function isSameCalendarDay(a: Date, b: Date) {
   .mobile-dashboard-stack {
     display: flex;
     gap: 1rem;
-    margin-inline: -1rem;
-    padding-inline: 1rem;
+    min-width: 0;
+    margin-inline: 0;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
     padding-bottom: 0.5rem;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
+    scroll-padding-left: max(1rem, env(safe-area-inset-left));
+    scroll-padding-right: max(1rem, env(safe-area-inset-right));
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
     scrollbar-width: thin;
@@ -1876,9 +1880,9 @@ function isSameCalendarDay(a: Date, b: Date) {
   }
 
   .mobile-dashboard-panel {
-    width: calc(100vw - 2rem);
-    min-width: calc(100vw - 2rem);
-    max-width: calc(100vw - 2rem);
+    width: calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+    min-width: calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-width: 100%;
     flex-shrink: 0;
     scroll-snap-align: center;
     margin-top: 0 !important;

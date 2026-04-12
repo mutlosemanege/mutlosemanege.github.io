@@ -1,7 +1,7 @@
 # Kalender-AI
 
-> ⬆ [[Setup & Deployment]] · [[_INDEX]]
-> Geschwister: [[GOOGLE_SETUP]] · [[NETLIFY_SETUP]]
+> ⬆ [[docs/index]] · [[docs/deployment/00_Übersicht]]
+> Geschwister: [[docs/deployment/GOOGLE_SETUP]] · [[docs/deployment/NETLIFY_SETUP]]
 
 KI-gestützte Google Kalender Web-App. Plane, priorisiere und manage Aufgaben mit Claude-Unterstützung — direkt mit deinem Google Kalender verknüpft.
 
@@ -12,8 +12,8 @@ KI-gestützte Google Kalender Web-App. Plane, priorisiere und manage Aufgaben mi
 ## Voraussetzungen
 
 - Node.js 20 oder höher
-- Google Cloud Projekt mit Calendar API und OAuth2 Client ID → [GOOGLE_SETUP.md](GOOGLE_SETUP.md)
-- Anthropic API-Key (für KI-Features) → [NETLIFY_SETUP.md](NETLIFY_SETUP.md)
+- Google Cloud Projekt mit Calendar API und OAuth2 Client ID → [[docs/deployment/GOOGLE_SETUP]]
+- Anthropic API-Key (für KI-Features) → [[docs/deployment/NETLIFY_SETUP]]
 
 ---
 
@@ -48,7 +48,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 
 Die App wird auf Netlify deployed (Serverless Functions für KI-Features erforderlich).
 
-Vollständige Anleitung: [NETLIFY_SETUP.md](NETLIFY_SETUP.md)
+Vollständige Anleitung: [[docs/deployment/NETLIFY_SETUP]]
 
 ```bash
 # Produktions-Build (Netlify-Preset)
@@ -136,7 +136,7 @@ server/
 - Planungs-Chat: kein Support für Wochentagnamen oder spezifische Daten ("am 15.")
 - Keine Browser-Benachrichtigungen für Deadlines
 
-Ausführliche Feature-Planung: [AI_FEATURE_ROADMAP.md](AI_FEATURE_ROADMAP.md)
+Ausführliche Feature-Planung: [[docs/ai/AI_FEATURE_ROADMAP]]
 
 ---
 
@@ -144,8 +144,8 @@ Ausführliche Feature-Planung: [AI_FEATURE_ROADMAP.md](AI_FEATURE_ROADMAP.md)
 
 | Datei | Inhalt |
 |-------|--------|
-| [GOOGLE_SETUP.md](GOOGLE_SETUP.md) | Google Cloud Projekt, Calendar API, OAuth2 einrichten |
-| [NETLIFY_SETUP.md](NETLIFY_SETUP.md) | Netlify Deployment, Anthropic API-Key konfigurieren |
-| [CLAUDE.md](CLAUDE.md) | Vollständige Architektur-Dokumentation (für KI-Assistenten) |
-| [AI_FEATURE_ROADMAP.md](AI_FEATURE_ROADMAP.md) | KI-Feature-Roadmap mit Prioritäten und Status |
-| [REDESIGN-PROMPT.md](REDESIGN-PROMPT.md) | Premium Dark-Mode Redesign Prompt (für Codex) |
+| [[docs/deployment/GOOGLE_SETUP]] | Google Cloud Projekt, Calendar API, OAuth2 einrichten |
+| [[docs/deployment/NETLIFY_SETUP]] | Netlify Deployment, Anthropic API-Key konfigurieren |
+| [[CLAUDE]] | Vollständige Architektur-Dokumentation (für KI-Assistenten) |
+| [[docs/ai/AI_FEATURE_ROADMAP]] | KI-Feature-Roadmap mit Prioritäten und Status |
+| [[docs/planung/REDESIGN-PROMPT]] | Premium Dark-Mode Redesign Prompt (für Codex) |

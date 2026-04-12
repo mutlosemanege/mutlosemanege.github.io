@@ -255,6 +255,27 @@ export function usePreferences() {
       .map(([hour]) => Number(hour))
   }
 
+  function getSuggestedDeepWorkHours() {
+    const learned = getPreferredHours(true)
+    if (learned.length > 0) {
+      return learned
+    }
+
+    const buckets = new Map<number, number>()
+    for (const window of preferences.value.deepWorkWindows) {
+      const roundedStartHour = Math.max(0, Math.min(23, Math.floor(window.startHour)))
+      buckets.set(roundedStartHour, (buckets.get(roundedStartHour) || 0) + 1)
+    }
+
+    return [...buckets.entries()]
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1]
+        return a[0] - b[0]
+      })
+      .slice(0, 3)
+      .map(([hour]) => hour)
+  }
+
   return {
     preferences: readonly(preferences),
     updatePreferences,
@@ -266,6 +287,7 @@ export function usePreferences() {
     recordTaskCompletion,
     recordTaskMiss,
     getPreferredHours,
+    getSuggestedDeepWorkHours,
     getDailyCommit,
     setDailyCommit,
     clearDailyCommit,

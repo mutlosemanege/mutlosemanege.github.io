@@ -19,7 +19,7 @@ const { tasks, projects, getPendingTasks, getUnscheduledTasks, createTask, updat
 const { prioritizeTasks, isProcessing, aiError } = useAI()
 const { scheduleTasks, findFreeSlots } = useScheduler()
 const { events: calendarEvents, createEvent, fetchEvents, deleteEvent, syncStatus: calendarSyncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction } = useCalendar()
-const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours, getDailyCommit, getDailyMode } = usePreferences()
+const { preferences, recordTaskCompletion, recordTaskMiss, getPreferredHours, getSuggestedDeepWorkHours, getDailyCommit, getDailyMode } = usePreferences()
 
 const showProjectGenerator = ref(false)
 const activeFilter = ref<'all' | 'open' | 'scheduled' | 'done' | 'missed'>('all')
@@ -1493,7 +1493,7 @@ function formatHourLabel(hour: number) {
 }
 
 function getTaskPersonalHint(task: Task) {
-  const preferredHours = getPreferredHours(task.isDeepWork)
+  const preferredHours = task.isDeepWork ? getSuggestedDeepWorkHours() : getPreferredHours(false)
   if (preferredHours.length === 0) return null
 
   const firstHour = preferredHours[0]
@@ -1512,7 +1512,7 @@ function getTaskPersonalHint(task: Task) {
 
 const sidebarPersonalGuidance = computed(() => {
   const preferredHours = getPreferredHours(false)
-  const deepHours = getPreferredHours(true)
+  const deepHours = getSuggestedDeepWorkHours()
   const visibleTasks = getPendingTasks().filter(task => task.status !== 'done')
   const grouped = new Map<LifeArea, number>()
 

@@ -1,6 +1,6 @@
 # Claude Commands (Slash Commands)
 
-> ⬆ [[_INDEX]]
+> ⬆ [[../index]]
 
 Projekt-spezifische Slash Commands für Claude Code. Dateien liegen in `.claude/commands/` (versteckter Ordner, funktional für Claude Code — hier dokumentiert für Obsidian).
 
@@ -26,25 +26,25 @@ Zeigt einen kompakten Projektstatus:
 ### `/roadmap [argument]`
 **Datei:** `.claude/commands/roadmap.md`
 
-Zeigt und verwaltet die [[AI_FEATURE_ROADMAP]]:
+Zeigt und verwaltet die [[../ai/AI_FEATURE_ROADMAP]]:
 - `/roadmap` — Zusammenfassung: offen vs. erledigt, nächster Schritt
 - `/roadmap was bauen wir als nächstes` — Empfehlung basierend auf Roadmap
 - `/roadmap [item] erledigt` — Markiert ein Item als `[x]`
 
-**Verknüpft mit:** [[AI_FEATURE_ROADMAP]] · [[Planung & Design]]
+**Verknüpft mit:** [[../ai/AI_FEATURE_ROADMAP]] · [[../planung/Planung & Design]]
 
 ---
 
 ### `/redesign [argument]`
 **Datei:** `.claude/commands/redesign.md`
 
-Lädt den Premium-Redesign-Kontext aus [[REDESIGN-PROMPT]]:
+Lädt den Premium-Redesign-Kontext aus [[../planung/REDESIGN-PROMPT]]:
 - `/redesign` — Überblick: Ziel, betroffene Dateien, Reihenfolge
 - `/redesign NavBar` — Plan für diese spezifische Komponente
 - `/redesign start` — Startet Phase 1 direkt (tailwind.config.ts + main.css)
 - `/redesign status` — Prüft Fortschritt: welche Dateien sind schon dark-mode?
 
-**Verknüpft mit:** [[REDESIGN-PROMPT]] · [[skills/Glassmorphism-Redesign]] · [[Planung & Design]]
+**Verknüpft mit:** [[../planung/REDESIGN-PROMPT]] · [[../architektur/skills/Glassmorphism-Redesign]] · [[../planung/Planung & Design]]
 
 ---
 
@@ -59,7 +59,7 @@ Standardisierter Feature-Entwicklungs-Workflow:
 
 **Regeln:** KI-Modelle nicht wechseln, Backend möglichst nicht anfassen, Composable-APIs stabil halten.
 
-**Verknüpft mit:** [[Architektur & Entwicklung]] · [[AI_FEATURE_ROADMAP]]
+**Verknüpft mit:** [[../architektur/Architektur & Entwicklung]] · [[../ai/AI_FEATURE_ROADMAP]]
 
 ---
 
@@ -81,4 +81,4 @@ Dann hier in [[Claude Commands]] dokumentieren.
 
 ---
 
-*Übergeordnet: [[_INDEX]]*
+*Übergeordnet: [[../index]]*

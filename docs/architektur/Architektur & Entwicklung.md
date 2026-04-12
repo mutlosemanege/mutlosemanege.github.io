@@ -1,6 +1,6 @@
 # Architektur & Entwicklung
 
-> ⬆ [[_INDEX]]
+> ⬆ [[../index]] · [[00_Übersicht]]
 
 Technische Dokumentation, Code-Patterns und Architekturentscheidungen für Kalender-AI.
 
@@ -10,8 +10,9 @@ Technische Dokumentation, Code-Patterns und Architekturentscheidungen für Kalen
 
 ```
 Architektur & Entwicklung
-└── [[CLAUDE]]    — Vollständige Codebase-Dokumentation (Architektur, Patterns,
-                    Komponenten, Composables, Datenmodell, Limitations)
+├── [[00_Übersicht]]         — Diese Übersicht
+└── [[../CLAUDE]]            — Vollständige Codebase-Dokumentation (Architektur, Patterns,
+                               Komponenten, Composables, Datenmodell, Limitations)
 ```
 
 ---
@@ -80,7 +81,7 @@ tool_choice: { type: 'tool', name: 'prioritize_tasks' }  // Erzwingt Struktur
 ## Skills zu den Kernthemen
 
 | Thema | Skill-Note |
-|-------|-----------|
+|-------|------------|
 | Scheduling-Algorithmus | [[skills/Greedy-Scheduler]] |
 | KI-Integration | [[skills/KI-Priorisierung]] · [[skills/Nuxt-Serverless-KI]] |
 | Datenpersistenz | [[skills/IndexedDB-Vue3]] |
@@ -90,4 +91,4 @@ tool_choice: { type: 'tool', name: 'prioritize_tasks' }  // Erzwingt Struktur
 
 ---
 
-*Übergeordnet: [[_INDEX]]*
+*Übergeordnet: [[../index]]*

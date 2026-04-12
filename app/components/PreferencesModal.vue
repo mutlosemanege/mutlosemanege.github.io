@@ -72,6 +72,7 @@ const form = reactive({
   publicHolidayRegion: 'DE' as GermanHolidayRegion,
   workStartHour: 9,
   workEndHour: 17,
+  syncWorkSchedule: false,
   personalStartHour: 17,
   personalEndHour: 22,
   personalDays: [0, 1, 2, 3, 4, 5, 6] as number[],
@@ -86,6 +87,7 @@ const form = reactive({
   minDeepWorkBlockMinutes: 90,
   taskBufferMinutes: 15,
   deadlineWarningDays: 3,
+  syncLunchSchedule: false,
   workDays: [1, 2, 3, 4, 5] as number[],
   deepWorkWindows: [] as DeepWorkWindow[],
   routineTemplates: [] as RoutineTemplate[],
@@ -138,6 +140,7 @@ watch(() => props.show, (val) => {
   form.publicHolidayRegion = p.publicHolidayRegion
   form.workStartHour = p.workStartHour
   form.workEndHour = p.workEndHour
+  form.syncWorkSchedule = p.syncWorkSchedule
   form.personalStartHour = p.personalStartHour
   form.personalEndHour = p.personalEndHour
   form.personalDays = [...p.personalDays]
@@ -152,6 +155,7 @@ watch(() => props.show, (val) => {
   form.minDeepWorkBlockMinutes = p.minDeepWorkBlockMinutes
   form.taskBufferMinutes = p.taskBufferMinutes
   form.deadlineWarningDays = p.deadlineWarningDays
+  form.syncLunchSchedule = p.syncLunchSchedule
   form.workDays = [...p.workDays]
   form.deepWorkWindows = p.deepWorkWindows.map(w => ({ ...w }))
   form.routineTemplates = p.routineTemplates.map(r => ({
@@ -449,6 +453,54 @@ async function applyRoutineTemplates() {
       }
     }
 
+    if (form.syncWorkSchedule) {
+      for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+        for (const workDay of form.workDays) {
+          const date = nextDateForWeekday(workDay, weekOffset, now)
+          const workStart = new Date(date)
+          applyHourValue(workStart, form.workStartHour)
+          const workEnd = new Date(date)
+          applyHourValue(workEnd, form.workEndHour)
+          if (form.workEndHour <= form.workStartHour) {
+            workEnd.setDate(workEnd.getDate() + 1)
+          }
+
+          const createdWork = await createBlockedEvent('Arbeitszeit', workStart, workEnd, 'Automatisch aus Planung und Routinen eingetragen', tz)
+          if (createdWork === 'skipped') {
+            skippedEvents++
+          } else if (createdWork) {
+            createdEvents.push(createdWork)
+          } else {
+            failedEntries.push('Arbeitszeit')
+          }
+        }
+      }
+    }
+
+    if (form.syncLunchSchedule) {
+      for (let weekOffset = 0; weekOffset < 4; weekOffset++) {
+        for (const workDay of form.workDays) {
+          const date = nextDateForWeekday(workDay, weekOffset, now)
+          const lunchStart = new Date(date)
+          applyHourValue(lunchStart, form.lunchStartHour)
+          const lunchEnd = new Date(date)
+          applyHourValue(lunchEnd, form.lunchEndHour)
+          if (form.lunchEndHour <= form.lunchStartHour) {
+            lunchEnd.setDate(lunchEnd.getDate() + 1)
+          }
+
+          const createdLunch = await createBlockedEvent('Mittagspause', lunchStart, lunchEnd, 'Automatisch aus Planung und Routinen eingetragen', tz)
+          if (createdLunch === 'skipped') {
+            skippedEvents++
+          } else if (createdLunch) {
+            createdEvents.push(createdLunch)
+          } else {
+            failedEntries.push('Mittagspause')
+          }
+        }
+      }
+    }
+
     const rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 4, 0)
     const refreshed = await fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString())
@@ -458,6 +510,10 @@ async function applyRoutineTemplates() {
   } finally {
     isApplyingRoutines.value = false
   }
+}
+
+function shouldAutoSyncPlanningRules() {
+  return form.routineTemplates.length > 0 || form.syncSleepSchedule || form.syncCommuteSchedule || form.syncWorkSchedule || form.syncLunchSchedule
 }
 
 async function applyImportEntries() {
@@ -673,13 +729,14 @@ function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function handleSave() {
+async function handleSave() {
   updatePreferences({
     planningStyle: form.planningStyle,
     respectPublicHolidays: form.respectPublicHolidays,
     publicHolidayRegion: form.publicHolidayRegion,
     workStartHour: form.workStartHour,
     workEndHour: form.workEndHour,
+    syncWorkSchedule: form.syncWorkSchedule,
     personalStartHour: form.personalStartHour,
     personalEndHour: form.personalEndHour,
     personalDays: [...form.personalDays],
@@ -694,6 +751,7 @@ function handleSave() {
     minDeepWorkBlockMinutes: form.minDeepWorkBlockMinutes,
     taskBufferMinutes: form.taskBufferMinutes,
     deadlineWarningDays: form.deadlineWarningDays,
+    syncLunchSchedule: form.syncLunchSchedule,
     workDays: [...form.workDays],
     deepWorkWindows: form.deepWorkWindows.map(w => ({ ...w })),
     routineTemplates: form.routineTemplates.map(r => ({
@@ -704,6 +762,11 @@ function handleSave() {
       skipDates: [...(r.skipDates || [])],
     })),
   })
+
+  if (shouldAutoSyncPlanningRules()) {
+    await applyRoutineTemplates()
+  }
+
   emit('close')
 }
 
@@ -840,6 +903,14 @@ async function handleRetryCalendarAction() {
           <!-- Arbeitszeiten -->
           <div>
             <h3 class="mb-2 text-sm font-medium text-text-primary">Arbeitszeiten</h3>
+            <label class="mb-3 flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                v-model="form.syncWorkSchedule"
+                type="checkbox"
+                class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
+              >
+              Arbeitszeiten beim Eintragen als feste Kalenderblöcke anlegen
+            </label>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Start</label>
@@ -862,6 +933,9 @@ async function handleRetryCalendarAction() {
                 >
               </div>
             </div>
+            <p class="mt-2 text-xs text-text-secondary">
+              Wenn aktiv, werden für deine Arbeitstage feste `Arbeitszeit`-Blöcke für die nächsten 4 Wochen in den Kalender geschrieben.
+            </p>
           </div>
 
           <div>
@@ -951,6 +1025,14 @@ async function handleRetryCalendarAction() {
           <!-- Mittagspause -->
           <div>
             <h3 class="mb-2 text-sm font-medium text-text-primary">Mittagspause</h3>
+            <label class="mb-3 flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                v-model="form.syncLunchSchedule"
+                type="checkbox"
+                class="rounded border-border-subtle bg-transparent text-accent-purple focus:ring-accent-purple"
+              >
+              Mittagspause beim Eintragen als festen Kalenderblock anlegen
+            </label>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs text-text-muted">Von</label>
@@ -973,6 +1055,9 @@ async function handleRetryCalendarAction() {
                 >
               </div>
             </div>
+            <p class="mt-2 text-xs text-text-secondary">
+              Wenn aktiv, wird die Pause an deinen Arbeitstagen als `Mittagspause` in den Kalender geschrieben.
+            </p>
           </div>
 
           <!-- Arbeitstage -->

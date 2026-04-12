@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   ssr: false,
   css: ['~/assets/css/main.css'],
   devServer: {
-    host: 'localhost',
+    host: '0.0.0.0',
   },
   devtools: { enabled: true },
   app: {
@@ -24,7 +24,8 @@ export default defineNuxtConfig({
       title: 'Kalender',
       meta: [
         { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
+        { name: 'theme-color', content: '#0B1020' },
         { name: 'description', content: 'Google Kalender Web-App' }
       ],
       script: [

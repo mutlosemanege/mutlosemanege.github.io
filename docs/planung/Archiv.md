@@ -1,6 +1,6 @@
 # Archiv
 
-> ⬆ [[_INDEX]]
+> ⬆ [[../index]] · [[00_Übersicht]]
 
 Historische Dokumente — spiegeln nicht den aktuellen Projektzustand wider, aber zeigen wie das Projekt entstanden ist.
 
@@ -10,12 +10,12 @@ Historische Dokumente — spiegeln nicht den aktuellen Projektzustand wider, abe
 
 ```
 Archiv
-└── [[Prompt]]    — Ursprünglicher Subagent-Prompt aus dem ersten Build
+└── [[../prompts/Prompt]]    — Ursprünglicher Subagent-Prompt aus dem ersten Build
 ```
 
 ---
 
-## [[Prompt]] — Ursprünglicher Build-Prompt
+## [[../prompts/Prompt]] — Ursprünglicher Build-Prompt
 
 **Erstellt:** Zu Beginn des Projekts (vor allen KI-Features, vor Netlify-Migration)
 
@@ -33,8 +33,8 @@ Archiv
 - Planungs-Chat mit NLP-Parser
 - Premium Redesign in Planung
 
-Aktueller Stand: [[CLAUDE]] · [[README]]
+Aktueller Stand: [[../../CLAUDE]] · [[../../README]]
 
 ---
 
-*Übergeordnet: [[_INDEX]]*
+*Übergeordnet: [[../index]]*

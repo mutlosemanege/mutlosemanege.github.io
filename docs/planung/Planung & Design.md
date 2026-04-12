@@ -1,6 +1,6 @@
 # Planung & Design
 
-> ⬆ [[_INDEX]]
+> ⬆ [[../index]] · [[00_Übersicht]]
 
 Feature-Roadmap, Design-Entscheidungen und der Redesign-Plan für Kalender-AI.
 
@@ -10,8 +10,11 @@ Feature-Roadmap, Design-Entscheidungen und der Redesign-Plan für Kalender-AI.
 
 ```
 Planung & Design
-├── [[AI_FEATURE_ROADMAP]]    — KI-Feature-Roadmap mit Prioritäten und Status
-└── [[REDESIGN-PROMPT]]       — Premium Dark-Mode UI-Redesign Prompt (Codex-ready)
+├── [[00_Übersicht]]               — Diese Übersicht
+├── [[AI_FEATURE_ROADMAP]]          — KI-Feature-Roadmap mit Prioritäten und Status
+├── [[REDESIGN-PROMPT]]             — Premium Dark-Mode UI-Redesign Prompt (Codex-ready)
+├── [[REDESIGN_CHECKLIST]]         — Redesign-Checkliste
+└── [[Archiv]]                     — Historische Dokumente
 ```
 
 ---
@@ -56,7 +59,7 @@ Das Frontend soll von Light-Mode (grau/weiß) zu einem **Premium Dark-Mode** umg
 | Single-Column Layout | 3-Spalten Desktop, gestapelt Mobile |
 
 Vollständiger Codex-Prompt: [[REDESIGN-PROMPT]]
-Design-Details: [[skills/Glassmorphism-Redesign]] · [[skills/Tailwind-Design-System]]
+Design-Details: [[../architektur/skills/Glassmorphism-Redesign]] · [[../architektur/skills/Tailwind-Design-System]]
 
 ---
 
@@ -70,4 +73,4 @@ Design-Details: [[skills/Glassmorphism-Redesign]] · [[skills/Tailwind-Design-Sy
 
 ---
 
-*Übergeordnet: [[_INDEX]]*
+*Übergeordnet: [[../index]]*

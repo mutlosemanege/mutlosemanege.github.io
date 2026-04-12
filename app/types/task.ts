@@ -123,6 +123,7 @@ export interface UserPreferences {
   publicHolidayRegion: GermanHolidayRegion
   workStartHour: number
   workEndHour: number
+  syncWorkSchedule: boolean
   personalStartHour: number
   personalEndHour: number
   personalDays: readonly number[]
@@ -137,6 +138,7 @@ export interface UserPreferences {
   taskBufferMinutes: number
   lunchStartHour: number
   lunchEndHour: number
+  syncLunchSchedule: boolean
   deadlineWarningDays: number
   workDays: readonly number[] // 1=Mo, 2=Di, ..., 5=Fr (default Mo-Fr)
   routineTemplates: readonly RoutineTemplate[]
@@ -166,6 +168,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   publicHolidayRegion: 'DE',
   workStartHour: 9,
   workEndHour: 17,
+  syncWorkSchedule: false,
   personalStartHour: 17,
   personalEndHour: 22,
   personalDays: [0, 1, 2, 3, 4, 5, 6],
@@ -186,6 +189,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   taskBufferMinutes: 15,
   lunchStartHour: 12,
   lunchEndHour: 13,
+  syncLunchSchedule: false,
   deadlineWarningDays: 3,
   workDays: [1, 2, 3, 4, 5],
   routineTemplates: [],
