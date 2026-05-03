@@ -97,6 +97,27 @@ export function useCalendar() {
     lastFailedAction.value = null
   }
 
+  function upsertLocalEvent(event: CalendarEvent) {
+    if (!event.id) {
+      events.value = [...events.value, event]
+      return
+    }
+
+    const index = events.value.findIndex(entry => entry.id === event.id)
+    if (index === -1) {
+      events.value = [...events.value, event]
+      return
+    }
+
+    const nextEvents = [...events.value]
+    nextEvents[index] = event
+    events.value = nextEvents
+  }
+
+  function removeLocalEvent(eventId: string) {
+    events.value = events.value.filter(event => event.id !== eventId)
+  }
+
   function toSafeCalendarMessage(
     action: CalendarSyncStatus['action'],
     rawMessage: string | undefined,
@@ -237,6 +258,9 @@ export function useCalendar() {
           body: JSON.stringify(event)
         }
       )
+      if (result) {
+        upsertLocalEvent(result)
+      }
       setSyncStatus('success', 'create', 'Kalendereintrag wurde erfolgreich erstellt.')
       clearFailedAction()
       return result
@@ -266,6 +290,9 @@ export function useCalendar() {
           body: JSON.stringify(event)
         }
       )
+      if (result) {
+        upsertLocalEvent(result)
+      }
       setSyncStatus('success', 'update', 'Kalendereintrag wurde aktualisiert.')
       clearFailedAction()
       return result
@@ -292,6 +319,7 @@ export function useCalendar() {
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events/${encodeURIComponent(eventId)}`,
         { method: 'DELETE' }
       )
+      removeLocalEvent(eventId)
       setSyncStatus('success', 'delete', 'Kalendereintrag wurde entfernt.')
       clearFailedAction()
       return true
