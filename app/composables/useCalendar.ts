@@ -99,19 +99,19 @@ export function useCalendar() {
 
   function upsertLocalEvent(event: CalendarEvent) {
     if (!event.id) {
-      events.value = [...events.value, event]
+      events.value = sortCalendarEvents([...events.value, event])
       return
     }
 
     const index = events.value.findIndex(entry => entry.id === event.id)
     if (index === -1) {
-      events.value = [...events.value, event]
+      events.value = sortCalendarEvents([...events.value, event])
       return
     }
 
     const nextEvents = [...events.value]
     nextEvents[index] = event
-    events.value = nextEvents
+    events.value = sortCalendarEvents(nextEvents)
   }
 
   function removeLocalEvent(eventId: string) {
@@ -160,6 +160,18 @@ export function useCalendar() {
     if (event.end.dateTime) return new Date(event.end.dateTime)
     if (event.end.date) return new Date(event.end.date)
     return null
+  }
+
+  function sortCalendarEvents(pool: readonly CalendarEvent[]) {
+    return [...pool].sort((a, b) => {
+      const aStart = getEventStart(a)?.getTime() ?? Number.POSITIVE_INFINITY
+      const bStart = getEventStart(b)?.getTime() ?? Number.POSITIVE_INFINITY
+      if (aStart !== bStart) return aStart - bStart
+
+      const aEnd = getEventEnd(a)?.getTime() ?? Number.POSITIVE_INFINITY
+      const bEnd = getEventEnd(b)?.getTime() ?? Number.POSITIVE_INFINITY
+      return aEnd - bEnd
+    })
   }
 
   function normalizeSummary(value: string | undefined) {
@@ -227,7 +239,7 @@ export function useCalendar() {
       const data = await apiRequest(
         `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId())}/events?${params}`
       )
-      events.value = data.items || []
+      events.value = sortCalendarEvents(data.items || [])
       setSyncStatus('success', 'fetch', `${events.value.length} Kalendereintraege synchronisiert.`)
       clearFailedAction()
       return true
