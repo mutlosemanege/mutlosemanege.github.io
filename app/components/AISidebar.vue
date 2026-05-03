@@ -32,6 +32,7 @@ const decisionTransparency = ref<DecisionTransparency | null>(null)
 const isRefreshingPlanningInsights = ref(false)
 const planningInsightProfile = ref<PlanningInsightProfile | null>(null)
 const showNeglectedAreasHint = ref(true)
+const showDayFlowHint = ref(true)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -1489,12 +1490,22 @@ function inferLifeArea(task: Task): LifeArea {
   return 'arbeit'
 }
 
+const { yesterdayContinuitySummary, middayCheckIn, eveningReflectionNudge } = useDayFlow({
+  tasks,
+  inferLifeArea,
+})
+
 const { neglectedAreas } = useLifeBalance({
   tasks,
   inferLifeArea,
 })
 
 const neglectedAreasKey = computed(() => neglectedAreas.value.map(entry => entry.area).join('|'))
+const dayFlowHintKey = computed(() => [
+  yesterdayContinuitySummary.value || '',
+  middayCheckIn.value?.label || '',
+  eveningReflectionNudge.value?.label || '',
+].join('|'))
 
 const neglectedAreasSummary = computed(() => {
   if (neglectedAreas.value.length === 0) return null
@@ -1509,6 +1520,10 @@ const neglectedAreasSummary = computed(() => {
 
 watch(neglectedAreasKey, () => {
   showNeglectedAreasHint.value = true
+}, { immediate: true })
+
+watch(dayFlowHintKey, () => {
+  showDayFlowHint.value = true
 }, { immediate: true })
 
 function formatHourLabel(hour: number) {
@@ -2806,6 +2821,30 @@ async function handleRetryCalendarAction() {
             >
               <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Persönlicher Hinweis</div>
               <div class="mt-1 leading-5">{{ sidebarPersonalGuidance }}</div>
+            </div>
+
+            <div
+              v-if="showDayFlowHint && (yesterdayContinuitySummary || middayCheckIn || eveningReflectionNudge)"
+              class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 px-4 py-3 text-xs text-text-secondary"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="space-y-2">
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-purple-soft">Tagesfluss</div>
+                  <div v-if="yesterdayContinuitySummary" class="leading-5">{{ yesterdayContinuitySummary }}</div>
+                  <div v-if="middayCheckIn" class="leading-5">
+                    <span class="font-medium text-text-primary">{{ middayCheckIn.label }}</span>
+                    <span class="block mt-1">{{ middayCheckIn.summary }}</span>
+                  </div>
+                  <div v-if="eveningReflectionNudge" class="leading-5">{{ eveningReflectionNudge.detail }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-3 py-1 text-[11px] text-accent-purple-soft transition hover:bg-white/[0.1]"
+                  @click="showDayFlowHint = false"
+                >
+                  Ausblenden
+                </button>
+              </div>
             </div>
 
             <div
