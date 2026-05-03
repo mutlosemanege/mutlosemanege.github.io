@@ -417,6 +417,12 @@ const cases = [
       const spacedSportRoutineRequest = parsePlanningPrompt('immer 2 tage dazwischen sport', 60, 'auto', baseNow)
       assert.deepStrictEqual(spacedSportRoutineRequest.cyclePattern, { trainDays: 1, restDays: 2 })
 
+      const alternatingRoutineRequest = parsePlanningPrompt('2 tage dann 1 tag pause', 60, 'auto', baseNow)
+      assert.deepStrictEqual(alternatingRoutineRequest.cyclePattern, { trainDays: 2, restDays: 1 })
+
+      const cycleTitleRequest = parsePlanningPrompt('2 tage dann 1 tag pause mobility', 60, 'auto', baseNow)
+      assert.equal(cycleTitleRequest.title, 'mobility')
+
       const multiWeekdayRequest = parsePlanningPrompt('Gym montags mittwochs freitags 07:00 Uhr', 60, 'auto', baseNow)
       assert.equal(multiWeekdayRequest.intent, 'routine')
       assert.deepStrictEqual(multiWeekdayRequest.multipleWeekdays, [1, 3, 5])
@@ -461,8 +467,13 @@ const cases = [
       assert.equal(restDayTitleRequest.title, 'mobility')
       assert.equal(restDayTitleRequest.title.includes('ruhetag'), false)
 
-      const exactGapRequest = parsePlanningPrompt('immer 1 tag dazwischen laufen', 60, 'auto', baseNow)
-      assert.deepStrictEqual(exactGapRequest.cyclePattern, { trainDays: 1, restDays: 1 })
+      const restDayLeadingTitleRequest = parsePlanningPrompt('ruhetag mittwoch 6x die Woche mobility', 30, 'auto', baseNow)
+      assert.equal(restDayLeadingTitleRequest.title, 'mobility')
+      assert.equal(restDayLeadingTitleRequest.multipleWeekdays.includes(3), false)
+
+      const restDayTrainingTitleRequest = parsePlanningPrompt('6x die Woche training ruhetag freitag', 45, 'auto', baseNow)
+      assert.equal(restDayTrainingTitleRequest.title, 'training')
+      assert.equal(restDayTrainingTitleRequest.multipleWeekdays.includes(5), false)
     },
   },
 ]
