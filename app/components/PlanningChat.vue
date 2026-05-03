@@ -666,7 +666,10 @@ async function handleCreateRoutine() {
         end.setDate(end.getDate() + 1)
       }
 
-      if (hasMatchingExistingEvent(previewRoutine.value.template.title, start, end, transientEvents)) {
+      if (
+        hasMatchingExistingEvent(previewRoutine.value.template.title, start, end, transientEvents)
+        || hasCalendarOverlap(start, end, transientEvents)
+      ) {
         continue
       }
 
@@ -730,7 +733,10 @@ async function handleCreateMultiRoutines() {
         const end = new Date(baseDate)
         end.setHours(routine.template.endHour, 0, 0, 0)
         if (routine.template.endHour <= routine.template.startHour) end.setDate(end.getDate() + 1)
-        if (hasMatchingExistingEvent(routine.template.title, start, end, transientEvents)) continue
+        if (
+          hasMatchingExistingEvent(routine.template.title, start, end, transientEvents)
+          || hasCalendarOverlap(start, end, transientEvents)
+        ) continue
         const created = await createEvent({
           summary: normalizeUserText(routine.template.title, MAX_TASK_TITLE_LENGTH),
           description: normalizeOptionalUserText(routine.template.description || 'Aus Planungs-Chat als Routine angelegt', MAX_LONG_TEXT_LENGTH),
@@ -1990,6 +1996,26 @@ function hasMatchingExistingEvent(
     return sameDay &&
       Math.abs(eventStart.getTime() - start.getTime()) <= 15 * 60 * 1000 &&
       Math.abs(eventEnd.getTime() - end.getTime()) <= 15 * 60 * 1000
+  })
+}
+
+function hasCalendarOverlap(
+  start: Date,
+  end: Date,
+  transientEvents: Array<{ summary: string; start: Date; end: Date }> = [],
+) {
+  return [...routineCalendarPool(), ...transientEvents.map(event => ({
+    summary: event.summary,
+    start: { dateTime: event.start.toISOString() },
+    end: { dateTime: event.end.toISOString() },
+  }))].some((event) => {
+    const startValue = event.start.dateTime || event.start.date
+    const endValue = event.end.dateTime || event.end.date
+    if (!startValue || !endValue) return false
+
+    const eventStart = new Date(startValue)
+    const eventEnd = new Date(endValue)
+    return eventStart < end && eventEnd > start
   })
 }
 
