@@ -39,6 +39,8 @@ interface ParsedPlanningRequest {
   multipleWeekdays?: number[]
   frequencyInPeriod?: number
   timePreference?: PlanningTimePreference
+  restDayHint?: number
+  cyclePattern?: { trainDays: number; restDays: number }
   ambiguityHints: string[]
 }
 
@@ -96,7 +98,7 @@ const emit = defineEmits<{
 
 const { preferences, updatePreferences } = usePreferences()
 const { findFreeSlots } = useScheduler()
-const { createEvent, error: calendarError, syncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction, findPotentialDuplicates } = useCalendar()
+const { events: calendarEvents, createEvent, deleteEvent, error: calendarError, syncStatus, canRetryLastAction, isRetryingLastAction, retryLastAction, findPotentialDuplicates } = useCalendar()
 const { createTask, updateTask } = useTasks()
 
 const prompt = ref('')
@@ -117,6 +119,28 @@ const previewUncertainty = ref<string | null>(null)
 const previewAlternatives = ref<PreviewAlternative[]>([])
 const previewAvailabilityLabel = ref<string | null>(null)
 const selectedPreviewSuggestionKey = ref<string | null>(null)
+
+// Routine-Konflikterkennung & Zeitslot-Auswahl
+interface RoutineConflictInfo {
+  date: Date
+  conflictingEvents: CalendarEvent[]
+  suggestedShiftDate: Date | null
+  suggestedShiftDayLabel: string
+}
+interface RoutineTimeSlotOption {
+  startHour: number
+  endHour: number
+  label: string
+}
+interface MultiRoutineTimeAlternatives {
+  dayIndex: number
+  dayLabel: string
+  alternatives: RoutineTimeSlotOption[]
+}
+const routineConflict = ref<RoutineConflictInfo | null>(null)
+const routineTimeAlternatives = ref<RoutineTimeSlotOption[]>([])
+const multiRoutineTimeAlternatives = ref<MultiRoutineTimeAlternatives[]>([])
+const showDeleteConflictConfirm = ref(false)
 const examplePrompts = [
   'Treffen mit Bro morgen Abend',
   '2h Videoschnitt zwischen 14 und 17 Uhr',
@@ -257,21 +281,40 @@ const clarificationOptions = computed<ClarificationOption[]>(() => {
   }
 
   if (parsedDetails.value.recurrenceFrequencyPerWeek) {
-    if (parsedDetails.value.recurrenceFrequencyPerWeek >= 5) {
+    const freq = parsedDetails.value.recurrenceFrequencyPerWeek
+    const hasRestDay = parsedDetails.value.restDayHint !== undefined
+
+    if (freq === 6 && !hasRestDay) {
+      // 6x/week: offer rest-day chips for 3+1+3 training pattern
+      for (const [label, day, detail] of [
+        ['Ruhetag Do', 4, 'Mo–Mi trainieren, Do pausieren, Fr–So trainieren (3+1+3)'],
+        ['Ruhetag So', 0, 'Mo–Sa trainieren, Sonntag pausieren'],
+        ['Ruhetag Mo', 1, 'Ruhetag Montag — Di–So trainieren'],
+      ] as [string, number, string][]) {
+        addOption({
+          key: `rest-day-${day}`,
+          label,
+          detail,
+          promptValue: `${prompt.value} ruhetag ${weekdayLabel(day).toLowerCase()}`,
+        })
+      }
+    } else if (freq === 5 && !hasRestDay) {
       addOption({
         key: 'recurrence-workdays',
         label: 'Werktags',
-        detail: 'Macht daraus eine klare Routine an Arbeitstagen.',
+        detail: 'Klare Routine an Arbeitstagen (Mo–Fr).',
         promptValue: `${prompt.value} werktags`,
       })
     }
 
-    addOption({
-      key: 'recurrence-daily',
-      label: 'Täglich',
-      detail: 'Macht daraus eine Routine für jeden Tag.',
-      promptValue: `${prompt.value} täglich`,
-    })
+    if (!hasRestDay) {
+      addOption({
+        key: 'recurrence-daily',
+        label: 'Täglich',
+        detail: 'Macht daraus eine Routine für jeden Tag.',
+        promptValue: `${prompt.value} täglich`,
+      })
+    }
   }
 
   return options.slice(0, 5)
@@ -366,6 +409,10 @@ watch(() => props.show, (show) => {
   previewAlternatives.value = []
   previewAvailabilityLabel.value = null
   selectedPreviewSuggestionKey.value = null
+  routineConflict.value = null
+  routineTimeAlternatives.value = []
+  multiRoutineTimeAlternatives.value = []
+  showDeleteConflictConfirm.value = false
 })
 
 async function handlePlan() {
@@ -386,6 +433,10 @@ async function handlePlan() {
   previewAlternatives.value = []
   previewAvailabilityLabel.value = null
   selectedPreviewSuggestionKey.value = null
+  routineConflict.value = null
+  routineTimeAlternatives.value = []
+  multiRoutineTimeAlternatives.value = []
+  showDeleteConflictConfirm.value = false
 
   try {
     prompt.value = safePrompt
@@ -399,6 +450,7 @@ async function handlePlan() {
       previewMultiRoutines.value = routines
       previewReason.value = `${routines.length}x wöchentlich: ${routines.map(r => weekdayLabel(r.template.day!)).join(', ')}`
       previewUncertainty.value = null
+      multiRoutineTimeAlternatives.value = buildMultiRoutineTimeAlternatives(routines)
       return
     }
 
@@ -409,6 +461,7 @@ async function handlePlan() {
         previewMultiRoutines.value = routines
         previewReason.value = `${routines.length}x wöchentlich: ${routines.map(r => weekdayLabel(r.template.day!)).join(', ')}`
         previewUncertainty.value = routines.length < parsed.recurrenceFrequencyPerWeek ? `Nur ${routines.length} freie Slots gefunden — passe Dauer oder Uhrzeit an für mehr.` : null
+        multiRoutineTimeAlternatives.value = buildMultiRoutineTimeAlternatives(routines)
         return
       }
     }
@@ -428,6 +481,7 @@ async function handlePlan() {
       previewRoutine.value = routine
       previewReason.value = routine.reason
       previewUncertainty.value = buildPreviewUncertainty(parsed, true, routine.roundedToHour)
+      syncRoutineConflictState(routine)
       return
     }
 
@@ -998,6 +1052,234 @@ function buildRoutinePreview(parsed: ParsedPlanningRequest): RoutinePreview {
   }
 }
 
+function routineCalendarPool() {
+  return calendarEvents.value.length > 0 ? calendarEvents.value : props.events
+}
+
+function calendarEventWindow(event: CalendarEvent) {
+  const startValue = event.start.dateTime || event.start.date
+  const endValue = event.end.dateTime || event.end.date
+  if (!startValue || !endValue) return null
+  return {
+    start: new Date(startValue),
+    end: new Date(endValue),
+  }
+}
+
+function buildRoutineWindow(date: Date, startHour: number, endHour: number) {
+  const start = new Date(date)
+  start.setHours(startHour, 0, 0, 0)
+  const end = new Date(date)
+  end.setHours(endHour, 0, 0, 0)
+  if (endHour <= startHour) {
+    end.setDate(end.getDate() + 1)
+  }
+  return { start, end }
+}
+
+function findRoutineConflictingEvents(date: Date, startHour: number, endHour: number) {
+  const { start, end } = buildRoutineWindow(date, startHour, endHour)
+  return routineCalendarPool().filter((event) => {
+    const window = calendarEventWindow(event)
+    if (!window) return false
+    return window.start < end && window.end > start
+  })
+}
+
+function formatRoutineShiftLabel(date: Date) {
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+function findNextFreeDayForRoutine(routine: RoutinePreview): Date | null {
+  for (let daysAhead = 1; daysAhead <= 14; daysAhead++) {
+    const candidate = new Date(routine.nextStart)
+    candidate.setDate(candidate.getDate() + daysAhead)
+    if (findRoutineConflictingEvents(candidate, routine.template.startHour, routine.template.endHour).length === 0) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function buildRoutineTimeAlternativesForDate(date: Date, startHour: number, endHour: number) {
+  const durationHours = Math.max(1, endHour - startHour)
+  const alternatives: RoutineTimeSlotOption[] = []
+  const earliestHour = Math.max(0, preferences.value.workStartHour)
+  const latestHour = Math.min(24, Math.max(earliestHour + durationHours, preferences.value.workEndHour + 2))
+
+  for (let candidateStartHour = earliestHour; candidateStartHour + durationHours <= latestHour; candidateStartHour++) {
+    const candidateEndHour = candidateStartHour + durationHours
+    if (findRoutineConflictingEvents(date, candidateStartHour, candidateEndHour).length > 0) continue
+    alternatives.push({
+      startHour: candidateStartHour,
+      endHour: candidateEndHour,
+      label: `${String(candidateStartHour).padStart(2, '0')}:00 – ${String(candidateEndHour).padStart(2, '0')}:00`,
+    })
+    if (alternatives.length >= 5) break
+  }
+
+  return alternatives
+}
+
+function syncRoutineConflictState(routine: RoutinePreview) {
+  routineConflict.value = checkRoutineNextOccurrence(routine)
+  routineTimeAlternatives.value = buildRoutineTimeAlternativesList(routine)
+  showDeleteConflictConfirm.value = false
+}
+
+// Berechnet verfügbare Zeitoptionen für Multi-Routinen (6x wöchentlich etc.)
+function buildMultiRoutineTimeAlternatives(routines: RoutinePreview[]) {
+  return routines.flatMap((routine, dayIndex) => {
+    const alternatives = buildRoutineTimeAlternativesForDate(
+      routine.nextStart,
+      routine.template.startHour,
+      routine.template.endHour,
+    )
+
+    if (alternatives.length === 0) {
+      return []
+    }
+
+    return [{
+      dayIndex,
+      dayLabel: weekdayLabel(routine.template.day ?? 0),
+      alternatives,
+    }]
+  })
+}
+
+// Wendet eine Zeitoption auf eine Multi-Routine an
+function applyMultiRoutineTimeSlot(dayIndex: number, slot: RoutineTimeSlotOption) {
+  if (dayIndex >= previewMultiRoutines.value.length) return
+
+  const routine = previewMultiRoutines.value[dayIndex]
+  const { start: nextStart, end: nextEnd } = buildRoutineWindow(routine.nextStart, slot.startHour, slot.endHour)
+
+  previewMultiRoutines.value[dayIndex] = {
+    ...routine,
+    template: { ...routine.template, startHour: slot.startHour, endHour: slot.endHour },
+    nextStart,
+    nextEnd,
+  }
+
+  multiRoutineTimeAlternatives.value = buildMultiRoutineTimeAlternatives(previewMultiRoutines.value)
+}
+
+// Prüft ob die nächste Routine-Ausführung mit bestehenden Terminen kollidiert.
+function checkRoutineNextOccurrence(routine: RoutinePreview): RoutineConflictInfo | null {
+  const conflicting = findRoutineConflictingEvents(
+    routine.nextStart,
+    routine.template.startHour,
+    routine.template.endHour,
+  )
+
+  if (conflicting.length === 0) return null
+
+  const suggestedShiftDate = findNextFreeDayForRoutine(routine)
+  return {
+    date: new Date(routine.nextStart),
+    conflictingEvents: [...conflicting],
+    suggestedShiftDate,
+    suggestedShiftDayLabel: suggestedShiftDate
+      ? formatRoutineShiftLabel(suggestedShiftDate)
+      : 'kein freier Tag in den nächsten 14 Tagen',
+  }
+}
+
+// Berechnet verfügbare Startzeiten am nächsten Routine-Termin zur Auswahl.
+function buildRoutineTimeAlternativesList(routine: RoutinePreview): RoutineTimeSlotOption[] {
+  return buildRoutineTimeAlternativesForDate(
+    routine.nextStart,
+    routine.template.startHour,
+    routine.template.endHour,
+  )
+}
+
+// Wendet einen ausgewählten Zeitslot auf die Routine-Vorschau an und prüft erneut auf Konflikte.
+function applyRoutineTimeSlot(slot: RoutineTimeSlotOption) {
+  if (!previewRoutine.value) return
+  const { start: nextStart, end: nextEnd } = buildRoutineWindow(previewRoutine.value.nextStart, slot.startHour, slot.endHour)
+  previewRoutine.value = {
+    ...previewRoutine.value,
+    template: { ...previewRoutine.value.template, startHour: slot.startHour, endHour: slot.endHour },
+    nextStart,
+    nextEnd,
+    reason: `${previewRoutine.value.reason.split(' · ')[0]} · ${slot.label}`,
+  }
+  syncRoutineConflictState(previewRoutine.value)
+}
+
+// Verschiebt die Routine auf den vorgeschlagenen nächsten freien Tag.
+function handleShiftRoutine() {
+  if (!routineConflict.value?.suggestedShiftDate || !previewRoutine.value) return
+  const shiftDate = routineConflict.value.suggestedShiftDate
+  const newDay = shiftDate.getDay()
+  const { start: nextStart, end: nextEnd } = buildRoutineWindow(
+    shiftDate,
+    previewRoutine.value.template.startHour,
+    previewRoutine.value.template.endHour,
+  )
+  previewRoutine.value = {
+    ...previewRoutine.value,
+    template: { ...previewRoutine.value.template, day: newDay },
+    nextStart,
+    nextEnd,
+    reason: `Verschoben auf ${formatRoutineShiftLabel(shiftDate)}`,
+  }
+  syncRoutineConflictState(previewRoutine.value)
+}
+
+// Bricht die aktuelle Routine-Planung ab und setzt den Zustand zurück.
+function handleDiscardRoutine() {
+  previewRoutine.value = null
+  previewMultiRoutines.value = []
+  parsedDetails.value = null
+  routineConflict.value = null
+  showDeleteConflictConfirm.value = false
+  routineTimeAlternatives.value = []
+  multiRoutineTimeAlternatives.value = []
+  previewReason.value = null
+  previewUncertainty.value = null
+}
+
+// Löscht den kollidierenden Termin und erstellt danach die Routine.
+async function handleDeleteConflictAndInsertRoutine() {
+  if (!routineConflict.value || !previewRoutine.value) return
+
+  // Erst Bestätigung einholen, dann ausführen
+  if (!showDeleteConflictConfirm.value) {
+    showDeleteConflictConfirm.value = true
+    return
+  }
+
+  isPlanning.value = true
+  error.value = null
+  try {
+    for (const event of routineConflict.value.conflictingEvents) {
+      if (!event.id) continue
+      const deleted = await deleteEvent(event.id)
+      if (!deleted) {
+        throw new Error(`"${event.summary || 'Termin'}" konnte nicht gelöscht werden.`)
+      }
+    }
+    routineConflict.value = null
+    showDeleteConflictConfirm.value = false
+    isPlanning.value = false
+    await handleCreateRoutine()
+  }
+  catch (err: any) {
+    error.value = err.message || 'Löschen des Termins fehlgeschlagen.'
+  }
+  finally {
+    isPlanning.value = false
+  }
+}
+
 function distributeNSlots(count: number, parsed: ParsedPlanningRequest, minGapDays: number): SlotSuggestion[] {
   const from = new Date()
   from.setHours(0, 0, 0, 0)
@@ -1290,8 +1572,8 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
   const primaryCandidate = baseCandidates[0]
   const primaryDay = primaryCandidate ? startOfPreviewDay(primaryCandidate.start) : null
   const primaryDayKey = primaryDay ? toPreviewDayKey(primaryDay) : null
-  const maxSuggestions = 6
-  const maxPerDay = 2
+  const maxSuggestions = 12
+  const maxPerDay = 4
 
   const addCandidatesToPool = (
     candidates: SlotSuggestion[],
@@ -1352,6 +1634,31 @@ function buildPreviewSuggestions(parsed: ParsedPlanningRequest) {
         collectSlotCandidates(relaxedPeriodParsed),
         'Alternative am selben Tag außerhalb des ursprünglichen Zeitfensters.',
       )
+    }
+
+    // Erweiterte Zeitfenster um die gewünschte Zeit herum generieren
+    if (parsed.timePreference?.exactStartMinutes !== undefined) {
+      const exactHour = Math.floor(parsed.timePreference.exactStartMinutes / 60)
+      const durationMs = parsed.durationMinutes * 60 * 1000
+
+      for (let hourOffset = -2; hourOffset <= 2; hourOffset++) {
+        if (hourOffset === 0) continue
+        const alternativeHour = exactHour + hourOffset
+        if (alternativeHour < 6 || alternativeHour > 22) continue
+
+        const extendedParsed = {
+          ...sameDayParsed,
+          timePreference: {
+            label: `ca. ${String(alternativeHour).padStart(2, '0')}:00`,
+            startMinutes: alternativeHour * 60,
+            endMinutes: (alternativeHour * 60) + parsed.durationMinutes,
+          },
+        }
+        addCandidatesToPool(
+          collectSlotCandidates(extendedParsed),
+          `Alternativ ${hourOffset > 0 ? '+' : ''}${hourOffset}h von Wunschzeit.`,
+        )
+      }
     }
   }
 
@@ -2059,10 +2366,10 @@ async function handleRetryCalendarAction() {
                 />
                 <div v-if="previewSuggestionGroups.length > 0" class="mt-4">
                     <div class="flex items-center justify-between gap-2">
-                      <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Vorschläge</div>
-                      <div class="text-[11px] text-text-muted">{{ previewAlternatives.length }} auswählbar</div>
+                      <div class="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">Zeit wählen</div>
+                      <div class="text-[11px] text-text-muted">{{ previewAlternatives.length }} Optionen verfügbar</div>
                     </div>
-                    <div class="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
+                    <div class="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
                       <div
                         v-for="group in previewSuggestionGroups"
                         :key="group.dayKey"
@@ -2197,10 +2504,11 @@ async function handleRetryCalendarAction() {
                 </div>
 
                 <div v-else-if="previewRoutine && parsedDetails" class="mt-4 space-y-3">
+                  <!-- Routine-Vorschau -->
                   <div class="rounded-glass border border-accent-green/20 bg-accent-green/10 p-4">
                     <p class="text-sm font-medium text-text-primary">{{ previewRoutine.template.title }}</p>
                     <p class="mt-1 text-sm text-text-secondary">
-                      {{ weekdayLabel(previewRoutine.template.day) }},
+                      {{ weekdayLabel(previewRoutine.template.day ?? 0) }},
                       {{ String(previewRoutine.template.startHour).padStart(2, '0') }}:00 bis
                       {{ String(previewRoutine.template.endHour).padStart(2, '0') }}:00
                     </p>
@@ -2212,6 +2520,112 @@ async function handleRetryCalendarAction() {
                     </p>
                   </div>
 
+                  <!-- Zeitslot-Auswahl: verfügbare Uhrzeiten am gleichen Tag -->
+                  <div v-if="routineTimeAlternatives.length > 0" class="rounded-glass border bg-white/[0.03] p-3" :class="routineConflict ? 'border-priority-high/30' : 'border-border-subtle'">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-[11px] font-semibold uppercase tracking-[0.2em]" :class="routineConflict ? 'text-priority-high' : 'text-text-muted'">
+                        {{ routineConflict ? 'Zeitslot belegt — Freie Uhrzeiten' : 'Freie Uhrzeiten am ' + weekdayLabel(previewRoutine.template.day ?? 0) }}
+                      </div>
+                      <div class="text-[11px] text-text-muted">Klick zum Übernehmen</div>
+                    </div>
+                    <p v-if="routineConflict" class="mt-1 text-xs text-text-secondary">
+                      {{ routineConflict.conflictingEvents.map(e => e.summary || 'Termin').join(', ') }} belegt {{ String(previewRoutine.template.startHour).padStart(2, '0') }}:00. Wähle eine andere Uhrzeit:
+                    </p>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <button
+                        v-for="slot in routineTimeAlternatives"
+                        :key="slot.startHour"
+                        type="button"
+                        class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                        :class="previewRoutine.template.startHour === slot.startHour
+                          ? 'border-accent-green/40 bg-accent-green/15 text-accent-green'
+                          : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-medium hover:bg-white/[0.07] hover:text-text-primary'"
+                        :disabled="isPlanning"
+                        @click="applyRoutineTimeSlot(slot)"
+                      >
+                        {{ slot.label }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Konflikt-Panel: Tag ist wirklich voll (keine freien Alternativen mehr) -->
+                  <div v-if="routineConflict && routineTimeAlternatives.length === 0" class="rounded-glass border border-priority-high/35 bg-priority-high/10 p-4">
+                    <div class="flex items-start gap-3">
+                      <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-priority-high" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      </svg>
+                      <div class="flex-1">
+                        <p class="text-sm font-medium text-priority-high">Kein freier Termin an diesem Tag gefunden</p>
+                        <p class="mt-1 text-xs text-text-secondary">
+                          {{ routineConflict.conflictingEvents.map(e => e.summary || 'Termin').join(', ') }} belegt diesen Zeitslot bereits. Wie möchtest du vorgehen?
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Konflikt-Optionen -->
+                    <div class="mt-3 space-y-2">
+                      <!-- Option 1: Verschieben (nicht destruktiv, zuerst zeigen) -->
+                      <button
+                        v-if="routineConflict.suggestedShiftDate"
+                        type="button"
+                        class="w-full rounded-xl border border-accent-blue/25 bg-accent-blue/10 px-4 py-2.5 text-left text-sm text-accent-blue transition hover:border-accent-blue/40 hover:bg-accent-blue/15 disabled:opacity-50"
+                        :disabled="isPlanning"
+                        @click="handleShiftRoutine"
+                      >
+                        <div class="font-medium">Routine um einen Tag verschieben</div>
+                        <div class="mt-0.5 text-xs text-text-secondary">Nächster freier Tag: {{ routineConflict.suggestedShiftDayLabel }}</div>
+                      </button>
+                      <div v-else class="rounded-xl border border-border-subtle bg-white/[0.03] px-4 py-2.5 text-xs text-text-muted">
+                        Kein freier Alternativtag in den nächsten 14 Tagen gefunden.
+                      </div>
+
+                      <!-- Option 2: Bestehenden Termin löschen + Gym einfügen (destruktiv, Bestätigung nötig) -->
+                      <div v-if="!showDeleteConflictConfirm">
+                        <button
+                          type="button"
+                          class="w-full rounded-xl border border-priority-high/25 bg-priority-high/8 px-4 py-2.5 text-left text-sm text-[#FFD3DC] transition hover:border-priority-high/40 hover:bg-priority-high/12 disabled:opacity-50"
+                          :disabled="isPlanning"
+                          @click="handleDeleteConflictAndInsertRoutine"
+                        >
+                          <div class="font-medium">Bestehenden Termin löschen und Routine einfügen</div>
+                          <div class="mt-0.5 text-xs text-text-secondary">Löscht: {{ routineConflict.conflictingEvents.map(e => e.summary || 'Termin').join(', ') }}</div>
+                        </button>
+                      </div>
+                      <!-- Bestätigungs-Schritt für die destruktive Aktion -->
+                      <div v-else class="rounded-xl border border-priority-critical/35 bg-priority-critical/12 p-3">
+                        <p class="text-xs font-medium text-[#FFD3DC]">Sicher? Diese Aktion löscht den bestehenden Termin unwiderruflich.</p>
+                        <div class="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            class="flex-1 rounded-lg border border-priority-critical/30 bg-priority-critical/15 px-3 py-1.5 text-xs font-medium text-[#FFD3DC] transition hover:bg-priority-critical/20 disabled:opacity-50"
+                            :disabled="isPlanning"
+                            @click="handleDeleteConflictAndInsertRoutine"
+                          >
+                            Ja, löschen und einfügen
+                          </button>
+                          <button
+                            type="button"
+                            class="flex-1 rounded-lg border border-border-subtle bg-white/[0.04] px-3 py-1.5 text-xs text-text-secondary transition hover:bg-white/[0.07]"
+                            @click="showDeleteConflictConfirm = false"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Option 3: Routine verwerfen -->
+                      <button
+                        type="button"
+                        class="w-full rounded-xl border border-border-subtle bg-white/[0.03] px-4 py-2.5 text-left text-sm text-text-muted transition hover:border-border-medium hover:bg-white/[0.06] hover:text-text-secondary disabled:opacity-50"
+                        :disabled="isPlanning"
+                        @click="handleDiscardRoutine"
+                      >
+                        Termin verwerfen
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Duplikat-Warnungen -->
                   <div
                     v-if="routineDuplicateWarnings.length > 0"
                     class="rounded-glass border border-priority-high/30 bg-priority-high/10 px-4 py-3"
@@ -2229,7 +2643,9 @@ async function handleRetryCalendarAction() {
                     </div>
                   </div>
 
+                  <!-- Speichern-Button: nur wenn kein offener Konflikt -->
                   <button
+                    v-if="!routineConflict"
                     type="button"
                     class="btn-accent-green w-full px-4 py-3 text-sm disabled:opacity-50"
                     :disabled="isPlanning"
@@ -2243,6 +2659,37 @@ async function handleRetryCalendarAction() {
                   <div class="rounded-glass border border-accent-green/20 bg-accent-green/10 p-4">
                     <p class="text-sm font-medium text-text-primary">{{ parsedDetails.title }}</p>
                     <p class="mt-1 text-sm text-text-secondary">{{ previewMultiRoutines.length }}x wöchentlich als Routinen</p>
+                    
+                    <!-- Zeitoptionen pro Tag -->
+                    <div v-if="multiRoutineTimeAlternatives.length > 0" class="mt-4 space-y-3">
+                      <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+                        Zeit anpassen (klick auf Option)
+                      </div>
+                      <div
+                        v-for="alt in multiRoutineTimeAlternatives"
+                        :key="alt.dayIndex"
+                        class="rounded-xl border border-border-subtle bg-white/[0.03] p-3"
+                      >
+                        <div class="text-xs font-medium text-text-primary mb-2">{{ alt.dayLabel }}</div>
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            v-for="slot in alt.alternatives"
+                            :key="slot.startHour"
+                            type="button"
+                            class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                            :class="previewMultiRoutines[alt.dayIndex]?.template.startHour === slot.startHour
+                              ? 'border-accent-green/40 bg-accent-green/15 text-accent-green'
+                              : 'border-border-subtle bg-white/[0.04] text-text-secondary hover:border-border-medium hover:bg-white/[0.07] hover:text-text-primary'"
+                            :disabled="isPlanning"
+                            @click="applyMultiRoutineTimeSlot(alt.dayIndex, slot)"
+                          >
+                            {{ slot.label }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Aktuelle Zeiten -->
                     <div class="mt-3 space-y-1">
                       <div
                         v-for="(routine, i) in previewMultiRoutines"
@@ -2250,8 +2697,11 @@ async function handleRetryCalendarAction() {
                         class="flex items-center gap-2 text-sm text-text-secondary"
                       >
                         <span class="text-accent-green">·</span>
-                        {{ weekdayLabel(routine.template.day) }},
+                        {{ weekdayLabel(routine.template.day ?? 0) }},
                         {{ String(routine.template.startHour).padStart(2, '0') }}:00 – {{ String(routine.template.endHour).padStart(2, '0') }}:00
+                        <span v-if="multiRoutineTimeAlternatives.some(a => a.dayIndex === i)" class="text-[10px] text-text-muted">
+                          ({{ multiRoutineTimeAlternatives.find(a => a.dayIndex === i)?.alternatives.length ?? 0 }} Optionen)
+                        </span>
                       </div>
                     </div>
                     <p class="mt-3 text-sm text-accent-green">

@@ -9,7 +9,9 @@
       "Bash(grep -L \"⬆ \\\\[\\\\[\" *.md)",
       "Bash(node:*)",
       "Bash(npm run:*)",
-      "Bash(npx gitnexus:*)"
+      "Bash(npx gitnexus:*)",
+      "mcp__gitnexus__context",
+      "Bash(npx vue-tsc:*)"
     ]
   }
 }

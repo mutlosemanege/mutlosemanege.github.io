@@ -50,6 +50,12 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
         └── [[Tailwind-Design-System]]  Design Tokens, Breakpoints, Event-Farben
 ```
 
+## Agenten & Tools
+
+```
+[[Agent-Generator]]           Erstellt neue Agents mit SKILL.md + Tools
+```
+
 ---
 
 ## Alle Skills
@@ -68,6 +74,7 @@ Technische Skill-Notes aus der Entwicklung von Kalender-AI. Jede Note dokumentie
 | [[Frontend-Design]] | Design | Glassmorphism-Redesign, Tailwind-Design-System |
 | [[Glassmorphism-Redesign]] | Design | [[../../planung/REDESIGN-PROMPT]], Tailwind-Design-System, Frontend-Design |
 | [[Tailwind-Design-System]] | Design | [[../../planung/REDESIGN-PROMPT]], Glassmorphism-Redesign |
+| [[Agent-Generator]] | Agenten | Erstellt neue Agents mit SKILL.md + Tools |
 
 ---
 

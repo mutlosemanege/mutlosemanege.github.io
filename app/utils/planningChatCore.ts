@@ -23,6 +23,8 @@ export interface ParsedPlanningRequest {
   multipleWeekdays?: number[]
   frequencyInPeriod?: number
   timePreference?: PlanningTimePreference
+  restDayHint?: number
+  cyclePattern?: { trainDays: number; restDays: number }
   ambiguityHints: string[]
 }
 
@@ -43,9 +45,34 @@ export function parsePlanningPrompt(
   const dateTo = new Date(now)
   dateTo.setDate(dateTo.getDate() + 7)
 
-  const multipleWeekdays = extractMultipleWeekdays(normalized)
-  const recurrence = multipleWeekdays ? null : extractRecurrence(normalized)
+  let multipleWeekdays = extractMultipleWeekdays(normalized)
   const recurrenceFrequencyPerWeek = extractRecurrenceFrequencyPerWeek(normalized)
+  const restDayHint = extractRestDay(normalized)
+
+  // For 6x/week + explicit rest day: auto-compute the 6 active weekdays
+  if (!multipleWeekdays && recurrenceFrequencyPerWeek === 6 && restDayHint !== null) {
+    multipleWeekdays = [1, 2, 3, 4, 5, 6, 0].filter(d => d !== restDayHint)
+  }
+
+  const cyclePattern = extractCyclePattern(normalized)
+
+  // Cycle pattern + explicit frequency: compute weekdays from rhythm
+  if (!multipleWeekdays && cyclePattern && recurrenceFrequencyPerWeek) {
+    const computed = computeWeekdaysFromCycle(cyclePattern.trainDays, cyclePattern.restDays, recurrenceFrequencyPerWeek)
+    if (computed.length === recurrenceFrequencyPerWeek) {
+      multipleWeekdays = computed
+    }
+  }
+
+  // Cycle pattern without explicit frequency: derive frequency from cycle within 7 days
+  if (!multipleWeekdays && cyclePattern && !recurrenceFrequencyPerWeek && !restDayHint) {
+    const computed = computeWeekdaysFromCycle(cyclePattern.trainDays, cyclePattern.restDays)
+    if (computed.length >= 2) {
+      multipleWeekdays = computed
+    }
+  }
+
+  const recurrence = multipleWeekdays ? null : extractRecurrence(normalized)
   const frequencyInPeriod = recurrenceFrequencyPerWeek === null ? extractFrequencyInPeriod(normalized) : null
   const timePreference = extractTimePreference(normalized, fallbackDuration)
   const preferredPeriod = extractPreferredPeriod(normalized)
@@ -123,6 +150,8 @@ export function parsePlanningPrompt(
     recurrenceFrequencyPerWeek,
     multipleWeekdays,
     frequencyInPeriod,
+    restDayHint,
+    cyclePattern,
   })
 
   return {
@@ -140,6 +169,8 @@ export function parsePlanningPrompt(
     multipleWeekdays: multipleWeekdays ?? undefined,
     frequencyInPeriod: frequencyInPeriod ?? undefined,
     timePreference,
+    restDayHint: restDayHint ?? undefined,
+    cyclePattern: cyclePattern ?? undefined,
     ambiguityHints,
   }
 }
@@ -188,6 +219,78 @@ export function extractMultipleWeekdays(text: string): number[] | null {
   }
 
   return found.length >= 2 ? found.sort((a, b) => a - b) : null
+}
+
+export function extractRestDay(text: string): number | null {
+  const restDayMap: Record<string, number> = {
+    sonntag: 0, sonntags: 0,
+    montag: 1, montags: 1,
+    dienstag: 2, dienstags: 2,
+    mittwoch: 3, mittwochs: 3,
+    donnerstag: 4, donnerstags: 4,
+    freitag: 5, freitags: 5,
+    samstag: 6, samstags: 6,
+  }
+
+  const match = text.match(/\bruhetag\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/)
+  if (!match) return null
+  return restDayMap[match[1]] ?? null
+}
+
+export function extractCyclePattern(text: string): { trainDays: number; restDays: number } | null {
+  // "3 tage dann 1 tag pause" / "3 tage und 1 ruhetag" / "3 tage, 1 tag erholen"
+  const blockExplicit = text.match(/(\d+)\s*tage?\s*(?:dann|und|,)\s*(\d+)\s*tage?\s*(?:pause|ruhetag|ruhe|erholen|erholung)/)
+  if (blockExplicit) {
+    const trainDays = Number(blockExplicit[1])
+    const restDays = Number(blockExplicit[2])
+    if (trainDays >= 1 && restDays >= 1 && trainDays + restDays <= 10) {
+      return { trainDays, restDays }
+    }
+  }
+
+  // "2 ruhetage alle 4 tage" / "y ruhetage alle x tage"
+  const restFirst = text.match(/(\d+)\s*ruhetage?\s*alle\s*(\d+)\s*tage?/)
+  if (restFirst) {
+    const restDays = Number(restFirst[1])
+    const cycleLen = Number(restFirst[2])
+    const trainDays = cycleLen - restDays
+    if (trainDays >= 1 && restDays >= 1 && cycleLen <= 10) {
+      return { trainDays, restDays }
+    }
+  }
+
+  // "alle 4 tage 1 ruhetag" / "alle 3 tage einen ruhetag"
+  const alleCycle = text.match(/alle\s+(\d+)\s*tage?\s*(?:(\d+)\s*)?(?:einen?\s*)?(?:pause|ruhetag|ruhe|erholung)/)
+  if (alleCycle) {
+    const cycleLen = Number(alleCycle[1])
+    const restDays = alleCycle[2] ? Number(alleCycle[2]) : 1
+    const trainDays = cycleLen - restDays
+    if (trainDays >= 1 && restDays >= 1 && cycleLen <= 10) {
+      return { trainDays, restDays }
+    }
+  }
+
+  // "immer 1 tag dazwischen" / "immer 2 tage dazwischen (ruhetag/pause)"
+  const between = text.match(/immer\s+(\d+)\s*tage?\s*dazwischen/)
+  if (between) {
+    const restDays = Number(between[1])
+    if (restDays >= 1 && restDays <= 6) {
+      return { trainDays: 1, restDays }
+    }
+  }
+
+  return null
+}
+
+function computeWeekdaysFromCycle(trainDays: number, restDays: number, targetCount?: number): number[] {
+  const cycleLen = trainDays + restDays
+  // Build a 7-day boolean pattern starting Monday
+  const pattern: boolean[] = Array.from({ length: 7 }, (_, i) => (i % cycleLen) < trainDays)
+  // Map positions to JS weekday numbers: position 0 = Monday (1), ..., position 6 = Sunday (0)
+  const weekSequence = [1, 2, 3, 4, 5, 6, 0]
+  const weekdays = weekSequence.filter((_, i) => pattern[i])
+  if (targetCount !== undefined && weekdays.length > targetCount) return weekdays.slice(0, targetCount)
+  return weekdays
 }
 
 export function extractFrequencyInPeriod(text: string): number | null {
@@ -337,6 +440,12 @@ export function extractTimePreference(text: string, fallbackDuration: number): P
 
 export function buildCleanTitle(text: string) {
   return text
+    .replace(/\bruhetag\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
+    .replace(/\d+\s*ruhetage?\s*alle\s*\d+\s*tage?/gi, '')
+    .replace(/alle\s+\d+\s*tage?\s*(?:\d+\s*)?(?:einen?\s*)?(?:pause|ruhetag|ruhe|erholung)/gi, '')
+    .replace(/\d+\s*tage?\s*(?:dann|und|,)\s*\d+\s*tage?\s*(?:pause|ruhetag|ruhe|erholen|erholung)/gi, '')
+    .replace(/immer\s+\d+\s*tage?\s*dazwischen/gi, '')
+    .replace(/\b(ruhetag|ruhetage|pause|erholung)\b/gi, '')
     .replace(/\b(jeden|jede|immer|woechentlich|regelmaessig|taeglich|jeden tag|werktags|arbeitstags|an arbeitstagen|mo-fr|mo bis fr|montag bis freitag|heute|morgen|uebermorgen|naechste woche|diese woche|wochenende|diesen|dieses|naechsten|kommenden|am|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
     .replace(/\b(heiligabend|heilig abend|weihnachten|erster weihnachtstag|1\.?\s*weihnachtstag|zweiter weihnachtstag|2\.?\s*weihnachtstag|silvester|neujahr|valentinstag|tag der arbeit|erster mai|tag der deutschen einheit|dritter oktober|nikolaus|karfreitag|karsamstag|osterabend|ostersonntag|ostern|ostermontag|christi himmelfahrt|himmelfahrt|pfingstsonntag|pfingsten|pfingstmontag|muttertag)\b/gi, '')
     .replace(/\b\d{1,2}\s*(?:x|mal)\s*(?:pro\s*)?(?:diese[rn]?\s+)?(?:die\s*)?woche\b/gi, '')
@@ -613,12 +722,14 @@ function buildAmbiguityHints(context: {
   recurrenceFrequencyPerWeek: number | null
   multipleWeekdays?: number[] | null
   frequencyInPeriod?: number | null
+  restDayHint?: number | null
+  cyclePattern?: { trainDays: number; restDays: number } | null
 }) {
   const hints: string[] = []
 
-  if (!context.hasExplicitDate) {
+  if (!context.hasExplicitDate && context.restDayHint === undefined) {
     hints.push('Es wurde kein genaues Datum erkannt. Ich suche deshalb im nächsten passenden Zeitraum.')
-  } else if (context.weekday !== null && context.weekdayReferenceMode === 'default') {
+  } else if (context.hasExplicitDate && context.weekday !== null && context.weekdayReferenceMode === 'default' && context.restDayHint === undefined) {
     hints.push('Den genannten Wochentag deute ich als nächsten passenden Termin. Mit "diesen" oder "nächsten" wird es eindeutiger.')
   }
 
@@ -631,7 +742,27 @@ function buildAmbiguityHints(context: {
   }
 
   if (context.intent === 'routine' && context.recurrenceFrequencyPerWeek !== null && !context.multipleWeekdays?.length) {
-    hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche wurde erkannt. Ich verteile die Einheiten automatisch auf freie Tage — oder gib konkrete Tage an wie "montags mittwochs freitags".`)
+    if (context.cyclePattern) {
+      // cycle detected but couldn't map to weekdays — give targeted hint
+    } else if (context.recurrenceFrequencyPerWeek >= 5) {
+      hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche erkannt. Sag mir deinen Ruhetag (z. B. "Ruhetag Donnerstag") — dann plane ich die anderen ${context.recurrenceFrequencyPerWeek} Tage automatisch.`)
+    } else {
+      hints.push(`${context.recurrenceFrequencyPerWeek}x pro Woche erkannt. Ich verteile die Einheiten automatisch — oder gib konkrete Tage an wie "montags mittwochs freitags".`)
+    }
+  }
+
+  if (context.intent === 'routine' && context.recurrenceFrequencyPerWeek === 6 && context.multipleWeekdays?.length === 6 && context.restDayHint !== null) {
+    const restLabel = weekdayLabel(context.restDayHint!)
+    hints.push(`Ruhetag ${restLabel} erkannt. Ich lege 6 wöchentliche Routinen an — 3 Tage, Pause ${restLabel}, 3 Tage.`)
+  }
+
+  if (context.cyclePattern && context.multipleWeekdays?.length) {
+    const { trainDays, restDays } = context.cyclePattern
+    const dayNames = context.multipleWeekdays.map(d => weekdayLabel(d)).join(', ')
+    hints.push(`Muster erkannt: ${trainDays} Trainingstag${trainDays > 1 ? 'e' : ''} + ${restDays} Ruhetag${restDays > 1 ? 'e' : ''}. Trainingstage: ${dayNames}.`)
+  } else if (context.cyclePattern && !context.multipleWeekdays?.length) {
+    const { trainDays, restDays } = context.cyclePattern
+    hints.push(`Muster (${trainDays}+${restDays}) erkannt, aber keine Wochentage berechenbar. Sag mir wie oft pro Woche, z. B. "5 mal die Woche".`)
   }
 
   if (context.frequencyInPeriod) {

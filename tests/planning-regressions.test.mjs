@@ -386,6 +386,24 @@ const cases = [
       assert.equal(highFrequencyRoutineRequest.title, 'gym')
 
       // Multi-weekday: plural forms → multipleWeekdays array
+      const restDayRoutineRequest = parsePlanningPrompt('6x die Woche gym ruhetag donnerstag', 60, 'auto', baseNow)
+      assert.equal(restDayRoutineRequest.intent, 'routine')
+      assert.equal(restDayRoutineRequest.recurrenceFrequencyPerWeek, 6)
+      assert.equal(restDayRoutineRequest.multipleWeekdays.length, 6)
+      assert.deepStrictEqual([...restDayRoutineRequest.multipleWeekdays].sort((a, b) => a - b), [0, 1, 2, 3, 5, 6])
+      assert.equal(restDayRoutineRequest.multipleWeekdays.includes(4), false)
+      assert.equal(restDayRoutineRequest.title, 'gym')
+      assert.equal(restDayRoutineRequest.title.includes('ruhetag'), false)
+
+      const cycleRoutineRequest = parsePlanningPrompt('3 tage dann 1 tag pause', 60, 'auto', baseNow)
+      assert.deepStrictEqual(cycleRoutineRequest.cyclePattern, { trainDays: 3, restDays: 1 })
+
+      const everyFourDaysRoutineRequest = parsePlanningPrompt('alle 4 tage 1 ruhetag', 60, 'auto', baseNow)
+      assert.deepStrictEqual(everyFourDaysRoutineRequest.cyclePattern, { trainDays: 3, restDays: 1 })
+
+      const spacedSportRoutineRequest = parsePlanningPrompt('immer 2 tage dazwischen sport', 60, 'auto', baseNow)
+      assert.deepStrictEqual(spacedSportRoutineRequest.cyclePattern, { trainDays: 1, restDays: 2 })
+
       const multiWeekdayRequest = parsePlanningPrompt('Gym montags mittwochs freitags 07:00 Uhr', 60, 'auto', baseNow)
       assert.equal(multiWeekdayRequest.intent, 'routine')
       assert.deepStrictEqual(multiWeekdayRequest.multipleWeekdays, [1, 3, 5])

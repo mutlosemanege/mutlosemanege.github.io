@@ -96,6 +96,16 @@ function inferLifeArea(task: Task): LifeArea {
   return 'arbeit'
 }
 
+const { yesterdayContinuitySummary, middayCheckIn, eveningReflectionNudge } = useDayFlow({
+  tasks,
+  inferLifeArea,
+})
+const { weeklyAreaBalance, neglectedAreas } = useLifeBalance({
+  tasks,
+  inferLifeArea,
+})
+const showNeglectedAreasHint = ref(true)
+
 const lifeAreaSummary = computed(() => {
   const grouped = new Map<LifeArea, { area: LifeArea; total: number; urgent: number; deepWork: number }>()
 
@@ -138,6 +148,15 @@ function formatHourLabel(hour: number) {
   return `${hour.toString().padStart(2, '0')}:00`
 }
 
+function formatMinutesCompact(minutes: number) {
+  if (minutes >= 60) {
+    const hours = Math.round((minutes / 60) * 10) / 10
+    return `${hours}h`
+  }
+
+  return `${minutes} Min.`
+}
+
 const workspaceSectionOptions: Array<{ value: WorkspaceSection; label: string; detail: string }> = [
   { value: 'balance', label: 'Balance', detail: 'Lebensbereiche und aktuelle Gewichte' },
   { value: 'forecast', label: 'Wochenblick', detail: 'Druck, freie Zeit und Forecast' },
@@ -147,6 +166,23 @@ const workspaceSectionOptions: Array<{ value: WorkspaceSection; label: string; d
 const activeWorkspaceMeta = computed(() =>
   workspaceSectionOptions.find(option => option.value === activeWorkspaceSection.value) || workspaceSectionOptions[0],
 )
+
+const weeklyAreaBalanceMap = computed(() => {
+  return new Map(weeklyAreaBalance.value.map(entry => [entry.area, entry]))
+})
+
+const neglectedAreasKey = computed(() => neglectedAreas.value.map(entry => entry.area).join('|'))
+
+const neglectedAreasSummary = computed(() => {
+  if (neglectedAreas.value.length === 0) return null
+
+  const labels = neglectedAreas.value.map(entry => entry.label)
+  if (labels.length === 1) {
+    return `${labels[0]} wird in den letzten zwei Wochen eher vernachlässigt.`
+  }
+
+  return `${labels.join(', ')} wirken in den letzten zwei Wochen unterrepräsentiert.`
+})
 
 const activeSurface = computed<AppSurface>(() => {
   if (showPreferences.value) return 'settings'
@@ -684,6 +720,10 @@ const morningBrief = computed(() => {
     yesterdayReflection,
   }
 })
+
+watch(neglectedAreasKey, () => {
+  showNeglectedAreasHint.value = true
+}, { immediate: true })
 
 watch(todayReflection, (reflection) => {
   selectedReflectionTags.value = [...reflection.tags]
@@ -1498,6 +1538,21 @@ function isSameCalendarDay(a: Date, b: Date) {
                     Für morgen schieben
                   </button>
                 </div>
+                <div
+                  v-if="middayCheckIn"
+                  class="mt-4 rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-blue">{{ middayCheckIn.label }}</div>
+                      <p class="mt-1 text-sm text-text-secondary">{{ middayCheckIn.summary }}</p>
+                      <p class="mt-1 text-xs text-text-muted">{{ middayCheckIn.detail }}</p>
+                    </div>
+                    <span class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-blue">
+                      12–14 Uhr
+                    </span>
+                  </div>
+                </div>
               </div>
               <p v-else class="mt-4 text-sm leading-6 text-text-secondary">
                 Gerade ist nichts offen. Du kannst entspannt neue Aufgaben oder Termine planen.
@@ -1636,6 +1691,23 @@ function isSameCalendarDay(a: Date, b: Date) {
               </div>
             </div>
 
+            <div
+              v-if="showNeglectedAreasHint && neglectedAreasSummary"
+              class="mt-4 flex items-start justify-between gap-3 rounded-glass border border-accent-blue/20 bg-accent-blue/10 px-4 py-3"
+            >
+              <div>
+                <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-blue">Balance-Hinweis</div>
+                <p class="mt-1 text-sm leading-6 text-text-secondary">{{ neglectedAreasSummary }}</p>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-3 py-1 text-[11px] text-accent-blue transition hover:bg-white/[0.1]"
+                @click="showNeglectedAreasHint = false"
+              >
+                Ausblenden
+              </button>
+            </div>
+
             <div v-if="lifeAreaSummary.length > 0" class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div
                 v-for="entry in lifeAreaSummary"
@@ -1655,6 +1727,9 @@ function isSameCalendarDay(a: Date, b: Date) {
                 <div class="mt-4 flex items-center justify-between text-xs opacity-80">
                   <span>{{ entry.deepWork }} Fokusblock{{ entry.deepWork === 1 ? '' : 'e' }}</span>
                   <span>{{ Math.round((entry.total / Math.max(todayPendingTasks.length, 1)) * 100) }}%</span>
+                </div>
+                <div class="mt-3 text-xs opacity-80">
+                  {{ formatMinutesCompact(weeklyAreaBalanceMap.get(entry.area)?.minutes || 0) }} geplant diese Woche
                 </div>
               </div>
             </div>
@@ -1848,6 +1923,21 @@ function isSameCalendarDay(a: Date, b: Date) {
             />
 
             <div class="mt-5 grid gap-4 xl:grid-cols-[1.05fr,0.95fr]">
+              <div
+                v-if="eveningReflectionNudge"
+                class="xl:col-span-2 rounded-glass border border-accent-purple/20 bg-accent-purple/10 px-4 py-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-purple-soft">{{ eveningReflectionNudge.label }}</div>
+                    <p class="mt-1 text-sm leading-6 text-text-secondary">{{ eveningReflectionNudge.detail }}</p>
+                  </div>
+                  <span class="rounded-full border border-accent-purple/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-purple-soft">
+                    Ab {{ formatHourLabel(preferences.workEndHour) }}
+                  </span>
+                </div>
+              </div>
+
               <div class="rounded-glass border border-accent-purple/20 bg-accent-purple/10 p-4">
                 <div class="flex items-start justify-between gap-3">
                   <div>
@@ -1905,6 +1995,13 @@ function isSameCalendarDay(a: Date, b: Date) {
                   <span class="rounded-full border border-accent-blue/20 bg-white/[0.06] px-2.5 py-1 text-[11px] text-accent-blue">
                     Für morgen
                   </span>
+                </div>
+
+                <div
+                  v-if="yesterdayContinuitySummary"
+                  class="mt-4 rounded-glass border border-border-subtle bg-white/[0.05] px-3 py-3 text-sm text-text-secondary"
+                >
+                  {{ yesterdayContinuitySummary }}
                 </div>
 
                 <div v-if="tomorrowForecast" class="mt-4 grid gap-3 sm:grid-cols-3">
