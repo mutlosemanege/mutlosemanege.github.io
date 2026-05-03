@@ -1,3 +1,4 @@
+import { onBeforeUnmount, onMounted } from 'vue'
 import type { Ref } from 'vue'
 import { resolveLifeAreaLabel } from '~/types/task'
 import type { DailyReflectionEntry, LifeArea, Task } from '~/types/task'
@@ -54,14 +55,29 @@ function sortByTaskPressure(a: Task, b: Task) {
 
 export function useDayFlow({ tasks, inferLifeArea }: UseDayFlowOptions) {
   const { preferences, getDailyCommit, getDailyReflection } = usePreferences()
+  const now = ref(new Date())
+  let timer: ReturnType<typeof setInterval> | null = null
 
   function resolveArea(task: Task): LifeArea {
     return inferLifeArea?.(task) || task.lifeArea || 'arbeit'
   }
 
-  const today = computed(() => startOfDay(new Date()))
+  onMounted(() => {
+    now.value = new Date()
+    timer = setInterval(() => {
+      now.value = new Date()
+    }, 60 * 1000)
+  })
+
+  onBeforeUnmount(() => {
+    if (!timer) return
+    clearInterval(timer)
+    timer = null
+  })
+
+  const today = computed(() => startOfDay(now.value))
   const yesterday = computed(() => {
-    const value = startOfDay(new Date())
+    const value = startOfDay(now.value)
     value.setDate(value.getDate() - 1)
     return value
   })
@@ -108,8 +124,7 @@ export function useDayFlow({ tasks, inferLifeArea }: UseDayFlowOptions) {
   })
 
   const middayCheckIn = computed(() => {
-    const now = new Date()
-    if (now.getHours() < 12 || now.getHours() >= 14) return null
+    if (now.value.getHours() < 12 || now.value.getHours() >= 14) return null
     if (todayCommit.value.committedTaskIds.length === 0) return null
 
     const committedIds = new Set(todayCommit.value.committedTaskIds)
@@ -132,8 +147,7 @@ export function useDayFlow({ tasks, inferLifeArea }: UseDayFlowOptions) {
   })
 
   const eveningReflectionNudge = computed(() => {
-    const now = new Date()
-    if (now.getHours() < preferences.value.workEndHour) return null
+    if (now.value.getHours() < preferences.value.workEndHour) return null
     if (reflectionSaved(todayReflection.value)) return null
 
     return {
