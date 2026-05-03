@@ -31,6 +31,7 @@ const priorityFeedback = ref<string | null>(null)
 const decisionTransparency = ref<DecisionTransparency | null>(null)
 const isRefreshingPlanningInsights = ref(false)
 const planningInsightProfile = ref<PlanningInsightProfile | null>(null)
+const showNeglectedAreasHint = ref(true)
 
 // Aufgaben-Statistiken
 const stats = computed(() => {
@@ -1488,6 +1489,28 @@ function inferLifeArea(task: Task): LifeArea {
   return 'arbeit'
 }
 
+const { neglectedAreas } = useLifeBalance({
+  tasks,
+  inferLifeArea,
+})
+
+const neglectedAreasKey = computed(() => neglectedAreas.value.map(entry => entry.area).join('|'))
+
+const neglectedAreasSummary = computed(() => {
+  if (neglectedAreas.value.length === 0) return null
+
+  const labels = neglectedAreas.value.map(entry => entry.label)
+  if (labels.length === 1) {
+    return `${labels[0]} bekommt in den letzten zwei Wochen eher wenig geplante Zeit.`
+  }
+
+  return `${labels.join(', ')} wirken in den letzten zwei Wochen eher untergewichtet.`
+})
+
+watch(neglectedAreasKey, () => {
+  showNeglectedAreasHint.value = true
+}, { immediate: true })
+
 function formatHourLabel(hour: number) {
   return `${hour.toString().padStart(2, '0')}:00`
 }
@@ -2783,6 +2806,25 @@ async function handleRetryCalendarAction() {
             >
               <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-blue">Persönlicher Hinweis</div>
               <div class="mt-1 leading-5">{{ sidebarPersonalGuidance }}</div>
+            </div>
+
+            <div
+              v-if="showNeglectedAreasHint && neglectedAreasSummary"
+              class="rounded-glass border border-accent-green/20 bg-accent-green/10 px-4 py-3 text-xs text-text-secondary"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent-green">Balance-Hinweis</div>
+                  <div class="mt-1 leading-5">{{ neglectedAreasSummary }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-full border border-accent-green/20 bg-white/[0.06] px-3 py-1 text-[11px] text-accent-green transition hover:bg-white/[0.1]"
+                  @click="showNeglectedAreasHint = false"
+                >
+                  Ausblenden
+                </button>
+              </div>
             </div>
           </div>
         </div>
