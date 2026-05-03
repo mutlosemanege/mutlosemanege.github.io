@@ -1,9 +1,22 @@
 import assert from 'node:assert/strict'
-
 const { DEFAULT_PREFERENCES } = await import('../app/types/task.ts')
+
+function toDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 globalThis.usePreferences = () => ({
   preferences: { value: structuredClone(DEFAULT_PREFERENCES) },
+  getDailyCommit: (date = new Date()) => ({
+    dateKey: toDateKey(date),
+    committedTaskIds: [],
+    deferredTaskIds: [],
+  }),
+  getDailyReflection: (date = new Date()) => ({
+    dateKey: toDateKey(date),
+    tags: [],
+    note: '',
+  }),
 })
 
 const { useScheduler } = await import('../app/composables/useScheduler.ts')
@@ -440,6 +453,16 @@ const cases = [
       const ambiguousFridayRequest = parsePlanningPrompt('Treffen Freitag Abend', 90, 'event', baseNow)
       assert.equal(ambiguousFridayRequest.ambiguityHints.length > 0, true)
       assert.equal(ambiguousFridayRequest.preferredPeriod, 'evening')
+      const scheduleKeywordTaskRequest = parsePlanningPrompt('morgen 45 min gesundheits review', 45, 'task', baseNow)
+      assert.equal(scheduleKeywordTaskRequest.intent, 'task')
+      assert.equal(scheduleKeywordTaskRequest.title.includes('review'), true)
+
+      const restDayTitleRequest = parsePlanningPrompt('6x die Woche mobility ruhetag sonntag', 30, 'auto', baseNow)
+      assert.equal(restDayTitleRequest.title, 'mobility')
+      assert.equal(restDayTitleRequest.title.includes('ruhetag'), false)
+
+      const exactGapRequest = parsePlanningPrompt('immer 1 tag dazwischen laufen', 60, 'auto', baseNow)
+      assert.deepStrictEqual(exactGapRequest.cyclePattern, { trainDays: 1, restDays: 1 })
     },
   },
 ]
