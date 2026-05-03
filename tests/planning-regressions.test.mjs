@@ -414,6 +414,10 @@ const cases = [
       const everyFourDaysRoutineRequest = parsePlanningPrompt('alle 4 tage 1 ruhetag', 60, 'auto', baseNow)
       assert.deepStrictEqual(everyFourDaysRoutineRequest.cyclePattern, { trainDays: 3, restDays: 1 })
 
+      const everyThreeDaysRoutineRequest = parsePlanningPrompt('alle 3 tage sport', 60, 'auto', baseNow)
+      assert.deepStrictEqual(everyThreeDaysRoutineRequest.cyclePattern, { trainDays: 1, restDays: 2 })
+      assert.equal(everyThreeDaysRoutineRequest.title, 'sport')
+
       const spacedSportRoutineRequest = parsePlanningPrompt('immer 2 tage dazwischen sport', 60, 'auto', baseNow)
       assert.deepStrictEqual(spacedSportRoutineRequest.cyclePattern, { trainDays: 1, restDays: 2 })
 

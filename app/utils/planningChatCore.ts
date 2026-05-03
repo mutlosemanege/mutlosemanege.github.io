@@ -270,6 +270,16 @@ export function extractCyclePattern(text: string): { trainDays: number; restDays
     }
   }
 
+  // "alle 3 tage sport" / "alle 2 tage gym"
+  const everyNthDay = text.match(/alle\s+(\d+)\s*tage?\s+([a-z])/)
+  if (everyNthDay) {
+    const cycleLen = Number(everyNthDay[1])
+    const restDays = cycleLen - 1
+    if (cycleLen >= 2 && cycleLen <= 7 && restDays >= 1) {
+      return { trainDays: 1, restDays }
+    }
+  }
+
   // "immer 1 tag dazwischen" / "immer 2 tage dazwischen (ruhetag/pause)"
   const between = text.match(/immer\s+(\d+)\s*tage?\s*dazwischen/)
   if (between) {
@@ -443,6 +453,7 @@ export function buildCleanTitle(text: string) {
     .replace(/\bruhetag\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|montags|dienstags|mittwochs|donnerstags|freitags|samstags|sonntags)\b/gi, '')
     .replace(/\d+\s*ruhetage?\s*alle\s*\d+\s*tage?/gi, '')
     .replace(/alle\s+\d+\s*tage?\s*(?:\d+\s*)?(?:einen?\s*)?(?:pause|ruhetag|ruhe|erholung)/gi, '')
+    .replace(/alle\s+\d+\s*tage?\s+/gi, '')
     .replace(/\d+\s*tage?\s*(?:dann|und|,)\s*\d+\s*tage?\s*(?:pause|ruhetag|ruhe|erholen|erholung)/gi, '')
     .replace(/immer\s+\d+\s*tage?\s*dazwischen/gi, '')
     .replace(/\b(ruhetag|ruhetage|pause|erholung)\b/gi, '')
