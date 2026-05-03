@@ -1971,11 +1971,11 @@ function hasMatchingExistingEvent(
   end: Date,
   transientEvents: Array<{ summary: string; start: Date; end: Date }> = [],
 ) {
-  const persistentDuplicate = findPotentialDuplicates({ summary, start, end }, props.events)
+  const persistentDuplicate = findPotentialDuplicates({ summary, start, end }, routineCalendarPool())
     .some(entry => entry.kind === 'exact-match')
   if (persistentDuplicate) return true
 
-  return [...props.events, ...transientEvents.map(event => ({
+  return [...routineCalendarPool(), ...transientEvents.map(event => ({
     summary: event.summary,
     start: { dateTime: event.start.toISOString() },
     end: { dateTime: event.end.toISOString() },
